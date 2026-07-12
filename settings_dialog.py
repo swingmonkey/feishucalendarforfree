@@ -14,6 +14,11 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QGroupBox,
     QMessageBox,
+    QTabWidget,
+    QWidget,
+    QTextEdit,
+    QFrame,
+    QApplication,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -48,11 +53,9 @@ def set_auto_start(enabled: bool, exe_path: str = None) -> bool:
         if enabled:
             if exe_path is None:
                 if getattr(sys, "frozen", False):
-                    # Running as frozen EXE - use the EXE path directly
                     exe_path = f'"{sys.executable}"'
                 else:
                     exe_path = sys.executable
-                    # If running as script, add main.py
                     if exe_path.endswith("python.exe"):
                         import pathlib
                         main_py = pathlib.Path(__file__).parent / "main.py"
@@ -67,12 +70,12 @@ def set_auto_start(enabled: bool, exe_path: str = None) -> bool:
                 pass
         winreg.CloseKey(key)
         return True
-    except OSError as e:
+    except OSError:
         return False
 
 
 class SettingsDialog(QDialog):
-    """Settings dialog for app configuration."""
+    """Settings dialog with tabs for connection and general settings."""
 
     settings_changed = Signal()
 
@@ -80,51 +83,170 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.setWindowTitle("设置")
-        self.setFixedSize(440, 560)
+        self.setFixedSize(520, 620)
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
 
         title = QLabel("设置")
         title.setObjectName("detailTitle")
         layout.addWidget(title)
 
-        # === Feishu API Settings ===
-        api_group = QGroupBox("飞书应用凭证")
-        api_layout = QFormLayout(api_group)
-        api_layout.setSpacing(8)
+        # Tab widget
+        tabs = QTabWidget()
 
-        hint = QLabel(
-            "配置飞书应用凭证后，可直接通过 API 获取日程，\n"
-            "无需依赖 lark-cli 授权。留空则使用 lark-cli 默认授权。"
+        # === Tab 1: Connection ===
+        tabs.addTab(self._build_connection_tab(), "飞书连接")
+
+        # === Tab 2: General ===
+        tabs.addTab(self._build_general_tab(), "通用设置")
+
+        layout.addWidget(tabs, 1)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setObjectName("secondaryBtn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+
+        save_btn = QPushButton("保存")
+        save_btn.setObjectName("primaryBtn")
+        save_btn.clicked.connect(self._on_save)
+        btn_row.addWidget(save_btn)
+
+        layout.addLayout(btn_row)
+
+    def _build_connection_tab(self) -> QWidget:
+        """Build the connection configuration tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        # Mode hint
+        mode_hint = QLabel(
+            "选择一种方式连接飞书日历：\n"
+            "• 方式一（推荐）：安装 lark-cli，扫码授权即可使用\n"
+            "• 方式二：填写飞书应用凭证（App ID + App Secret）"
         )
-        hint.setObjectName("detailLabel")
-        hint.setWordWrap(True)
-        api_layout.addRow(hint)
+        mode_hint.setObjectName("detailLabel")
+        mode_hint.setWordWrap(True)
+        layout.addWidget(mode_hint)
+
+        # === Method 1: lark-cli ===
+        cli_group = QGroupBox("方式一：lark-cli 授权（推荐）")
+        cli_layout = QVBoxLayout(cli_group)
+        cli_layout.setSpacing(6)
+
+        cli_hint = QTextEdit()
+        cli_hint.setReadOnly(True)
+        cli_hint.setMaximumHeight(140)
+        cli_hint.setHtml(
+            "<b>安装和使用步骤：</b><br>"
+            "1. 安装 Node.js（https://nodejs.org）<br>"
+            "2. 打开命令行，执行：<br>"
+            "&nbsp;&nbsp;&nbsp;<code>npm install -g @larksuite/cli</code><br>"
+            "3. 初始化配置：<br>"
+            "&nbsp;&nbsp;&nbsp;<code>lark-cli config init</code><br>"
+            "4. 扫码登录授权：<br>"
+            "&nbsp;&nbsp;&nbsp;<code>lark-cli auth login --recommend</code><br>"
+            "5. 完成后无需在此页面填写任何内容，直接保存即可"
+        )
+        cli_layout.addWidget(cli_hint)
+
+        # Check lark-cli status
+        import shutil
+        has_cli = shutil.which("lark-cli") is not None
+        status_label = QLabel()
+        if has_cli:
+            status_label.setText("✅ 已检测到 lark-cli，可直接使用")
+            status_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+        else:
+            status_label.setText("❌ 未检测到 lark-cli，请按上方步骤安装")
+            status_label.setStyleSheet("color: #f38ba8; font-size: 12px;")
+        cli_layout.addWidget(status_label)
+
+        layout.addWidget(cli_group)
+
+        # === Method 2: App credentials ===
+        api_group = QGroupBox("方式二：飞书应用凭证")
+        api_layout = QFormLayout(api_group)
+        api_layout.setSpacing(6)
+
+        api_hint = QTextEdit()
+        api_hint.setReadOnly(True)
+        api_hint.setMaximumHeight(170)
+        api_hint.setHtml(
+            "<b>获取步骤：</b><br>"
+            "1. 访问飞书开放平台 https://open.feishu.cn<br>"
+            "2. 创建企业自建应用<br>"
+            "3. 在「应用能力」中开启「机器人」<br>"
+            "4. 在「权限管理」中添加日历权限：<br>"
+            "&nbsp;&nbsp;&nbsp;• calendar:calendar:readonly（读取日历）<br>"
+            "&nbsp;&nbsp;&nbsp;• calendar:calendar（管理日历）<br>"
+            "5. 在「版本管理与发布」中创建版本并发布<br>"
+            "6. 复制 App ID 和 App Secret 填入下方"
+        )
+        api_layout.addRow(api_hint)
 
         self.app_id_input = QLineEdit()
         self.app_id_input.setPlaceholderText("cli_xxxxxxxx")
         self.app_id_input.setText(self.config.get("app_id", ""))
         api_layout.addRow("App ID", self.app_id_input)
 
+        secret_row = QHBoxLayout()
         self.app_secret_input = QLineEdit()
         self.app_secret_input.setPlaceholderText("应用密钥")
         self.app_secret_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.app_secret_input.setText(self.config.get("app_secret", ""))
-        api_layout.addRow("App Secret", self.app_secret_input)
+        secret_row.addWidget(self.app_secret_input)
 
         show_secret_btn = QPushButton("显示")
         show_secret_btn.setObjectName("secondaryBtn")
-        show_secret_btn.setFixedWidth(60)
+        show_secret_btn.setFixedWidth(50)
         show_secret_btn.clicked.connect(self._toggle_secret_visibility)
-        api_layout.addRow("", show_secret_btn)
+        secret_row.addWidget(show_secret_btn)
+        api_layout.addRow("App Secret", secret_row)
+
+        note_label = QLabel("提示：留空 App ID 和 App Secret 则使用方式一（lark-cli）")
+        note_label.setObjectName("detailLabel")
+        note_label.setWordWrap(True)
+        api_layout.addRow(note_label)
+
+        # Test connection button
+        test_row = QHBoxLayout()
+        test_btn = QPushButton("测试连接")
+        test_btn.setObjectName("primaryBtn")
+        test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        test_btn.clicked.connect(self._on_test_connection)
+        test_row.addStretch()
+        test_row.addWidget(test_btn)
+        api_layout.addRow(test_row)
+
+        self.test_result_label = QLabel()
+        self.test_result_label.setWordWrap(True)
+        self.test_result_label.setObjectName("detailLabel")
+        api_layout.addRow(self.test_result_label)
 
         layout.addWidget(api_group)
 
-        # === General Settings ===
+        layout.addStretch()
+        return tab
+
+    def _build_general_tab(self) -> QWidget:
+        """Build the general settings tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        # General settings
         general_group = QGroupBox("通用设置")
         general_layout = QFormLayout(general_group)
         general_layout.setSpacing(8)
@@ -150,23 +272,23 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(general_group)
 
+        # About
+        about_group = QGroupBox("关于")
+        about_layout = QVBoxLayout(about_group)
+        about_label = QLabel(
+            "飞书日程桌面助手 v2.0\n\n"
+            "在 Windows 桌面显示飞书日历日程\n"
+            "支持月历网格视图、添加/删除/导出日程\n\n"
+            "GitHub: github.com/swingmonkey/feishucalendarforfree\n"
+            "License: MIT"
+        )
+        about_label.setObjectName("detailLabel")
+        about_label.setWordWrap(True)
+        about_layout.addWidget(about_label)
+        layout.addWidget(about_group)
+
         layout.addStretch()
-
-        # Buttons
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-
-        cancel_btn = QPushButton("取消")
-        cancel_btn.setObjectName("secondaryBtn")
-        cancel_btn.clicked.connect(self.reject)
-        btn_row.addWidget(cancel_btn)
-
-        save_btn = QPushButton("保存")
-        save_btn.setObjectName("primaryBtn")
-        save_btn.clicked.connect(self._on_save)
-        btn_row.addWidget(save_btn)
-
-        layout.addLayout(btn_row)
+        return tab
 
     def _toggle_secret_visibility(self):
         if self.app_secret_input.echoMode() == QLineEdit.EchoMode.Password:
@@ -176,6 +298,38 @@ class SettingsDialog(QDialog):
 
     def _on_opacity_change(self, val):
         self.opacity_label.setText(f"窗口透明度: {val}%")
+
+    def _on_test_connection(self):
+        """Test Feishu API connection with current credentials."""
+        app_id = self.app_id_input.text().strip()
+        app_secret = self.app_secret_input.text().strip()
+
+        if not app_id or not app_secret:
+            self.test_result_label.setText("⚠ 请先填写 App ID 和 App Secret")
+            self.test_result_label.setStyleSheet("color: #f38ba8; font-size: 12px;")
+            return
+
+        self.test_result_label.setText("正在测试连接...")
+        self.test_result_label.setStyleSheet("color: #a6adc8; font-size: 12px;")
+        QApplication.processEvents()
+
+        try:
+            from feishu_api import FeishuApiWorker
+            worker = FeishuApiWorker(app_id, app_secret)
+            # Step 1: Get token
+            worker._get_token()
+            # Step 2: Try to list calendars
+            worker._get_primary_calendar_id()
+            self.test_result_label.setText(
+                "✅ 连接成功！\n"
+                f"Token 获取成功，日历 ID: {worker._calendar_id[:30]}...\n"
+                "可以保存设置并使用。"
+            )
+            self.test_result_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+        except Exception as e:
+            msg = str(e)
+            self.test_result_label.setText(f"❌ 连接失败\n{msg}")
+            self.test_result_label.setStyleSheet("color: #f38ba8; font-size: 12px;")
 
     def _on_save(self):
         app_id = self.app_id_input.text().strip()
