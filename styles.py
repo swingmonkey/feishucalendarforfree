@@ -246,6 +246,18 @@ QPushButton#secondaryBtn:hover {
     background-color: #45475a;
 }
 
+QPushButton#dangerBtn {
+    background-color: transparent;
+    color: #f38ba8;
+    border: 1px solid #f38ba8;
+    border-radius: 6px;
+    padding: 8px 16px;
+}
+QPushButton#dangerBtn:hover {
+    background-color: #f38ba8;
+    color: #1e1e2e;
+}
+
 QLabel#statusLabel {
     font-size: 11px;
     color: #6c7086;
@@ -514,6 +526,18 @@ QPushButton#secondaryBtn {
 }
 QPushButton#secondaryBtn:hover {
     background-color: #d0d0d0;
+}
+
+QPushButton#dangerBtn {
+    background-color: transparent;
+    color: #e53935;
+    border: 1px solid #e53935;
+    border-radius: 6px;
+    padding: 8px 16px;
+}
+QPushButton#dangerBtn:hover {
+    background-color: #e53935;
+    color: #fff;
 }
 
 QLabel#statusLabel {

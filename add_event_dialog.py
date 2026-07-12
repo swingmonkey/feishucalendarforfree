@@ -53,12 +53,14 @@ class AddEventDialog(QDialog):
         self.start_input.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.start_input.setCalendarPopup(True)
         self.start_input.setDateTime(datetime.now())
+        # When start time changes, auto-set end time to start + 1 minute
+        self.start_input.dateTimeChanged.connect(self._on_start_changed)
         form.addRow("开始  ", self.start_input)
 
         self.end_input = QDateTimeEdit()
         self.end_input.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.end_input.setCalendarPopup(True)
-        self.end_input.setDateTime(datetime.now() + timedelta(hours=1))
+        self.end_input.setDateTime(datetime.now() + timedelta(minutes=1))
         form.addRow("结束  ", self.end_input)
 
         self.desc_input = QTextEdit()
@@ -83,6 +85,12 @@ class AddEventDialog(QDialog):
         btn_row.addWidget(self.create_btn)
 
         layout.addLayout(btn_row)
+
+    def _on_start_changed(self):
+        """When start time changes, auto-set end time to start + 1 minute."""
+        start = self.start_input.dateTime().toPython()
+        new_end = start + timedelta(minutes=1)
+        self.end_input.setDateTime(new_end)
 
     def _on_create(self):
         summary = self.summary_input.text().strip()

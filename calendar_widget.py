@@ -23,6 +23,7 @@ from event_card import EventCard, parse_event_time, is_all_day_event
 from add_event_dialog import AddEventDialog
 from event_detail_dialog import EventDetailDialog
 from settings_dialog import SettingsDialog
+from export_dialog import ExportDialog
 from config import Config
 from styles import get_theme
 
@@ -261,7 +262,9 @@ class DayDetailDialog(QDialog):
         layout.addLayout(btn_row)
 
     def _show_event_detail(self, event: dict):
-        EventDetailDialog(event, self).exec()
+        dialog = EventDetailDialog(event, self)
+        dialog.event_delete_requested.connect(self._confirm_delete)
+        dialog.exec()
 
     def _on_card_delete(self, event: dict):
         self.event_delete_requested.emit(event)
@@ -374,6 +377,13 @@ class CalendarWidget(QMainWindow):
         self.refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.refresh_btn.clicked.connect(self.refresh_events)
         h.addWidget(self.refresh_btn)
+
+        self.export_btn = QPushButton("📤")
+        self.export_btn.setObjectName("iconBtn")
+        self.export_btn.setToolTip("导出日程到 Excel")
+        self.export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.export_btn.clicked.connect(self._on_export)
+        h.addWidget(self.export_btn)
 
         self.pin_btn = QPushButton("📌" if self._pinned else "📍")
         self.pin_btn.setObjectName("iconBtn")
@@ -642,6 +652,13 @@ class CalendarWidget(QMainWindow):
     def _on_add_event(self):
         dialog = AddEventDialog(self.lark_cli, self)
         dialog.event_created.connect(lambda: self.refresh_events())
+        dialog.exec()
+
+    def _on_export(self):
+        if not self.events:
+            QMessageBox.information(self, "提示", "当前没有日程可导出")
+            return
+        dialog = ExportDialog(self.events, self.current_date, self)
         dialog.exec()
 
     def _confirm_delete(self, event: dict):

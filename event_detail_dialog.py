@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QFrame,
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 
 from event_card import parse_event_time, is_all_day_event
@@ -18,6 +18,8 @@ from event_card import parse_event_time, is_all_day_event
 
 class EventDetailDialog(QDialog):
     """Dialog showing full details of a calendar event."""
+
+    event_delete_requested = Signal(dict)
 
     def __init__(self, event: dict, parent=None):
         super().__init__(parent)
@@ -134,9 +136,16 @@ class EventDetailDialog(QDialog):
 
         layout.addStretch()
 
-        # Close button
+        # Buttons
         btn_row = QHBoxLayout()
         btn_row.addStretch()
+
+        delete_btn = QPushButton("删除日程")
+        delete_btn.setObjectName("dangerBtn")
+        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_btn.clicked.connect(self._on_delete)
+        btn_row.addWidget(delete_btn)
+
         close_btn = QPushButton("关闭")
         close_btn.setObjectName("secondaryBtn")
         close_btn.clicked.connect(self.accept)
@@ -153,3 +162,8 @@ class EventDetailDialog(QDialog):
         lbl.setObjectName("detailValue")
         lbl.setWordWrap(True)
         return lbl
+
+    def _on_delete(self):
+        """Emit delete signal and close dialog."""
+        self.event_delete_requested.emit(self.event_data)
+        self.accept()
