@@ -27,9 +27,19 @@ class LarkCliAsync(QObject):
     event_deleted = Signal(str)
     delete_error = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, config=None, parent=None):
         super().__init__(parent)
         self._bin = find_lark_cli()
+        self._config = config
+
+    def _get_auth_args(self) -> list[str]:
+        """Return --app-id/--app-secret args if configured."""
+        if self._config:
+            app_id = self._config.get("app_id", "")
+            app_secret = self._config.get("app_secret", "")
+            if app_id and app_secret:
+                return ["--app-id", app_id, "--app-secret", app_secret]
+        return []
 
     def _start_process(self, args: list[str], on_success, on_error):
         """Start a lark-cli process asynchronously via QProcess."""
@@ -70,8 +80,8 @@ class LarkCliAsync(QObject):
 
         process.finished.connect(on_finished)
 
-        # Build full command
-        full_cmd = [self._bin] + args + ["--format", "json"]
+        # Build full command with optional app credentials
+        full_cmd = [self._bin] + args + self._get_auth_args() + ["--format", "json"]
 
         # On Windows, lark-cli is typically a .CMD file
         # QProcess cannot execute .CMD directly, and cmd.exe is blocked

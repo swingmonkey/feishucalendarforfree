@@ -12,14 +12,23 @@ from PySide6.QtCore import Signal, Qt
 
 
 def parse_event_time(time_data) -> datetime:
-    """Parse event time from lark-cli response.
+    """Parse event time from lark-cli or Feishu API response.
 
-    Handles both timed events (with 'datetime' field) and all-day events
-    (with 'date' field only).
+    Handles:
+    - Timed events (lark-cli): {'datetime': '2026-07-15T10:00:00+08:00'}
+    - All-day events (lark-cli): {'date': '2026-07-15', 'timezone': 'UTC'}
+    - Feishu API: {'timestamp': '1690000000', 'timezone': 'Asia/Shanghai'}
     """
     if not isinstance(time_data, dict):
         return datetime.now()
-    # Timed event: has 'datetime' field like '2026-07-15T10:00:00+08:00'
+    # Feishu API: has 'timestamp' field (Unix seconds as string)
+    ts_str = time_data.get("timestamp", "")
+    if ts_str:
+        try:
+            return datetime.fromtimestamp(int(ts_str))
+        except (ValueError, TypeError):
+            pass
+    # lark-cli: has 'datetime' field like '2026-07-15T10:00:00+08:00'
     dt_str = time_data.get("datetime", "")
     if dt_str:
         try:
@@ -39,10 +48,10 @@ def parse_event_time(time_data) -> datetime:
 
 
 def is_all_day_event(event: dict) -> bool:
-    """Check if an event is an all-day event (date-only, no datetime)."""
+    """Check if an event is an all-day event (date-only, no datetime/timestamp)."""
     start = event.get("start_time", {})
     if isinstance(start, dict):
-        return bool(start.get("date")) and not start.get("datetime")
+        return bool(start.get("date")) and not start.get("datetime") and not start.get("timestamp")
     return False
 
 

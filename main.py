@@ -71,6 +71,10 @@ class TrayApp(QApplication):
 
         menu.addSeparator()
 
+        settings_action = QAction("设置", self)
+        settings_action.triggered.connect(self.widget._on_settings)
+        menu.addAction(settings_action)
+
         about_action = QAction("关于", self)
         about_action.triggered.connect(self._show_about)
         menu.addAction(about_action)
@@ -117,14 +121,25 @@ class TrayApp(QApplication):
 
 
 def main():
-    if not shutil.which("lark-cli"):
+    config = Config()
+
+    # Check if we have either lark-cli or app credentials
+    has_lark_cli = shutil.which("lark-cli") is not None
+    has_app_credentials = bool(config.get("app_id", "") and config.get("app_secret", ""))
+
+    if not has_lark_cli and not has_app_credentials:
         app = QApplication(sys.argv)
         QMessageBox.critical(
             None,
-            "缺少依赖",
-            "未检测到 lark-cli，请先安装：\n\n"
-            "npm install -g @larksuite/cli\n\n"
-            "安装后运行 lark-cli config init 完成配置",
+            "缺少配置",
+            "未检测到 lark-cli 且未配置飞书应用凭证。\n\n"
+            "请选择以下方式之一：\n\n"
+            "方式一：安装 lark-cli\n"
+            "  npm install -g @larksuite/cli\n"
+            "  lark-cli config init\n"
+            "  lark-cli auth login --recommend\n\n"
+            "方式二：在设置中配置飞书应用凭证\n"
+            "  在飞书开放平台创建应用，获取 App ID 和 App Secret",
         )
         sys.exit(1)
 

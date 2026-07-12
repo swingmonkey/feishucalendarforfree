@@ -16,17 +16,55 @@ from PySide6.QtWidgets import (
     QDialog,
 )
 from PySide6.QtCore import Qt, QTimer, QPoint, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen, QFont
 
 from lark_cli_async import LarkCliAsync
 from event_card import EventCard, parse_event_time, is_all_day_event
 from add_event_dialog import AddEventDialog
 from event_detail_dialog import EventDetailDialog
+from settings_dialog import SettingsDialog
 from config import Config
 from styles import get_theme
 
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
 MAX_VISIBLE_EVENTS = 3  # Max events shown per day cell before "+N more"
+
+
+class DateCircleLabel(QLabel):
+    """A QLabel that draws a circle around the text (for today's date)."""
+
+    def __init__(self, text: str, parent=None):
+        super().__init__(text, parent)
+        self._circle_color = QColor("#89b4fa")
+        self._circle_radius = 10
+
+    def set_circle_color(self, color: str):
+        self._circle_color = QColor(color)
+        self.update()
+
+    def paintEvent(self, ev):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Draw circle
+        cx = self.width() // 2
+        cy = self.height() // 2
+        radius = min(self._circle_radius, self.height() // 2 - 1)
+
+        # Filled circle background
+        painter.setBrush(self._circle_color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(cx - radius, cy - radius, radius * 2, radius * 2)
+
+        # Draw text on top (white for contrast)
+        painter.setPen(QColor("#ffffff"))
+        font = QFont(self.font())
+        font.setBold(True)
+        font.setPointSize(8)
+        painter.setFont(font)
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
+
+        painter.end()
 
 
 class ClickableLabel(QLabel):
@@ -111,13 +149,16 @@ class DayCell(QFrame):
         layout.setSpacing(1)
 
         # Date number
-        date_lbl = QLabel(str(self.cell_date.day))
         if self._is_today:
+            date_lbl = DateCircleLabel(str(self.cell_date.day))
             date_lbl.setObjectName("dayNumToday")
         elif not self._is_current_month:
+            date_lbl = QLabel(str(self.cell_date.day))
             date_lbl.setObjectName("dayNumOther")
         else:
+            date_lbl = QLabel(str(self.cell_date.day))
             date_lbl.setObjectName("dayNum")
+        date_lbl.setFixedHeight(18)
         layout.addWidget(date_lbl)
 
         # Event labels (up to MAX_VISIBLE_EVENTS)
@@ -233,11 +274,18 @@ class CalendarWidget(QMainWindow):
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
         self.config = config
-        self.lark_cli = LarkCliAsync(self)
+        # Choose API backend: FeishuApiAsync if app credentials configured, else lark-cli
+        app_id = config.get("app_id", "")
+        app_secret = config.get("app_secret", "")
+        if app_id and app_secret:
+            from feishu_api import FeishuApiAsync
+            self.lark_cli = FeishuApiAsync(config, self)
+        else:
+            self.lark_cli = LarkCliAsync(config, self)
         self.current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.events: list[dict] = []
         self._drag_offset: QPoint | None = None
-        self._pinned = True
+        self._pinned = self.config.get("pin_to_top", True)
 
         # Connect async signals
         self.lark_cli.agenda_fetched.connect(self._on_events_fetched)
@@ -253,11 +301,9 @@ class CalendarWidget(QMainWindow):
         self.refresh_events()
 
     def _setup_window(self):
-        flags = (
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
-        )
+        flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
+        if self._pinned:
+            flags |= Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         # Resizable window with minimum size
@@ -329,12 +375,19 @@ class CalendarWidget(QMainWindow):
         self.refresh_btn.clicked.connect(self.refresh_events)
         h.addWidget(self.refresh_btn)
 
-        self.pin_btn = QPushButton("📌")
+        self.pin_btn = QPushButton("📌" if self._pinned else "📍")
         self.pin_btn.setObjectName("iconBtn")
-        self.pin_btn.setToolTip("置顶开关")
+        self.pin_btn.setToolTip("置顶" if self._pinned else "取消置顶")
         self.pin_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.pin_btn.clicked.connect(self._toggle_pin)
         h.addWidget(self.pin_btn)
+
+        self.settings_btn = QPushButton("⚙")
+        self.settings_btn.setObjectName("iconBtn")
+        self.settings_btn.setToolTip("设置")
+        self.settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_btn.clicked.connect(self._on_settings)
+        h.addWidget(self.settings_btn)
 
         self.theme_btn = QPushButton("◐")
         self.theme_btn.setObjectName("iconBtn")
@@ -454,9 +507,49 @@ class CalendarWidget(QMainWindow):
         self.config.set("pin_to_top", self._pinned)
         if self._pinned:
             self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            self.pin_btn.setText("📌")
+            self.pin_btn.setToolTip("取消置顶")
         else:
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+            self.pin_btn.setText("📍")
+            self.pin_btn.setToolTip("置顶")
         self.show()
+
+    def _on_settings(self):
+        dialog = SettingsDialog(self.config, self)
+        dialog.settings_changed.connect(self._on_settings_changed)
+        dialog.exec()
+
+    def _on_settings_changed(self):
+        # Apply new opacity
+        self.setWindowOpacity(float(self.config.get("opacity", 0.95)))
+        # Apply new refresh interval
+        self.refresh_timer.setInterval(self.config.get("auto_refresh_interval", 300) * 1000)
+        # Rebuild API client if credentials changed
+        app_id = self.config.get("app_id", "")
+        app_secret = self.config.get("app_secret", "")
+        was_feishu_api = isinstance(self.lark_cli, FeishuApiAsync) if 'FeishuApiAsync' in dir() else False
+        should_use_feishu_api = bool(app_id and app_secret)
+        if was_feishu_api != should_use_feishu_api:
+            # Disconnect old signals
+            try:
+                self.lark_cli.agenda_fetched.disconnect()
+                self.lark_cli.fetch_error.disconnect()
+                self.lark_cli.event_deleted.disconnect()
+                self.lark_cli.delete_error.disconnect()
+            except RuntimeError:
+                pass
+            if should_use_feishu_api:
+                from feishu_api import FeishuApiAsync
+                self.lark_cli = FeishuApiAsync(self.config, self)
+            else:
+                self.lark_cli = LarkCliAsync(self.config, self)
+            self.lark_cli.agenda_fetched.connect(self._on_events_fetched)
+            self.lark_cli.fetch_error.connect(self._on_fetch_error)
+            self.lark_cli.event_deleted.connect(self._on_deleted)
+            self.lark_cli.delete_error.connect(self._on_delete_error)
+        # Refresh events (in case app credentials changed)
+        self.refresh_events()
 
     def _setup_timer(self):
         self.refresh_timer = QTimer(self)

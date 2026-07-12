@@ -2,7 +2,19 @@
 
 import json
 import os
+import sys
 from pathlib import Path
+
+
+def get_app_dir() -> Path:
+    """Get the application directory.
+
+    When running as a PyInstaller-frozen EXE, use the EXE's directory.
+    Otherwise, use the script's directory.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
 
 
 class Config:
@@ -18,10 +30,13 @@ class Config:
         "opacity": 0.95,
         "pin_to_top": True,
         "calendar_id": "primary",
+        "app_id": "",
+        "app_secret": "",
+        "auto_start": False,
     }
 
     def __init__(self):
-        self._path = Path(__file__).parent / "config.json"
+        self._path = get_app_dir() / "config.json"
         self._data: dict = {}
         self.load()
 
