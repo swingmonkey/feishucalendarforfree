@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QMessageBox,
     QDialog,
+    QTextEdit,
 )
 from PySide6.QtCore import Qt, QTimer, QPoint, Signal
 from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen, QFont
@@ -629,11 +630,12 @@ class CalendarWidget(QMainWindow):
         self.status_label.setText("获取失败")
         self.refresh_btn.setEnabled(True)
         self._clear_grid()
-        lbl = QLabel(f"获取日程失败\n\n{error_msg}")
-        lbl.setObjectName("emptyLabel")
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setWordWrap(True)
-        self.grid_layout.addWidget(lbl, 0, 0, 1, 7)
+        # Use QTextEdit so error text is selectable and copyable
+        err_widget = QTextEdit()
+        err_widget.setReadOnly(True)
+        err_widget.setPlainText(f"获取日程失败\n\n{error_msg}")
+        err_widget.setObjectName("errorDisplay")
+        self.grid_layout.addWidget(err_widget, 0, 0, 1, 7)
 
     def _clear_grid(self):
         while self.grid_layout.count():

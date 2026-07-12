@@ -219,7 +219,7 @@ class SettingsDialog(QDialog):
         note_label.setWordWrap(True)
         api_layout.addRow(note_label)
 
-        # Test connection button
+        # Test connection and clear credentials buttons
         test_row = QHBoxLayout()
         test_btn = QPushButton("测试连接")
         test_btn.setObjectName("primaryBtn")
@@ -227,12 +227,19 @@ class SettingsDialog(QDialog):
         test_btn.clicked.connect(self._on_test_connection)
         test_row.addStretch()
         test_row.addWidget(test_btn)
+
+        clear_btn = QPushButton("清除凭证")
+        clear_btn.setObjectName("secondaryBtn")
+        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        clear_btn.clicked.connect(self._on_clear_credentials)
+        test_row.addWidget(clear_btn)
         api_layout.addRow(test_row)
 
-        self.test_result_label = QLabel()
-        self.test_result_label.setWordWrap(True)
-        self.test_result_label.setObjectName("detailLabel")
-        api_layout.addRow(self.test_result_label)
+        self.test_result = QTextEdit()
+        self.test_result.setReadOnly(True)
+        self.test_result.setMaximumHeight(100)
+        self.test_result.setObjectName("detailLabel")
+        api_layout.addRow(self.test_result)
 
         layout.addWidget(api_group)
 
@@ -296,6 +303,13 @@ class SettingsDialog(QDialog):
         else:
             self.app_secret_input.setEchoMode(QLineEdit.EchoMode.Password)
 
+    def _on_clear_credentials(self):
+        """Clear App ID and App Secret fields, switching to lark-cli mode."""
+        self.app_id_input.clear()
+        self.app_secret_input.clear()
+        self.test_result.setPlainText("已清除凭证，保存后将使用方式一（lark-cli）")
+        self.test_result.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+
     def _on_opacity_change(self, val):
         self.opacity_label.setText(f"窗口透明度: {val}%")
 
@@ -305,12 +319,12 @@ class SettingsDialog(QDialog):
         app_secret = self.app_secret_input.text().strip()
 
         if not app_id or not app_secret:
-            self.test_result_label.setText("⚠ 请先填写 App ID 和 App Secret")
-            self.test_result_label.setStyleSheet("color: #f38ba8; font-size: 12px;")
+            self.test_result.setPlainText("⚠ 请先填写 App ID 和 App Secret")
+            self.test_result.setStyleSheet("color: #f38ba8; font-size: 12px;")
             return
 
-        self.test_result_label.setText("正在测试连接...")
-        self.test_result_label.setStyleSheet("color: #a6adc8; font-size: 12px;")
+        self.test_result.setPlainText("正在测试连接...")
+        self.test_result.setStyleSheet("color: #a6adc8; font-size: 12px;")
         QApplication.processEvents()
 
         try:
@@ -320,16 +334,16 @@ class SettingsDialog(QDialog):
             worker._get_token()
             # Step 2: Try to list calendars
             worker._get_primary_calendar_id()
-            self.test_result_label.setText(
+            self.test_result.setPlainText(
                 "✅ 连接成功！\n"
                 f"Token 获取成功，日历 ID: {worker._calendar_id[:30]}...\n"
                 "可以保存设置并使用。"
             )
-            self.test_result_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+            self.test_result.setStyleSheet("color: #a6e3a1; font-size: 12px;")
         except Exception as e:
             msg = str(e)
-            self.test_result_label.setText(f"❌ 连接失败\n{msg}")
-            self.test_result_label.setStyleSheet("color: #f38ba8; font-size: 12px;")
+            self.test_result.setPlainText(f"❌ 连接失败\n{msg}")
+            self.test_result.setStyleSheet("color: #f38ba8; font-size: 12px;")
 
     def _on_save(self):
         app_id = self.app_id_input.text().strip()

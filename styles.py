@@ -285,6 +285,16 @@ QLabel#emptyLabel {
     padding: 40px 20px;
 }
 
+QTextEdit#errorDisplay {
+    background-color: #1a1a1a;
+    color: #E5E5E5;
+    border: 1px solid rgba(232, 70, 58, 0.3);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 12px;
+    selection-background-color: rgba(75, 63, 227, 0.3);
+}
+
 QLabel#detailTitle {
     font-size: 16px;
     font-weight: 600;
@@ -656,6 +666,16 @@ QLabel#emptyLabel {
     font-size: 13px;
     color: #A1A1A1;
     padding: 40px 20px;
+}
+
+QTextEdit#errorDisplay {
+    background-color: #FEF2F2;
+    color: #171717;
+    border: 1px solid rgba(232, 70, 58, 0.3);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 12px;
+    selection-background-color: rgba(75, 63, 227, 0.2);
 }
 
 QLabel#detailTitle {

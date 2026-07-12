@@ -34,17 +34,13 @@ class LarkCliAsync(QObject):
         self._bin = find_lark_cli()
         self._config = config
 
-    def _get_auth_args(self) -> list[str]:
-        """Return --app-id/--app-secret args if configured."""
-        if self._config:
-            app_id = self._config.get("app_id", "")
-            app_secret = self._config.get("app_secret", "")
-            if app_id and app_secret:
-                return ["--app-id", app_id, "--app-secret", app_secret]
-        return []
-
     def _start_process(self, args: list[str], on_success, on_error):
-        """Start a lark-cli process asynchronously via QProcess."""
+        """Start a lark-cli process asynchronously via QProcess.
+
+        Note: lark-cli uses its own stored credentials from `auth login`.
+        We do NOT pass --app-id/--app-secret because shortcut commands
+        like +agenda don't support those flags (causes 'unknown flag' error).
+        """
         process = QProcess(self)
         process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
 
@@ -52,7 +48,7 @@ class LarkCliAsync(QObject):
             output = bytes(process.readAll()).decode("utf-8", errors="replace").strip()
 
             if not output:
-                on_error("lark-cli 没有输出，请检查授权状态")
+                on_error("lark-cli 没有输出，请检查授权状态\n\n请确认已完成以下步骤：\n1. lark-cli auth login --recommend\n2. 在浏览器中扫码授权")
                 return
 
             try:
@@ -68,7 +64,7 @@ class LarkCliAsync(QObject):
                         except json.JSONDecodeError:
                             continue
                 else:
-                    on_error(f"无法解析 lark-cli 输出: {output[:300]}")
+                    on_error(f"无法解析 lark-cli 输出:\n{output[:500]}")
                     return
 
             if data.get("ok"):
@@ -78,12 +74,17 @@ class LarkCliAsync(QObject):
                 msg = err.get("message", "未知错误")
                 if err.get("hint"):
                     msg += f"\n{err['hint']}"
+                # Add troubleshooting hint for common errors
+                err_type = err.get("type", "")
+                err_subtype = err.get("subtype", "")
+                if err_type == "authorization" or "auth" in msg.lower():
+                    msg += "\n\n请运行: lark-cli auth login --recommend"
                 on_error(msg)
 
         process.finished.connect(on_finished)
 
-        # Build full command with optional app credentials
-        full_cmd = [self._bin] + args + self._get_auth_args() + ["--format", "json"]
+        # Build full command — lark-cli uses stored auth, no app credentials needed
+        full_cmd = [self._bin] + args + ["--format", "json"]
 
         # On Windows, lark-cli is typically a .CMD file
         # QProcess cannot execute .CMD directly, and cmd.exe is blocked

@@ -29,6 +29,7 @@ class FeishuApiError(Exception):
         self.msg = msg
         # Add helpful hints for common errors
         hints = {
+            10003: "\n\n提示：请求参数无效。请检查 App ID/App Secret 是否正确，以及应用是否已开通日历权限并发布。",
             190007: "\n\n提示：应用未开启机器人能力。请在飞书开放平台 → 应用能力 → 机器人，开启机器人功能。",
             191000: "\n\n提示：日历未找到。请确保应用有日历访问权限。",
             191002: "\n\n提示：应用没有日历访问权限。请在飞书开放平台添加日历权限：\n- calendar:calendar:readonly（读取日历）\n- calendar:calendar（管理日历）",
@@ -132,23 +133,14 @@ class FeishuApiWorker(QObject):
     def _get_primary_calendar_id(self) -> str:
         """Get the primary calendar ID.
 
-        Feishu API v4: GET /calendar/v4/calendars/primary
-        Returns the primary calendar ID for the current identity.
+        The /calendar/v4/calendars/primary endpoint requires user_access_token,
+        not tenant_access_token. With app credentials we must list calendars
+        and pick the primary/shared one.
         """
         if self._calendar_id:
             return self._calendar_id
 
-        # Try the primary calendar endpoint
-        try:
-            data = self._api_call("GET", "/calendar/v4/calendars/primary")
-            cal_id = data.get("data", {}).get("calendar", {}).get("calendar_id", "")
-            if cal_id:
-                self._calendar_id = cal_id
-                return cal_id
-        except FeishuApiError:
-            pass
-
-        # Fallback: list calendars and use the first one
+        # List calendars and find a usable one
         data = self._api_call("GET", "/calendar/v4/calendars", params={"page_size": "50"})
         calendar_list = data.get("data", {}).get("calendar_list", [])
         if not calendar_list:
