@@ -146,7 +146,7 @@ class SettingsDialog(QDialog):
 
         cli_hint = QTextEdit()
         cli_hint.setReadOnly(True)
-        cli_hint.setMaximumHeight(170)
+        cli_hint.setMaximumHeight(200)
         cli_hint.setHtml(
             "<b>安装和使用步骤：</b><br>"
             "1. 安装 Node.js（https://nodejs.org）<br>"
@@ -154,11 +154,14 @@ class SettingsDialog(QDialog):
             "&nbsp;&nbsp;&nbsp;<code>npm install -g @larksuite/cli</code><br>"
             "3. 初始化配置：<br>"
             "&nbsp;&nbsp;&nbsp;<code>lark-cli config init</code><br>"
-            "4. 扫码登录授权（必须包含日历读取权限）：<br>"
-            "&nbsp;&nbsp;&nbsp;<code>lark-cli auth login --scope \"calendar:calendar.event:read\" --scope \"calendar:calendar:read\"</code><br>"
+            "4. 扫码登录授权（必须包含日历日程读取权限）：<br>"
+            "&nbsp;&nbsp;&nbsp;<code>lark-cli auth login \\"<br>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;--scope \"calendar:calendar.event:read\" \\"<br>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;--scope \"calendar:calendar:read\"</code><br>"
             "5. 完成后无需在此页面填写任何内容，直接保存即可<br>"
-            "<br><b>注意：</b>--recommend 不包含日历日程读取权限，"
-            "必须使用上面的 --scope 参数指定。"
+            "<br><b>注意：</b>--recommend 不包含 calendar:calendar.event:read，"
+            "必须用上面的 --scope 参数明确指定。"
+            "若已授权过其他 scope，再次运行 login 命令会增量叠加，不会丢失已有权限。"
         )
         cli_layout.addWidget(cli_hint)
 

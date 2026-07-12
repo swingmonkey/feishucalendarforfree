@@ -78,15 +78,27 @@ class LarkCliAsync(QObject):
                 # Detect missing scope errors and provide exact fix command
                 err_type = err.get("type", "")
                 full_msg = msg.lower()
-                if "missing required scope" in full_msg or "scope" in full_msg:
-                    # Extract scope name from message if possible
+                if "missing required scope" in full_msg or ("scope" in full_msg and "calendar" in full_msg):
                     import re
-                    scope_match = re.search(r'["\']?(calendar:[\w:]+)["\']?', msg)
+                    # Strategy 1: Extract from lark-cli's own hint: --scope "calendar:xxx"
+                    scope_match = re.search(r'--scope\s+["\']([^"\']+)["\']', msg)
                     if scope_match:
                         scope = scope_match.group(1)
                         msg += f'\n\n请运行以下命令授权缺失的权限：\nlark-cli auth login --scope "{scope}"'
                     else:
-                        msg += '\n\n请运行以下命令授权日历权限：\nlark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"'
+                        # Strategy 2: Extract from "missing required scope(s): xxx"
+                        scope_match = re.search(r'missing required scope\(s\):\s*(\S+)', msg, re.IGNORECASE)
+                        if scope_match:
+                            scope = scope_match.group(1).rstrip('.,;')
+                            msg += f'\n\n请运行以下命令授权缺失的权限：\nlark-cli auth login --scope "{scope}"'
+                        else:
+                            # Strategy 3: Match calendar:xxx.yyy.zzz pattern (include dots)
+                            scope_match = re.search(r'(calendar:[\w:.]+)', msg)
+                            if scope_match:
+                                scope = scope_match.group(1)
+                                msg += f'\n\n请运行以下命令授权缺失的权限：\nlark-cli auth login --scope "{scope}"'
+                            else:
+                                msg += '\n\n请运行以下命令授权日历权限：\nlark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"'
                 elif err_type == "authorization" or "auth" in full_msg:
                     msg += '\n\n请运行: lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"'
                 on_error(msg)
