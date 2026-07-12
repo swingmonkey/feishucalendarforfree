@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QDialog,
     QTextEdit,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
 )
 from PySide6.QtCore import Qt, QTimer, QPoint, Signal
 from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen, QFont
@@ -148,7 +151,9 @@ class DayCell(QFrame):
         self._events = events
         self._is_current_month = is_current_month
         self._is_today = date.date() == datetime.now().date()
+        self._original_object_name = ""
         self._setup_ui()
+        self.setMouseTracking(True)
 
     def _setup_ui(self):
         if self._is_today:
@@ -157,6 +162,7 @@ class DayCell(QFrame):
             self.setObjectName("dayCellOther")
         else:
             self.setObjectName("dayCell")
+        self._original_object_name = self.objectName()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
@@ -210,6 +216,18 @@ class DayCell(QFrame):
                 # Clicked on empty space — emit add signal
                 self.add_clicked.emit(self.cell_date)
         super().mousePressEvent(ev)
+
+    def enterEvent(self, ev):
+        """Highlight cell on hover."""
+        self.setObjectName(self._original_object_name + "Hover")
+        self.setStyle(self.style())
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev):
+        """Restore cell appearance when mouse leaves."""
+        self.setObjectName(self._original_object_name)
+        self.setStyle(self.style())
+        super().leaveEvent(ev)
 
 
 class DayDetailDialog(QDialog):
@@ -314,6 +332,99 @@ class DayDetailDialog(QDialog):
         self.accept()
 
 
+class SearchDialog(QDialog):
+    """Search dialog for finding events by keyword."""
+
+    event_selected = Signal(dict)  # emits the selected event
+
+    def __init__(self, events: list, parent=None):
+        super().__init__(parent)
+        self._events = events
+        self.setWindowTitle("搜索日程")
+        self.setFixedSize(420, 480)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+
+        title = QLabel("搜索日程")
+        title.setObjectName("detailTitle")
+        layout.addWidget(title)
+
+        # Search input
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("输入关键词搜索日程标题、描述或发起人...")
+        self.search_input.setObjectName("searchInput")
+        self.search_input.textChanged.connect(self._on_search)
+        layout.addWidget(self.search_input)
+
+        # Results list
+        self.result_label = QLabel("共 0 条结果")
+        self.result_label.setObjectName("detailLabel")
+        layout.addWidget(self.result_label)
+
+        self.result_list = QListWidget()
+        self.result_list.setObjectName("searchResultList")
+        self.result_list.itemDoubleClicked.connect(self._on_item_activated)
+        self.result_list.itemClicked.connect(self._on_item_activated)
+        layout.addWidget(self.result_list, 1)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("关闭")
+        close_btn.setObjectName("secondaryBtn")
+        close_btn.clicked.connect(self.reject)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        self.search_input.setFocus()
+
+    def _on_search(self, text: str):
+        text = text.strip().lower()
+        self.result_list.clear()
+
+        if not text:
+            self.result_label.setText("共 0 条结果")
+            return
+
+        matches = []
+        for ev in self._events:
+            summary = str(ev.get("summary", "")).lower()
+            description = str(ev.get("description", "")).lower()
+            organizer = ""
+            org_data = ev.get("event_organizer", {})
+            if isinstance(org_data, dict):
+                organizer = str(org_data.get("display_name", "")).lower()
+
+            if text in summary or text in description or text in organizer:
+                matches.append(ev)
+
+        self.result_label.setText(f"共 {len(matches)} 条结果")
+
+        for ev in matches:
+            start = parse_event_time(ev.get("start_time", {}))
+            summary = ev.get("summary", "(无标题)")
+            all_day = is_all_day_event(ev)
+            if all_day:
+                time_str = start.strftime("%m-%d 全天")
+            else:
+                time_str = start.strftime("%m-%d %H:%M")
+            display = f"{time_str}  {summary}"
+
+            item = QListWidgetItem(display)
+            item.setData(Qt.ItemDataRole.UserRole, ev)
+            self.result_list.addItem(item)
+
+    def _on_item_activated(self, item: QListWidgetItem):
+        ev = item.data(Qt.ItemDataRole.UserRole)
+        if ev:
+            self.event_selected.emit(ev)
+            self.accept()
+
+
 class CalendarWidget(QMainWindow):
     """Borderless, always-on-top desktop calendar with month grid view."""
 
@@ -413,6 +524,13 @@ class CalendarWidget(QMainWindow):
         self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_btn.clicked.connect(self._on_add_event)
         h.addWidget(self.add_btn)
+
+        self.search_btn = QPushButton("🔍")
+        self.search_btn.setObjectName("iconBtn")
+        self.search_btn.setToolTip("搜索日程")
+        self.search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.search_btn.clicked.connect(self._on_search)
+        h.addWidget(self.search_btn)
 
         self.refresh_btn = QPushButton("⟳")
         self.refresh_btn.setObjectName("iconBtn")
@@ -770,6 +888,25 @@ class CalendarWidget(QMainWindow):
             return
         dialog = ExportDialog(self.events, self.current_date, self)
         dialog.exec()
+
+    def _on_search(self):
+        """Open search dialog to find events by keyword."""
+        if not self.events:
+            QMessageBox.information(self, "提示", "当前没有日程可搜索")
+            return
+        dialog = SearchDialog(self.events, self)
+        dialog.event_selected.connect(self._on_search_result_selected)
+        dialog.exec()
+
+    def _on_search_result_selected(self, event: dict):
+        """Navigate to the event's date and show day detail."""
+        start = parse_event_time(event.get("start_time", {}))
+        # Navigate to the event's month
+        self.current_date = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        self._update_month_label()
+        self.refresh_events()
+        # Show day detail for the event's date
+        self._show_day_detail(start)
 
     def _confirm_delete(self, event: dict):
         summary = event.get("summary", "(无标题)")

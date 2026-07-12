@@ -65,14 +65,29 @@ QFrame#dayCell {
     border: 1px solid rgba(115, 115, 115, 0.12);
     border-radius: 6px;
 }
+QFrame#dayCellHover {
+    background-color: #3a3a3a;
+    border: 1px solid rgba(75, 63, 227, 0.4);
+    border-radius: 6px;
+}
 QFrame#dayCellOther {
     background-color: #171717;
     border: 1px solid rgba(115, 115, 115, 0.08);
     border-radius: 6px;
 }
+QFrame#dayCellOtherHover {
+    background-color: #2a2a2a;
+    border: 1px solid rgba(115, 115, 115, 0.18);
+    border-radius: 6px;
+}
 QFrame#dayCellToday {
     background-color: #262626;
     border: 2px solid #4B3FE3;
+    border-radius: 6px;
+}
+QFrame#dayCellTodayHover {
+    background-color: #3a3a5a;
+    border: 2px solid #6A6FFF;
     border-radius: 6px;
 }
 
@@ -295,6 +310,39 @@ QTextEdit#errorDisplay {
     selection-background-color: rgba(75, 63, 227, 0.3);
 }
 
+QLineEdit#searchInput {
+    background-color: #262626;
+    color: #E5E5E5;
+    border: 1px solid rgba(75, 63, 227, 0.3);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+QLineEdit#searchInput:focus {
+    border: 1px solid #4B3FE3;
+}
+
+QListWidget#searchResultList {
+    background-color: #1a1a1a;
+    border: 1px solid rgba(115, 115, 115, 0.18);
+    border-radius: 6px;
+    padding: 4px;
+    font-size: 12px;
+    outline: none;
+}
+QListWidget#searchResultList::item {
+    padding: 8px 12px;
+    border-radius: 4px;
+    color: #E5E5E5;
+}
+QListWidget#searchResultList::item:hover {
+    background-color: rgba(75, 63, 227, 0.15);
+}
+QListWidget#searchResultList::item:selected {
+    background-color: rgba(75, 63, 227, 0.3);
+    color: #FFFFFF;
+}
+
 QLabel#detailTitle {
     font-size: 16px;
     font-weight: 600;
@@ -448,14 +496,29 @@ QFrame#dayCell {
     border: 1px solid rgba(115, 115, 115, 0.12);
     border-radius: 6px;
 }
+QFrame#dayCellHover {
+    background-color: #F0F0FF;
+    border: 1px solid rgba(75, 63, 227, 0.4);
+    border-radius: 6px;
+}
 QFrame#dayCellOther {
     background-color: #F5F5F5;
     border: 1px solid rgba(115, 115, 115, 0.08);
     border-radius: 6px;
 }
+QFrame#dayCellOtherHover {
+    background-color: #EBEBEB;
+    border: 1px solid rgba(115, 115, 115, 0.18);
+    border-radius: 6px;
+}
 QFrame#dayCellToday {
     background-color: #FFFFFF;
     border: 2px solid #4B3FE3;
+    border-radius: 6px;
+}
+QFrame#dayCellTodayHover {
+    background-color: #F0F0FF;
+    border: 2px solid #6A6FFF;
     border-radius: 6px;
 }
 
@@ -676,6 +739,39 @@ QTextEdit#errorDisplay {
     padding: 12px;
     font-size: 12px;
     selection-background-color: rgba(75, 63, 227, 0.2);
+}
+
+QLineEdit#searchInput {
+    background-color: #FFFFFF;
+    color: #171717;
+    border: 1px solid rgba(75, 63, 227, 0.3);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+QLineEdit#searchInput:focus {
+    border: 1px solid #4B3FE3;
+}
+
+QListWidget#searchResultList {
+    background-color: #FFFFFF;
+    border: 1px solid rgba(115, 115, 115, 0.18);
+    border-radius: 6px;
+    padding: 4px;
+    font-size: 12px;
+    outline: none;
+}
+QListWidget#searchResultList::item {
+    padding: 8px 12px;
+    border-radius: 4px;
+    color: #171717;
+}
+QListWidget#searchResultList::item:hover {
+    background-color: rgba(75, 63, 227, 0.08);
+}
+QListWidget#searchResultList::item:selected {
+    background-color: rgba(75, 63, 227, 0.15);
+    color: #4B3FE3;
 }
 
 QLabel#detailTitle {
