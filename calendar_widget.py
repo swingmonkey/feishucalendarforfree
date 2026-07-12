@@ -333,16 +333,24 @@ class DayDetailDialog(QDialog):
 
 
 class SearchDialog(QDialog):
-    """Search dialog for finding events by keyword."""
+    """Search dialog for finding events by keyword across a wide date range."""
 
     event_selected = Signal(dict)  # emits the selected event
 
-    def __init__(self, events: list, parent=None):
+    def __init__(self, lark_cli, parent=None):
         super().__init__(parent)
-        self._events = events
+        self._lark_cli = lark_cli
+        self._all_events: list = []
         self.setWindowTitle("搜索日程")
-        self.setFixedSize(420, 480)
+        self.setFixedSize(420, 520)
         self._setup_ui()
+
+        # Connect search_fetched signal
+        self._lark_cli.search_fetched.connect(self._on_search_fetched)
+        self._lark_cli.fetch_error.connect(self._on_fetch_error)
+
+        # Load events from a wide date range
+        self._start_search()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -353,18 +361,20 @@ class SearchDialog(QDialog):
         title.setObjectName("detailTitle")
         layout.addWidget(title)
 
-        # Search input
+        # Search input (disabled until events are loaded)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("输入关键词搜索日程标题、描述或发起人...")
+        self.search_input.setPlaceholderText("正在加载日程数据...")
         self.search_input.setObjectName("searchInput")
+        self.search_input.setReadOnly(True)
         self.search_input.textChanged.connect(self._on_search)
         layout.addWidget(self.search_input)
 
-        # Results list
-        self.result_label = QLabel("共 0 条结果")
+        # Status / results count
+        self.result_label = QLabel("正在加载日程...")
         self.result_label.setObjectName("detailLabel")
         layout.addWidget(self.result_label)
 
+        # Results list
         self.result_list = QListWidget()
         self.result_list.setObjectName("searchResultList")
         self.result_list.itemDoubleClicked.connect(self._on_item_activated)
@@ -380,18 +390,36 @@ class SearchDialog(QDialog):
         btn_row.addWidget(close_btn)
         layout.addLayout(btn_row)
 
+    def _start_search(self):
+        """Initiate async fetch of events from a wide date range."""
+        self._lark_cli.search_events(months_back=12, months_forward=3)
+
+    def _on_search_fetched(self, events: list):
+        """Called when events from wide date range are loaded."""
+        self._all_events = events
+        self.search_input.setReadOnly(False)
+        self.search_input.setPlaceholderText("输入关键词搜索日程标题、描述或发起人...")
         self.search_input.setFocus()
+        if events:
+            self.result_label.setText(f"已加载 {len(events)} 条日程，请输入关键词搜索")
+        else:
+            self.result_label.setText("未找到任何日程")
+
+    def _on_fetch_error(self, error_msg: str):
+        """Called when fetching events fails."""
+        self.result_label.setText(f"加载失败: {error_msg}")
+        self.search_input.setPlaceholderText("加载失败")
 
     def _on_search(self, text: str):
         text = text.strip().lower()
         self.result_list.clear()
 
         if not text:
-            self.result_label.setText("共 0 条结果")
+            self.result_label.setText(f"已加载 {len(self._all_events)} 条日程，请输入关键词搜索")
             return
 
         matches = []
-        for ev in self._events:
+        for ev in self._all_events:
             summary = str(ev.get("summary", "")).lower()
             description = str(ev.get("description", "")).lower()
             organizer = ""
@@ -423,6 +451,15 @@ class SearchDialog(QDialog):
         if ev:
             self.event_selected.emit(ev)
             self.accept()
+
+    def closeEvent(self, ev):
+        """Disconnect signals on close to avoid duplicate handling."""
+        try:
+            self._lark_cli.search_fetched.disconnect(self._on_search_fetched)
+            self._lark_cli.fetch_error.disconnect(self._on_fetch_error)
+        except RuntimeError:
+            pass
+        super().closeEvent(ev)
 
 
 class CalendarWidget(QMainWindow):
@@ -890,11 +927,8 @@ class CalendarWidget(QMainWindow):
         dialog.exec()
 
     def _on_search(self):
-        """Open search dialog to find events by keyword."""
-        if not self.events:
-            QMessageBox.information(self, "提示", "当前没有日程可搜索")
-            return
-        dialog = SearchDialog(self.events, self)
+        """Open search dialog to find events by keyword across a wide date range."""
+        dialog = SearchDialog(self.lark_cli, self)
         dialog.event_selected.connect(self._on_search_result_selected)
         dialog.exec()
 

@@ -8,8 +8,10 @@
 
 - **月历网格视图** - 整月日程一目了然，每个日期格内直接显示日程
 - **日程预览** - 格内显示时间和部分标题，放不下自动截断，悬停查看完整标题
-- **当日详情** - 点击"+N更多"查看某天全部日程列表
+- **当日详情** - 点击"+N更多"查看某天全部日程列表，点击日程查看详情
 - **日程详情** - 点击日程查看完整信息（时间、组织者、会议链接等）
+- **搜索功能** - 关键词搜索过去12个月至未来3个月的所有日程，支持标题/描述/发起人搜索
+- **鼠标悬停高亮** - 鼠标移到日期格上自动变色强调
 - **添加/删除日程** - 通过表单创建或一键删除日程
 - **可调节窗口** - 拖拽右下角调整窗口大小，尺寸自动保存
 - **置顶切换** - 📌置顶 / 📍不置顶，图标一目了然
@@ -20,6 +22,9 @@
 - **系统托盘** - 后台运行，托盘菜单快捷操作
 - **主题切换** - 深色 / 浅色主题
 - **自动刷新** - 定时自动同步最新日程
+- **授权后自动刷新** - 检测到授权错误时自动重试获取日程
+- **错误信息可复制** - 错误提示支持选中和复制，方便排查问题
+- **导出日程** - 一键导出当月日程到 Excel
 
 ## 两种认证方式
 
@@ -28,8 +33,10 @@
 ```bash
 npm install -g @larksuite/cli
 lark-cli config init
-lark-cli auth login --recommend
+lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"
 ```
+
+> **注意：** `--recommend` 不包含日历日程读取权限，必须使用上面的 `--scope` 参数明确指定。
 
 ### 方式二：飞书应用凭证（推荐企业/团队部署）
 
@@ -63,7 +70,21 @@ python main.py
 
 ```bash
 pip install pyinstaller
-python -m PyInstaller --onefile --windowed --name "飞书日程" main.py
+python -m PyInstaller --onefile --windowed --name "飞书日程" \
+  --paths "." \
+  --hidden-import openpyxl \
+  --hidden-import config \
+  --hidden-import styles \
+  --hidden-import lark_cli \
+  --hidden-import lark_cli_async \
+  --hidden-import feishu_api \
+  --hidden-import calendar_widget \
+  --hidden-import event_card \
+  --hidden-import add_event_dialog \
+  --hidden-import event_detail_dialog \
+  --hidden-import settings_dialog \
+  --hidden-import export_dialog \
+  main.py
 ```
 
 生成的 EXE 在 `dist/飞书日程.exe`。
@@ -75,7 +96,9 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" main.py
 - **拖动** - 按住窗口顶部拖动移动位置
 - **调整大小** - 拖拽窗口右下角 ⇲ 图标调整大小
 - **+** - 添加日程
+- **🔍** - 搜索日程（跨月搜索历史和未来日程）
 - **⟳** - 刷新日程
+- **📤** - 导出当月日程到 Excel
 - **📌/📍** - 切换置顶（图标区分状态）
 - **⚙** - 打开设置
 - **◐** - 切换深色/浅色主题
@@ -85,13 +108,24 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" main.py
 
 - 每个日期格最多显示 3 条日程，超出显示"+N更多"
 - 点击日程条 → 查看日程详情
-- 点击"+N更多" → 查看当日全部日程列表
+- 点击"+N更多" → 查看当日全部日程列表，点击列表中日程查看详情
+- 鼠标悬停日期格 → 变色高亮强调
 - 全天事件显示"全天"标记
 - 今天用蓝色圆圈标记
+- 点击日期格空白处 → 快速添加该日日程
+
+### 搜索功能
+
+- 点击 🔍 按钮打开搜索对话框
+- 自动加载过去12个月至未来3个月的所有日程
+- 输入关键词实时搜索日程标题、描述、发起人
+- 点击搜索结果自动跳转到该日程所在月份，并弹出当日日程列表
 
 ### 设置面板
 
 - **飞书应用凭证** - 配置 App ID 和 App Secret（可切换显示/隐藏）
+- **清除凭证** - 一键清除凭证，切换到 lark-cli 模式
+- **测试连接** - 验证 API 凭证是否有效（结果可复制）
 - **开机启动** - 开关 Windows 开机自动运行
 - **自动刷新间隔** - 设置日程自动刷新频率（60-3600秒）
 - **窗口透明度** - 调整窗口透明度（50%-100%）
@@ -101,7 +135,7 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" main.py
 ```
 FeishuCalendarDesktop/
 ├── main.py                # 程序入口，系统托盘
-├── calendar_widget.py     # 月历网格主窗口
+├── calendar_widget.py     # 月历网格主窗口、搜索对话框、当日详情对话框
 ├── feishu_api.py          # 飞书 API 直接调用（App ID/Secret 模式）
 ├── lark_cli.py            # lark-cli 同步封装（备用）
 ├── lark_cli_async.py      # lark-cli 异步封装（QProcess + PowerShell）
@@ -109,6 +143,7 @@ FeishuCalendarDesktop/
 ├── add_event_dialog.py    # 添加日程对话框
 ├── event_detail_dialog.py # 日程详情对话框
 ├── settings_dialog.py     # 设置对话框
+├── export_dialog.py       # 导出日程到 Excel
 ├── config.py              # 配置管理
 ├── styles.py              # 主题样式（深色/浅色）
 ├── requirements.txt       # Python 依赖
@@ -161,8 +196,10 @@ FeishuCalendarDesktop/
 1. **lark-cli 是 .CMD 文件** - QProcess 无法直接执行，需通过 `powershell.exe` 调用
 2. **PowerShell `&` 运算符** - 路径含空格时必须用 `&` 前缀
 3. **`self.event` 陷阱** - 在 QObject 子类中不能使用 `self.event` 属性名，会覆盖 `QObject.event()` 虚方法导致 C++ 段错误
-4. **PyInstaller 打包** - 需使用安装了 PySide6 的同一 Python 环境运行 PyInstaller
+4. **PyInstaller 打包** - 需使用安装了 PySide6 的同一 Python 环境运行 PyInstaller，所有本地 .py 模块需加入 `--hidden-import`
 5. **EXE 配置路径** - 打包后需用 `sys.frozen` 判断并使用 `sys.executable` 目录而非 `__file__` 目录
+6. **lark-cli scope 授权** - `--recommend` 不含 `calendar:calendar.event:read`，需用 `--scope` 参数单独指定
+7. **Python 字符串转义** - 在 setHtml 字符串中使用 `\\"` 会导致 SyntaxError，应改用字符串拼接
 
 ## License
 

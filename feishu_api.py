@@ -251,6 +251,7 @@ class FeishuApiAsync(QObject):
     """Async wrapper for FeishuApiWorker, with same signal interface as LarkCliAsync."""
 
     agenda_fetched = Signal(list)
+    search_fetched = Signal(list)
     fetch_error = Signal(str)
     event_created = Signal(dict)
     create_error = Signal(str)
@@ -285,6 +286,25 @@ class FeishuApiAsync(QObject):
                 self.agenda_fetched.emit(data)
             else:
                 self.agenda_fetched.emit([])
+        elif self._pending_op == "search":
+            if isinstance(data, list):
+                def sort_key(e):
+                    st = e.get("start_time", {})
+                    if isinstance(st, dict):
+                        ts = st.get("timestamp", "")
+                        if ts:
+                            return int(ts)
+                        dt_str = st.get("datetime", "")
+                        if dt_str:
+                            return dt_str
+                        date_str = st.get("date", "")
+                        if date_str:
+                            return date_str
+                    return 0
+                data.sort(key=sort_key)
+                self.search_fetched.emit(data)
+            else:
+                self.search_fetched.emit([])
         elif self._pending_op == "create":
             self.event_created.emit(data if isinstance(data, dict) else {})
         elif self._pending_op == "delete":
@@ -346,6 +366,30 @@ class FeishuApiAsync(QObject):
         self._run_async(
             lambda w: w.fetch_agenda(start, end),
             _op="agenda",
+        )
+
+    def search_events(self, months_back: int = 12, months_forward: int = 3):
+        """Fetch events from a wide date range for search purposes."""
+        now = datetime.now()
+        start_year = now.year - (now.month - months_back - 1) // 12
+        start_month = (now.month - months_back - 1) % 12 + 1
+        if start_month <= 0:
+            start_month += 12
+            start_year -= 1
+        start = datetime(start_year, start_month, 1, 0, 0, 0)
+        end_month = now.month + months_forward
+        end_year = now.year
+        while end_month > 12:
+            end_month -= 12
+            end_year += 1
+        if end_month == 12:
+            end = datetime(end_year + 1, 1, 1) - timedelta(seconds=1)
+        else:
+            end = datetime(end_year, end_month + 1, 1) - timedelta(seconds=1)
+
+        self._run_async(
+            lambda w: w.fetch_agenda(start, end),
+            _op="search",
         )
 
     def create_event(self, summary: str, start: datetime, end: datetime,

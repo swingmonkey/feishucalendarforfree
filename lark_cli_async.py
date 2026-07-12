@@ -21,6 +21,7 @@ class LarkCliAsync(QObject):
     """Async wrapper for lark-cli commands using QProcess."""
 
     agenda_fetched = Signal(list)
+    search_fetched = Signal(list)
     fetch_error = Signal(str)
     event_created = Signal(dict)
     create_error = Signal(str)
@@ -160,6 +161,57 @@ class LarkCliAsync(QObject):
                 self.agenda_fetched.emit(data)
             else:
                 self.agenda_fetched.emit([])
+
+        def on_error(msg):
+            self.fetch_error.emit(msg)
+
+        self._start_process(
+            ["calendar", "+agenda", "--start", start_str, "--end", end_str],
+            on_success,
+            on_error,
+        )
+
+    def search_events(self, months_back: int = 12, months_forward: int = 3):
+        """Fetch events from a wide date range for search purposes.
+
+        Args:
+            months_back: How many months before now to search.
+            months_forward: How many months after now to search.
+        """
+        tz = "+08:00"
+        now = datetime.now()
+        # Calculate start date (months_back from now)
+        start_year = now.year - (now.month - months_back - 1) // 12
+        start_month = (now.month - months_back - 1) % 12 + 1
+        if start_month <= 0:
+            start_month += 12
+            start_year -= 1
+        start = datetime(start_year, start_month, 1, 0, 0, 0)
+        # Calculate end date (months_forward from now)
+        end_month = now.month + months_forward
+        end_year = now.year
+        while end_month > 12:
+            end_month -= 12
+            end_year += 1
+        if end_month == 12:
+            end = datetime(end_year + 1, 1, 1) - timedelta(seconds=1)
+        else:
+            end = datetime(end_year, end_month + 1, 1) - timedelta(seconds=1)
+
+        start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
+        end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
+
+        def on_success(data):
+            if isinstance(data, list):
+                def sort_key(e):
+                    st = e.get("start_time", {})
+                    if not isinstance(st, dict):
+                        return ""
+                    return st.get("datetime", "") or st.get("date", "") or ""
+                data.sort(key=sort_key)
+                self.search_fetched.emit(data)
+            else:
+                self.search_fetched.emit([])
 
         def on_error(msg):
             self.fetch_error.emit(msg)
