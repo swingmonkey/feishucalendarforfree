@@ -226,6 +226,34 @@ class FeishuApiWorker(QObject):
         self._api_call("DELETE", path)
         self.result_ready.emit(event_id)
 
+    def update_event(self, calendar_id: str, event_id: str, summary: str = "",
+                     start: datetime = None, end: datetime = None,
+                     description: str = ""):
+        """Update a calendar event using Feishu API v4 (PATCH)."""
+        if not calendar_id or calendar_id == "primary":
+            calendar_id = self._get_primary_calendar_id()
+
+        path = f"/calendar/v4/calendars/{calendar_id}/events/{event_id}"
+        body = {}
+        if summary:
+            body["summary"] = summary
+        if start:
+            body["start_time"] = {
+                "timestamp": str(int(start.timestamp())),
+                "timezone": "Asia/Shanghai",
+            }
+        if end:
+            body["end_time"] = {
+                "timestamp": str(int(end.timestamp())),
+                "timezone": "Asia/Shanghai",
+            }
+        if description is not None:
+            body["description"] = description
+
+        data = self._api_call("PATCH", path, body=body)
+        event = data.get("data", {}).get("event", data.get("data", {}))
+        self.result_ready.emit(event)
+
 
 class FeishuApiAsync(QObject):
     """Async wrapper for FeishuApiWorker, with same signal interface as LarkCliAsync."""
@@ -236,6 +264,8 @@ class FeishuApiAsync(QObject):
     create_error = Signal(str)
     event_deleted = Signal(str)
     delete_error = Signal(str)
+    event_updated = Signal(dict)
+    update_error = Signal(str)
 
     def __init__(self, config, parent=None):
         super().__init__(parent)
@@ -267,6 +297,8 @@ class FeishuApiAsync(QObject):
             self.event_created.emit(data if isinstance(data, dict) else {})
         elif self._pending_op == "delete":
             self.event_deleted.emit(str(data))
+        elif self._pending_op == "update":
+            self.event_updated.emit(data if isinstance(data, dict) else {})
         self._pending_op = None
 
     def _on_error(self, msg):
@@ -276,6 +308,8 @@ class FeishuApiAsync(QObject):
             self.create_error.emit(msg)
         elif self._pending_op == "delete":
             self.delete_error.emit(msg)
+        elif self._pending_op == "update":
+            self.update_error.emit(msg)
         self._pending_op = None
 
     def _run_async(self, func, *args, **kwargs):
@@ -333,4 +367,12 @@ class FeishuApiAsync(QObject):
         self._run_async(
             lambda w: w.delete_event(calendar_id, event_id),
             _op="delete",
+        )
+
+    def update_event(self, calendar_id: str, event_id: str, summary: str = "",
+                     start: datetime = None, end: datetime = None,
+                     description: str = ""):
+        self._run_async(
+            lambda w: w.update_event(calendar_id, event_id, summary, start, end, description),
+            _op="update",
         )

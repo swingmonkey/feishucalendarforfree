@@ -102,6 +102,16 @@ QFrame#gridEvent:hover {
     background-color: rgba(75, 63, 227, 0.25);
     border-left: 2px solid #6A6FFF;
 }
+QFrame#gridEventMultiDay {
+    background-color: rgba(21, 168, 119, 0.10);
+    border-radius: 4px;
+    border-left: 2px solid #15A877;
+    max-height: 18px;
+    min-height: 16px;
+}
+QFrame#gridEventMultiDay:hover {
+    background-color: rgba(21, 168, 119, 0.20);
+}
 QLabel#gridEventTime {
     font-size: 9px;
     color: #A1A1A1;
@@ -464,6 +474,16 @@ QFrame#gridEvent {
 QFrame#gridEvent:hover {
     background-color: rgba(75, 63, 227, 0.16);
     border-left: 2px solid #6A6FFF;
+}
+QFrame#gridEventMultiDay {
+    background-color: rgba(21, 168, 119, 0.08);
+    border-radius: 4px;
+    border-left: 2px solid #15A877;
+    max-height: 18px;
+    min-height: 16px;
+}
+QFrame#gridEventMultiDay:hover {
+    background-color: rgba(21, 168, 119, 0.16);
 }
 QLabel#gridEventTime {
     font-size: 9px;

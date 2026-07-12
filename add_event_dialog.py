@@ -21,9 +21,10 @@ class AddEventDialog(QDialog):
 
     event_created = Signal(dict)
 
-    def __init__(self, lark_cli_async, parent=None):
+    def __init__(self, lark_cli_async, parent=None, default_date=None):
         super().__init__(parent)
         self.lark_cli = lark_cli_async
+        self._default_date = default_date
         self.setWindowTitle("添加飞书日程")
         self.setFixedSize(400, 420)
         self._setup_ui()
@@ -49,10 +50,18 @@ class AddEventDialog(QDialog):
         self.summary_input.setPlaceholderText("请输入日程标题")
         form.addRow("标题  ", self.summary_input)
 
+        # Use default_date if provided, otherwise use now
+        if self._default_date:
+            base_start = self._default_date.replace(hour=9, minute=0, second=0, microsecond=0)
+            base_end = base_start + timedelta(minutes=1)
+        else:
+            base_start = datetime.now()
+            base_end = datetime.now() + timedelta(minutes=1)
+
         self.start_input = QDateTimeEdit()
         self.start_input.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.start_input.setCalendarPopup(True)
-        self.start_input.setDateTime(datetime.now())
+        self.start_input.setDateTime(base_start)
         # When start time changes, auto-set end time to start + 1 minute
         self.start_input.dateTimeChanged.connect(self._on_start_changed)
         form.addRow("开始  ", self.start_input)
@@ -60,7 +69,7 @@ class AddEventDialog(QDialog):
         self.end_input = QDateTimeEdit()
         self.end_input.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.end_input.setCalendarPopup(True)
-        self.end_input.setDateTime(datetime.now() + timedelta(minutes=1))
+        self.end_input.setDateTime(base_end)
         form.addRow("结束  ", self.end_input)
 
         self.desc_input = QTextEdit()

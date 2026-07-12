@@ -83,11 +83,15 @@ class GridEventLabel(QFrame):
 
     clicked = Signal(dict)
 
-    def __init__(self, event: dict, parent=None):
+    def __init__(self, event: dict, is_continuation: bool = False, parent=None):
         super().__init__(parent)
         # Don't use self.event — it shadows QObject.event()
         self.event_data = event
-        self.setObjectName("gridEvent")
+        self._is_continuation = is_continuation
+        if is_continuation:
+            self.setObjectName("gridEventMultiDay")
+        else:
+            self.setObjectName("gridEvent")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._setup_ui()
 
@@ -99,7 +103,10 @@ class GridEventLabel(QFrame):
         all_day = is_all_day_event(self.event_data)
         start = parse_event_time(self.event_data.get("start_time", {}))
 
-        if all_day:
+        if self._is_continuation:
+            # Continuation day: show arrow indicator
+            time_text = "↳"
+        elif all_day:
             time_text = "全天"
         else:
             time_text = start.strftime("%H:%M")
@@ -115,7 +122,10 @@ class GridEventLabel(QFrame):
         title_lbl.setObjectName("gridEventTitle")
         layout.addWidget(title_lbl, 1)
 
-        self.setToolTip(f"{time_text}  {summary}")
+        if self._is_continuation:
+            self.setToolTip(f"↳ 继续: {summary}")
+        else:
+            self.setToolTip(f"{time_text}  {summary}")
 
     def mousePressEvent(self, ev):
         if ev.button() == Qt.MouseButton.LeftButton:
@@ -128,10 +138,12 @@ class DayCell(QFrame):
 
     event_clicked = Signal(dict)
     more_clicked = Signal(datetime)
+    add_clicked = Signal(datetime)
 
     def __init__(self, date: datetime, events: list, is_current_month: bool, parent=None):
         super().__init__(parent)
         self.cell_date = date
+        # events is a list of (event_dict, is_continuation) tuples
         self._events = events
         self._is_current_month = is_current_month
         self._is_today = date.date() == datetime.now().date()
@@ -166,8 +178,12 @@ class DayCell(QFrame):
         visible = self._events[:MAX_VISIBLE_EVENTS]
         remaining = len(self._events) - MAX_VISIBLE_EVENTS
 
-        for ev in visible:
-            lbl = GridEventLabel(ev)
+        for item in visible:
+            if isinstance(item, tuple):
+                ev, is_cont = item
+            else:
+                ev, is_cont = item, False
+            lbl = GridEventLabel(ev, is_continuation=is_cont)
             lbl.clicked.connect(self._on_event_clicked)
             layout.addWidget(lbl)
 
@@ -184,16 +200,27 @@ class DayCell(QFrame):
     def _on_event_clicked(self, event: dict):
         self.event_clicked.emit(event)
 
+    def mousePressEvent(self, ev):
+        """Click on empty area of the cell to add event for this date."""
+        if ev.button() == Qt.MouseButton.LeftButton:
+            # Check if the click target is a child widget (event label, more label, etc.)
+            child = self.childAt(ev.position().toPoint())
+            if child is None:
+                # Clicked on empty space — emit add signal
+                self.add_clicked.emit(self.cell_date)
+        super().mousePressEvent(ev)
+
 
 class DayDetailDialog(QDialog):
     """Dialog showing all events for a specific day."""
 
     event_delete_requested = Signal(dict)
 
-    def __init__(self, date: datetime, events: list, parent=None):
+    def __init__(self, date: datetime, events: list, lark_cli_async=None, parent=None):
         super().__init__(parent)
         self.cell_date = date
         self._events = events
+        self._lark_cli = lark_cli_async
         self.setWindowTitle("当日日程")
         self.setFixedSize(360, 480)
         self._setup_ui()
@@ -255,15 +282,30 @@ class DayDetailDialog(QDialog):
         # Close button
         btn_row = QHBoxLayout()
         btn_row.addStretch()
+
+        if self._lark_cli:
+            add_btn = QPushButton("添加日程")
+            add_btn.setObjectName("primaryBtn")
+            add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            add_btn.clicked.connect(self._on_add_event)
+            btn_row.addWidget(add_btn)
+
         close_btn = QPushButton("关闭")
         close_btn.setObjectName("secondaryBtn")
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(close_btn)
         layout.addLayout(btn_row)
 
+    def _on_add_event(self):
+        """Open add event dialog for this day."""
+        dialog = AddEventDialog(self._lark_cli, self, default_date=self.cell_date)
+        dialog.event_created.connect(lambda: self.accept())
+        dialog.exec()
+
     def _show_event_detail(self, event: dict):
-        dialog = EventDetailDialog(event, self)
+        dialog = EventDetailDialog(event, self._lark_cli, self)
         dialog.event_delete_requested.connect(self._confirm_delete)
+        dialog.event_updated.connect(lambda _: self.accept())
         dialog.exec()
 
     def _on_card_delete(self, event: dict):
@@ -602,14 +644,23 @@ class CalendarWidget(QMainWindow):
     def _render_grid(self):
         self._clear_grid()
 
-        # Group events by date string
-        events_by_date: dict[str, list[dict]] = {}
+        # Group events by date — multi-day events appear on all spanning dates
+        events_by_date: dict[str, list[tuple[dict, bool]]] = {}
         for ev in self.events:
             start = parse_event_time(ev.get("start_time", {}))
-            date_key = start.strftime("%Y-%m-%d")
-            if date_key not in events_by_date:
-                events_by_date[date_key] = []
-            events_by_date[date_key].append(ev)
+            end = parse_event_time(ev.get("end_time", {}))
+            start_date = start.date()
+            end_date = end.date()
+
+            # Iterate through all dates the event spans
+            current = start_date
+            while current <= end_date:
+                date_key = current.strftime("%Y-%m-%d")
+                if date_key not in events_by_date:
+                    events_by_date[date_key] = []
+                is_continuation = (current != start_date)
+                events_by_date[date_key].append((ev, is_continuation))
+                current += timedelta(days=1)
 
         # Build calendar grid using Python's calendar module
         cal = cal_module.Calendar(firstweekday=0)  # Monday = 0
@@ -628,6 +679,7 @@ class CalendarWidget(QMainWindow):
                 )
                 cell.event_clicked.connect(self._show_event_detail)
                 cell.more_clicked.connect(self._show_day_detail)
+                cell.add_clicked.connect(self._on_add_event_for_date)
                 self.grid_layout.addWidget(cell, row, col)
 
         # Equal-sized rows and columns
@@ -637,20 +689,32 @@ class CalendarWidget(QMainWindow):
             self.grid_layout.setColumnStretch(col, 1)
 
     def _show_event_detail(self, event: dict):
-        EventDetailDialog(event, self).exec()
+        dialog = EventDetailDialog(event, self.lark_cli, self)
+        dialog.event_delete_requested.connect(self._confirm_delete)
+        dialog.event_updated.connect(lambda _: self.refresh_events())
+        dialog.exec()
 
     def _show_day_detail(self, date: datetime):
         date_key = date.strftime("%Y-%m-%d")
-        day_events = [
-            e for e in self.events
-            if parse_event_time(e.get("start_time", {})).strftime("%Y-%m-%d") == date_key
-        ]
-        dialog = DayDetailDialog(date, day_events, self)
+        # Include events that span this date (multi-day events)
+        day_events = []
+        for e in self.events:
+            start = parse_event_time(e.get("start_time", {}))
+            end = parse_event_time(e.get("end_time", {}))
+            if start.date() <= date.date() <= end.date():
+                day_events.append(e)
+        dialog = DayDetailDialog(date, day_events, self.lark_cli, self)
         dialog.event_delete_requested.connect(self._confirm_delete)
         dialog.exec()
 
     def _on_add_event(self):
         dialog = AddEventDialog(self.lark_cli, self)
+        dialog.event_created.connect(lambda: self.refresh_events())
+        dialog.exec()
+
+    def _on_add_event_for_date(self, date: datetime):
+        """Add event for a specific date (from clicking empty day cell)."""
+        dialog = AddEventDialog(self.lark_cli, self, default_date=date)
         dialog.event_created.connect(lambda: self.refresh_events())
         dialog.exec()
 

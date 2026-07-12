@@ -26,6 +26,8 @@ class LarkCliAsync(QObject):
     create_error = Signal(str)
     event_deleted = Signal(str)
     delete_error = Signal(str)
+    event_updated = Signal(dict)
+    update_error = Signal(str)
 
     def __init__(self, config=None, parent=None):
         super().__init__(parent)
@@ -205,5 +207,56 @@ class LarkCliAsync(QObject):
 
         def on_error(msg):
             self.delete_error.emit(msg)
+
+        self._start_process(args, on_success, on_error)
+
+    def update_event(
+        self,
+        calendar_id: str,
+        event_id: str,
+        summary: str = "",
+        start: datetime = None,
+        end: datetime = None,
+        description: str = "",
+    ):
+        """Update an existing calendar event via raw API call.
+
+        Uses lark-cli's raw API mode: `api PATCH /open-apis/...`
+        """
+        body = {}
+        if summary:
+            body["summary"] = summary
+        if start:
+            tz = "+08:00"
+            body["start_time"] = {
+                "timestamp": str(int(start.timestamp())),
+                "timezone": "Asia/Shanghai",
+            }
+        if end:
+            body["end_time"] = {
+                "timestamp": str(int(end.timestamp())),
+                "timezone": "Asia/Shanghai",
+            }
+        if description is not None:
+            body["description"] = description
+
+        # Resolve calendar_id
+        if not calendar_id or calendar_id == "primary":
+            calendar_id = "primary"
+
+        api_path = f"/open-apis/calendar/v4/calendars/{calendar_id}/events/{event_id}"
+        args = [
+            "api",
+            "PATCH",
+            api_path,
+            "--data",
+            json.dumps(body),
+        ]
+
+        def on_success(data):
+            self.event_updated.emit(data if isinstance(data, dict) else {})
+
+        def on_error(msg):
+            self.update_error.emit(msg)
 
         self._start_process(args, on_success, on_error)
