@@ -44,7 +44,7 @@ class EventDetailDialog(QDialog):
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: #45475a; background-color: #45475a; max-height: 1px;")
+        sep.setStyleSheet("color: rgba(115, 115, 115, 0.18); background-color: rgba(115, 115, 115, 0.18); max-height: 1px;")
         layout.addWidget(sep)
 
         # Details form

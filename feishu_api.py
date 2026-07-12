@@ -7,12 +7,18 @@ Requires the app to have calendar permissions.
 import json
 import urllib.request
 import urllib.parse
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from PySide6.QtCore import QObject, QThread, Signal
 
 
 FEISHU_BASE = "https://open.feishu.cn/open-apis"
+
+# Bypass system proxy to avoid WinError 10061 (proxy not running)
+_NO_PROXY_HANDLER = urllib.request.ProxyHandler({})
+_NO_PROXY_OPENER = urllib.request.build_opener(_NO_PROXY_HANDLER)
+urllib.request.install_opener(_NO_PROXY_OPENER)
 
 
 class FeishuApiWorker(QObject):

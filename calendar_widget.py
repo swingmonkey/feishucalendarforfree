@@ -36,7 +36,7 @@ class DateCircleLabel(QLabel):
 
     def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
-        self._circle_color = QColor("#89b4fa")
+        self._circle_color = QColor("#4B3FE3")
         self._circle_radius = 10
 
     def set_circle_color(self, color: str):
@@ -224,7 +224,7 @@ class DayDetailDialog(QDialog):
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: #45475a; background-color: #45475a; max-height: 1px;")
+        sep.setStyleSheet("color: rgba(115, 115, 115, 0.18); background-color: rgba(115, 115, 115, 0.18); max-height: 1px;")
         layout.addWidget(sep)
 
         if not self._events:

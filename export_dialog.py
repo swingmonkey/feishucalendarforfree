@@ -46,7 +46,7 @@ def export_events_to_excel(events: list, file_path: str) -> bool:
     # Title row
     ws.merge_cells("A1:G1")
     ws["A1"] = "飞书日程导出"
-    ws["A1"].font = Font(size=14, bold=True, color="1976D2")
+    ws["A1"].font = Font(size=14, bold=True, color="4B3FE3")
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 30
 
@@ -56,7 +56,7 @@ def export_events_to_excel(events: list, file_path: str) -> bool:
     ws.merge_cells("A1:H1")
 
     header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1976D2", end_color="1976D2", fill_type="solid")
+    header_fill = PatternFill(start_color="4B3FE3", end_color="4B3FE3", fill_type="solid")
     header_align = Alignment(horizontal="center", vertical="center")
     thin_border = Border(
         left=Side(style="thin"),
