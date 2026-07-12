@@ -48,7 +48,7 @@ class LarkCliAsync(QObject):
             output = bytes(process.readAll()).decode("utf-8", errors="replace").strip()
 
             if not output:
-                on_error("lark-cli 没有输出，请检查授权状态\n\n请确认已完成以下步骤：\n1. lark-cli auth login --recommend\n2. 在浏览器中扫码授权")
+                on_error("lark-cli 没有输出，请检查授权状态\n\n请确认已完成以下步骤：\n1. lark-cli auth login --scope \"calendar:calendar.event:read\" --scope \"calendar:calendar:read\"\n2. 在浏览器中扫码授权")
                 return
 
             try:
@@ -74,11 +74,21 @@ class LarkCliAsync(QObject):
                 msg = err.get("message", "未知错误")
                 if err.get("hint"):
                     msg += f"\n{err['hint']}"
-                # Add troubleshooting hint for common errors
+
+                # Detect missing scope errors and provide exact fix command
                 err_type = err.get("type", "")
-                err_subtype = err.get("subtype", "")
-                if err_type == "authorization" or "auth" in msg.lower():
-                    msg += "\n\n请运行: lark-cli auth login --recommend"
+                full_msg = msg.lower()
+                if "missing required scope" in full_msg or "scope" in full_msg:
+                    # Extract scope name from message if possible
+                    import re
+                    scope_match = re.search(r'["\']?(calendar:[\w:]+)["\']?', msg)
+                    if scope_match:
+                        scope = scope_match.group(1)
+                        msg += f'\n\n请运行以下命令授权缺失的权限：\nlark-cli auth login --scope "{scope}"'
+                    else:
+                        msg += '\n\n请运行以下命令授权日历权限：\nlark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"'
+                elif err_type == "authorization" or "auth" in full_msg:
+                    msg += '\n\n请运行: lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"'
                 on_error(msg)
 
         process.finished.connect(on_finished)
