@@ -615,6 +615,7 @@ class CalendarWidget(QMainWindow):
         self.lark_cli.fetch_agenda(self.current_date, monthly=True)
 
     def _on_events_fetched(self, events: list):
+        self._stop_auth_retry()
         self.events = events
         self._render_grid()
         count = len(events)
@@ -630,12 +631,55 @@ class CalendarWidget(QMainWindow):
         self.status_label.setText("获取失败")
         self.refresh_btn.setEnabled(True)
         self._clear_grid()
-        # Use QTextEdit so error text is selectable and copyable
+
+        # Container widget with error text + retry button
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(20, 20, 20, 20)
+        container_layout.setSpacing(12)
+
+        # Error text (selectable/copyable)
         err_widget = QTextEdit()
         err_widget.setReadOnly(True)
         err_widget.setPlainText(f"获取日程失败\n\n{error_msg}")
         err_widget.setObjectName("errorDisplay")
-        self.grid_layout.addWidget(err_widget, 0, 0, 1, 7)
+        container_layout.addWidget(err_widget)
+
+        # Retry button row
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        retry_btn = QPushButton("已授权，重新获取")
+        retry_btn.setObjectName("primaryBtn")
+        retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        retry_btn.clicked.connect(self.refresh_events)
+        btn_row.addWidget(retry_btn)
+        container_layout.addLayout(btn_row)
+
+        self.grid_layout.addWidget(container, 0, 0, 1, 7)
+
+        # Auto-retry: if this looks like an auth/scope error, poll every 15s
+        if any(kw in error_msg.lower() for kw in ["scope", "auth", "授权", "login"]):
+            if not hasattr(self, "_auth_retry_timer") or not self._auth_retry_timer:
+                self._auth_retry_timer = QTimer(self)
+                self._auth_retry_timer.timeout.connect(self._on_auth_retry)
+            self._auth_retry_count = 0
+            self._auth_retry_timer.start(15000)  # 15 seconds
+
+    def _on_auth_retry(self):
+        """Auto-retry fetching events after an auth error."""
+        self._auth_retry_count = getattr(self, "_auth_retry_count", 0) + 1
+        # Stop after 10 attempts (~2.5 minutes)
+        if self._auth_retry_count > 10:
+            if hasattr(self, "_auth_retry_timer") and self._auth_retry_timer:
+                self._auth_retry_timer.stop()
+            return
+        self.status_label.setText(f"正在重试获取日程（第 {self._auth_retry_count} 次）...")
+        self.refresh_events()
+
+    def _stop_auth_retry(self):
+        """Stop the auto-retry timer (called on successful fetch)."""
+        if hasattr(self, "_auth_retry_timer") and self._auth_retry_timer:
+            self._auth_retry_timer.stop()
 
     def _clear_grid(self):
         while self.grid_layout.count():
