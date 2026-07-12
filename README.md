@@ -142,6 +142,7 @@ FeishuCalendarDesktop/
 ```
 
 > `config.json` 已在 `.gitignore` 中排除，不会上传个人配置。
+<img width="1006" height="714" alt="image" src="https://github.com/user-attachments/assets/c580b150-df0c-449b-bded-02fb96217853" />
 
 ## 隐私说明
 
