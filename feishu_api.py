@@ -136,6 +136,10 @@ class FeishuApiWorker(QObject):
         The /calendar/v4/calendars/primary endpoint requires user_access_token,
         not tenant_access_token. With app credentials we must list calendars
         and pick the primary/shared one.
+
+        Note: tenant_access_token can only see calendars the app created or
+        that were explicitly shared to the app. To read a user's primary
+        calendar, either share it to the app or use lark-cli (user token).
         """
         if self._calendar_id:
             return self._calendar_id
@@ -159,7 +163,15 @@ class FeishuApiWorker(QObject):
             self._calendar_id = calendar_list[0].get("calendar_id", "")
             return self._calendar_id
 
-        raise Exception("未找到可用日历，请确保应用有日历访问权限")
+        raise FeishuApiError(
+            191000,
+            "未找到可用日历。\n\n"
+            "应用凭证（App ID/Secret）模式使用 tenant_access_token，只能读取"
+            "「应用创建的日历」或「被共享给应用的日历」，无法直接读取你的主日历。\n\n"
+            "解决方法：\n"
+            "1. 在飞书客户端把你的主日历共享给该应用（日历设置 → 共享日历 → 添加应用）\n"
+            "2. 或改用 lark-cli 模式（设置面板 → 清除凭证），lark-cli 用 user_access_token 可直接读主日历",
+        )
 
     def fetch_agenda(self, start: datetime, end: datetime, calendar_id: str = ""):
         """Fetch calendar events in a date range using Feishu API v4."""
@@ -264,6 +276,10 @@ class FeishuApiAsync(QObject):
         super().__init__(parent)
         self._config = config
         self._pending_op = None
+        # Keep strong refs to worker+thread so they aren't garbage-collected
+        # before the background call finishes (otherwise Qt signals silently
+        # drop and the UI shows neither results nor errors).
+        self._workers: set = set()
 
     def _on_result(self, data):
         if self._pending_op == "agenda":
@@ -333,6 +349,9 @@ class FeishuApiAsync(QObject):
             self._config.get("app_secret", ""),
         )
         worker.moveToThread(thread)
+        # Hold a strong reference until the call completes — without this
+        # `worker` is GC'd when _run_async returns and its signals vanish.
+        self._workers.add((worker, thread))
 
         def run():
             try:
@@ -341,6 +360,7 @@ class FeishuApiAsync(QObject):
                 worker.error_occurred.emit(str(e))
 
         def cleanup():
+            self._workers.discard((worker, thread))
             worker.deleteLater()
             thread.quit()
             thread.deleteLater()
