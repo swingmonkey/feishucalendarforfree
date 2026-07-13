@@ -45,8 +45,38 @@ def _extend_path_for_app_bundle():
     os.environ["PATH"] = os.pathsep.join(parts)
 
 
+def _resolve_assets_dir() -> Path:
+    """Resolve the directory containing bundled assets (icon.png etc).
+
+    Works for both source runs (project root/assets/) and PyInstaller bundles.
+    PyInstaller --add-data "assets:assets" places files under:
+      - macOS onedir .app: <App>.app/Contents/Resources/assets/
+      - Windows/Linux onedir/onefile: <exe_dir>/assets/ (or _MEIPASS/assets/)
+    """
+    if getattr(sys, "frozen", False):
+        if sys.platform == "darwin":
+            base = Path(sys.executable).resolve().parent.parent / "Resources"
+        else:
+            base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+        candidate = base / "assets"
+        if candidate.is_dir():
+            return candidate
+        return base
+    return Path(__file__).resolve().parent / "assets"
+
+
 def create_app_icon() -> QIcon:
-    """Create a simple application icon programmatically."""
+    """Load the tray/app icon from assets (Pikachu icon), falling back to
+    a programmatically drawn icon if assets are missing."""
+    assets_dir = _resolve_assets_dir()
+    # Prefer tray.png (small, transparent-background, good for menu bar)
+    for candidate in ("tray.png", "icon_1024.png"):
+        p = assets_dir / candidate
+        if p.is_file():
+            icon = QIcon(str(p))
+            if not icon.isNull():
+                return icon
+    # Fallback: original programmatic icon
     pixmap = QPixmap(64, 64)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -55,9 +85,10 @@ def create_app_icon() -> QIcon:
     painter.setPen(Qt.PenStyle.NoPen)
     painter.drawRoundedRect(4, 4, 56, 56, 14, 14)
     painter.setPen(QColor("#171717"))
-    # Cross-platform font stack: SF/PingFang on macOS, YaHei/Segoe on Windows
-    font = QFont("PingFang SC, SF Pro Text, Microsoft YaHei UI, Segoe UI", 28, QFont.Weight.Bold)
+    font = QFont()
     font.setFamilies(["PingFang SC", "SF Pro Text", "Microsoft YaHei UI", "Segoe UI"])
+    font.setPixelSize(28)
+    font.setWeight(QFont.Weight.Bold)
     painter.setFont(font)
     painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "日")
     painter.end()

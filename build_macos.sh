@@ -25,6 +25,8 @@ fi
     --windowed \
     --name "$APP_NAME" \
     --osx-bundle-identifier "$BUNDLE_ID" \
+    --icon "assets/icon.icns" \
+    --add-data "assets:assets" \
     --paths "." \
     --hidden-import openpyxl \
     --hidden-import config \
@@ -39,6 +41,9 @@ fi
     --hidden-import settings_dialog \
     --hidden-import export_dialog \
     "$ENTRY"
+
+# 拷贝 icon.icns 到 .app/Contents/Resources/ 作为 Finder/Dock 图标（PyInstaller 已经做了，双保险）
+cp -f assets/icon.icns "dist/${APP_NAME}.app/Contents/Resources/icon-windowed.icns" 2>/dev/null || true
 
 echo ""
 echo "构建完成：dist/${APP_NAME}.app"
