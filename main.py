@@ -1,7 +1,9 @@
 """FeishuCalendarDesktop - Main entry point with system tray."""
 
+import os
 import sys
 import shutil
+from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication,
     QSystemTrayIcon,
@@ -13,6 +15,34 @@ from PySide6.QtCore import Qt
 
 from config import Config
 from calendar_widget import CalendarWidget
+
+
+def _extend_path_for_app_bundle():
+    """Extend PATH so macOS .app bundles can find npm/brew-installed CLIs.
+
+    When launched from Finder/Spotlight, a .app inherits only a minimal
+    PATH (/usr/bin:/bin:...) and cannot find lark-cli / node installed via
+    npm global, homebrew, or nvm. We manually prepend those locations.
+    """
+    home = Path.home()
+    extra = [
+        str(home / ".npm-global" / "bin"),
+        str(home / ".local" / "bin"),
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+    ]
+    # nvm-installed node binaries
+    nvm_dir = home / ".nvm" / "versions" / "node"
+    if nvm_dir.exists():
+        for d in nvm_dir.iterdir():
+            if d.is_dir():
+                extra.append(str(d / "bin"))
+    current = os.environ.get("PATH", "")
+    parts = [p for p in current.split(os.pathsep) if p]
+    for d in extra:
+        if d not in parts and Path(d).is_dir():
+            parts.append(d)
+    os.environ["PATH"] = os.pathsep.join(parts)
 
 
 def create_app_icon() -> QIcon:
@@ -123,29 +153,34 @@ class TrayApp(QApplication):
 
 
 def main():
+    # Make sure npm/brew/nvm-installed CLIs (lark-cli, node) are reachable
+    # even when launched from a .app bundle with a minimal PATH.
+    _extend_path_for_app_bundle()
+
     config = Config()
 
     # Check if we have either lark-cli or app credentials
     has_lark_cli = shutil.which("lark-cli") is not None
     has_app_credentials = bool(config.get("app_id", "") and config.get("app_secret", ""))
 
-    if not has_lark_cli and not has_app_credentials:
-        app = QApplication(sys.argv)
-        QMessageBox.critical(
-            None,
-            "缺少配置",
-            "未检测到 lark-cli 且未配置飞书应用凭证。\n\n"
-            "请选择以下方式之一：\n\n"
-            "方式一：安装 lark-cli\n"
-            "  npm install -g @larksuite/cli\n"
-            "  lark-cli config init\n"
-            "  lark-cli auth login --recommend\n\n"
-            "方式二：在设置中配置飞书应用凭证\n"
-            "  在飞书开放平台创建应用，获取 App ID 和 App Secret",
-        )
-        sys.exit(1)
-
+    # Launch the main app regardless of auth state — if not configured yet,
+    # pop up the settings dialog so the user can configure credentials
+    # instead of hard-exiting with only an "OK" button.
     app = TrayApp(sys.argv)
+
+    if not has_lark_cli and not has_app_credentials:
+        QMessageBox.information(
+            app.widget,
+            "首次使用",
+            "未检测到 lark-cli 且未配置飞书应用凭证。\n\n"
+            "请在弹出的设置面板中配置认证方式：\n"
+            "• 方式一：安装 lark-cli（推荐个人使用）\n"
+            "• 方式二：填写飞书应用 App ID 和 App Secret\n\n"
+            "配置完成后点击保存即可使用。",
+        )
+        # Auto-open the settings dialog for first-time setup
+        app.widget._on_settings()
+
     sys.exit(app.exec())
 
 
