@@ -1,6 +1,6 @@
 # 飞书日程桌面助手 (FeishuCalendarDesktop)
 
-在 Windows 桌面显示飞书日历日程的月历网格视图，支持添加、删除、查看日程。
+在 Windows / macOS 桌面显示飞书日历日程的月历网格视图，支持添加、删除、查看日程。
 
 参考 [PaperTodo](https://github.com/snownico0722/PaperTodo) 的设计理念，支持 lark-cli 和飞书开放平台 API 两种方式对接飞书日历。
 
@@ -48,13 +48,15 @@ lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:cal
 
 ## 安装与运行
 
-### 方式一：直接运行 EXE（推荐）
+### Windows
+
+#### 方式一：直接运行 EXE（推荐）
 
 1. 下载 `dist/飞书日程.exe`
 2. 双击运行
 3. 首次运行点击 ⚙ 设置按钮配置认证方式
 
-### 方式二：从源码运行
+#### 方式二：从源码运行
 
 ```bash
 # 安装依赖
@@ -66,7 +68,7 @@ python main.py
 
 或双击 `启动飞书日程.bat`。
 
-### 打包 EXE
+#### 打包 EXE
 
 ```bash
 pip install pyinstaller
@@ -88,6 +90,36 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
 ```
 
 生成的 EXE 在 `dist/飞书日程.exe`。
+
+### macOS
+
+#### 方式一：直接运行 .app（推荐）
+
+1. 下载 `dist/飞书日程.app.zip` 并解压
+2. 首次打开若提示"无法验证开发者"，右键 → 打开 → 打开
+3. 首次运行点击 ⚙ 设置按钮配置认证方式
+
+> 配置文件位于 `~/Library/Application Support/FeishuCalendar/config.json`
+
+#### 方式二：从源码运行
+
+```bash
+# 安装依赖
+pip3 install -r requirements.txt
+
+# 运行
+python3 main.py
+```
+
+或双击 `启动飞书日程.command`。
+
+#### 打包 .app
+
+```bash
+bash build_macos.sh
+```
+
+生成的 .app 在 `dist/飞书日程.app`。
 
 ## 使用说明
 
@@ -126,7 +158,7 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
 - **飞书应用凭证** - 配置 App ID 和 App Secret（可切换显示/隐藏）
 - **清除凭证** - 一键清除凭证，切换到 lark-cli 模式
 - **测试连接** - 验证 API 凭证是否有效（结果可复制）
-- **开机启动** - 开关 Windows 开机自动运行
+- **开机启动** - 开关开机自动运行（Windows 写注册表，macOS 写 LaunchAgent）
 - **自动刷新间隔** - 设置日程自动刷新频率（60-3600秒）
 - **窗口透明度** - 调整窗口透明度（50%-100%）
 
@@ -138,22 +170,27 @@ FeishuCalendarDesktop/
 ├── calendar_widget.py     # 月历网格主窗口、搜索对话框、当日详情对话框
 ├── feishu_api.py          # 飞书 API 直接调用（App ID/Secret 模式）
 ├── lark_cli.py            # lark-cli 同步封装（备用）
-├── lark_cli_async.py      # lark-cli 异步封装（QProcess + PowerShell）
+├── lark_cli_async.py      # lark-cli 异步封装（QProcess；Windows 走 PowerShell，macOS 直接调用）
 ├── event_card.py          # 日程卡片组件
 ├── add_event_dialog.py    # 添加日程对话框
 ├── event_detail_dialog.py # 日程详情对话框
-├── settings_dialog.py     # 设置对话框
+├── settings_dialog.py     # 设置对话框（开机启动跨平台分发）
 ├── export_dialog.py       # 导出日程到 Excel
-├── config.py              # 配置管理
+├── config.py              # 配置管理（macOS 配置存放在 ~/Library/Application Support）
 ├── styles.py              # 主题样式（深色/浅色）
 ├── requirements.txt       # Python 依赖
 ├── config.example.json    # 配置文件示例
-└── 启动飞书日程.bat        # Windows 启动脚本
+├── 启动飞书日程.bat        # Windows 启动脚本
+├── 启动飞书日程.command    # macOS 启动脚本
+└── build_macos.sh         # macOS PyInstaller 打包脚本
 ```
 
 ## 配置文件
 
-首次运行后自动在 EXE 同目录生成 `config.json`：
+首次运行后自动生成 `config.json`：
+- Windows：EXE 同目录
+- macOS：`~/Library/Application Support/FeishuCalendar/config.json`
+- 源码运行：脚本同目录
 
 ```json
 {
@@ -187,7 +224,7 @@ FeishuCalendarDesktop/
 - **Python 3.10+** + **PySide6 (Qt6)** - 桌面 GUI 框架
 - **lark-cli** - 飞书 CLI 工具（可选）
 - **飞书开放平台 API** - 直接 REST API 调用（可选）
-- **PyInstaller** - 打包为独立 EXE
+- **PyInstaller** - 打包为独立 EXE（Windows） / .app（macOS）
 
 ## 开发笔记
 
@@ -200,6 +237,15 @@ FeishuCalendarDesktop/
 5. **EXE 配置路径** - 打包后需用 `sys.frozen` 判断并使用 `sys.executable` 目录而非 `__file__` 目录
 6. **lark-cli scope 授权** - `--recommend` 不含 `calendar:calendar.event:read`，需用 `--scope` 参数单独指定
 7. **Python 字符串转义** - 在 setHtml 字符串中使用 `\\"` 会导致 SyntaxError，应改用字符串拼接
+
+### macOS 上的关键技术要点
+
+1. **lark-cli 直接调用** - macOS 上 lark-cli 是带 shebang 的可执行脚本，QProcess 可直接 `process.start(bin, args)`，无需 PowerShell 中转
+2. **`creationflags` 仅 Windows 支持** - `subprocess.run` 在 macOS 上不接受 `creationflags`，需用 `sys.platform == "win32"` 条件包裹
+3. **.app 内目录只读** - PyInstaller 打包的 .app bundle 内 `Contents/MacOS/` 不可写，配置文件改存 `~/Library/Application Support/FeishuCalendar/`
+4. **开机启动用 LaunchAgent** - 写 `~/Library/LaunchAgents/FeishuCalendarDesktop.plist`，配合 `launchctl load/unload`
+5. **字体回退** - `QFont("Segoe UI")` 在 macOS 不存在会触发字体回退警告，用 `setFamilies([...])` 提供跨平台候选
+6. **首次启动 Gatekeeper** - 未签名 .app 双击会被拦，需右键 → 打开，或在终端 `xattr -dr com.apple.quarantine 飞书日程.app`
 
 ## License
 

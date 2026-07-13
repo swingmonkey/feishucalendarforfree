@@ -7,12 +7,21 @@ from pathlib import Path
 
 
 def get_app_dir() -> Path:
-    """Get the application directory.
+    """Get the application directory for storing config.json.
 
-    When running as a PyInstaller-frozen EXE, use the EXE's directory.
-    Otherwise, use the script's directory.
+    Platform behavior:
+    - Windows frozen EXE: EXE's directory (portable, next to the .exe).
+    - macOS frozen .app: ~/Library/Application Support/FeishuCalendar/
+      (the .app bundle's Contents/MacOS/ is read-only).
+    - Source run: script's directory.
     """
     if getattr(sys, "frozen", False):
+        if sys.platform == "darwin":
+            # .app bundle: Contents/MacOS/<exe> is read-only.
+            # Use the standard macOS per-user app-support location.
+            app_support = Path.home() / "Library" / "Application Support" / "FeishuCalendar"
+            app_support.mkdir(parents=True, exist_ok=True)
+            return app_support
         return Path(sys.executable).parent
     return Path(__file__).parent
 

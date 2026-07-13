@@ -2,6 +2,7 @@
 
 import os
 import sys
+from pathlib import Path
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -23,8 +24,16 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 
-def is_auto_start_enabled() -> bool:
-    """Check if auto-start is enabled in Windows registry."""
+def _auto_start_label() -> str:
+    """Stable identifier used both for Windows registry value name and
+    macOS LaunchAgent plist filename (without extension)."""
+    return "FeishuCalendarDesktop"
+
+
+# ---------------------------------------------------------------------------
+# Windows: HKEY_CURRENT_USER\...\Run
+# ---------------------------------------------------------------------------
+def _is_auto_start_windows() -> bool:
     try:
         import winreg
         key = winreg.OpenKey(
@@ -33,15 +42,14 @@ def is_auto_start_enabled() -> bool:
             0,
             winreg.KEY_READ,
         )
-        winreg.QueryValueEx(key, "FeishuCalendarDesktop")
+        winreg.QueryValueEx(key, _auto_start_label())
         winreg.CloseKey(key)
         return True
     except (FileNotFoundError, OSError):
         return False
 
 
-def set_auto_start(enabled: bool, exe_path: str = None) -> bool:
-    """Enable or disable auto-start in Windows registry."""
+def _set_auto_start_windows(enabled: bool, exe_path: str = None) -> bool:
     try:
         import winreg
         key = winreg.OpenKey(
@@ -62,16 +70,117 @@ def set_auto_start(enabled: bool, exe_path: str = None) -> bool:
                         exe_path = f'"{exe_path}" "{main_py}"'
                     else:
                         exe_path = f'"{exe_path}"'
-            winreg.SetValueEx(key, "FeishuCalendarDesktop", 0, winreg.REG_SZ, exe_path)
+            winreg.SetValueEx(key, _auto_start_label(), 0, winreg.REG_SZ, exe_path)
         else:
             try:
-                winreg.DeleteValue(key, "FeishuCalendarDesktop")
+                winreg.DeleteValue(key, _auto_start_label())
             except FileNotFoundError:
                 pass
         winreg.CloseKey(key)
         return True
     except OSError:
         return False
+
+
+# ---------------------------------------------------------------------------
+# macOS: ~/Library/LaunchAgents/<label>.plist
+# ---------------------------------------------------------------------------
+def _launch_agent_path() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{_auto_start_label()}.plist"
+
+
+def _resolve_macos_executable() -> str:
+    """Resolve the command to launch on macOS at login.
+
+    Frozen .app: open the bundle.
+    Source run: <python> <main.py>.
+    """
+    if getattr(sys, "frozen", False):
+        # sys.executable is .../FeishuCalendar.app/Contents/MacOS/FeishuCalendar
+        app_path = Path(sys.executable).parent.parent.parent
+        return f'open "{app_path}"'
+    import shutil
+    py = sys.executable or shutil.which("python3") or "python3"
+    main_py = Path(__file__).parent / "main.py"
+    return f'"{py}" "{main_py}"'
+
+
+def _is_auto_start_macos() -> bool:
+    return _launch_agent_path().exists()
+
+
+def _set_auto_start_macos(enabled: bool) -> bool:
+    plist = _launch_agent_path()
+    if not enabled:
+        try:
+            plist.unlink(missing_ok=True)
+            # Unload if currently loaded
+            import subprocess
+            subprocess.run(
+                ["launchctl", "unload", str(plist)],
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            pass
+        return True
+
+    # Build a LaunchAgent plist that runs the app at login
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    cmd = _resolve_macos_executable()
+    # Use sh -c so we can handle quoted commands / `open ...`
+    content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{_auto_start_label()}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>sh</string>
+        <string>-c</string>
+        <string>{cmd}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+"""
+    try:
+        plist.write_text(content, encoding="utf-8")
+        import subprocess
+        subprocess.run(
+            ["launchctl", "load", str(plist)],
+            capture_output=True,
+            text=True,
+        )
+        return True
+    except OSError:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Platform dispatcher
+# ---------------------------------------------------------------------------
+def is_auto_start_enabled() -> bool:
+    """Check if auto-start is enabled on the current platform."""
+    if sys.platform == "darwin":
+        return _is_auto_start_macos()
+    if sys.platform == "win32":
+        return _is_auto_start_windows()
+    # Linux/other: not supported
+    return False
+
+
+def set_auto_start(enabled: bool, exe_path: str = None) -> bool:
+    """Enable or disable auto-start on the current platform."""
+    if sys.platform == "darwin":
+        return _set_auto_start_macos(enabled)
+    if sys.platform == "win32":
+        return _set_auto_start_windows(enabled, exe_path=exe_path)
+    return False
 
 
 class SettingsDialog(QDialog):
@@ -289,7 +398,7 @@ class SettingsDialog(QDialog):
         about_layout = QVBoxLayout(about_group)
         about_label = QLabel(
             "飞书日程桌面助手 v2.0\n\n"
-            "在 Windows 桌面显示飞书日历日程\n"
+            "在桌面显示飞书日历日程（Windows / macOS）\n"
             "支持月历网格视图、添加/删除/导出日程\n\n"
             "GitHub: github.com/swingmonkey/feishucalendarforfree\n"
             "License: MIT"

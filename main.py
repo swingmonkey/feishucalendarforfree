@@ -25,7 +25,9 @@ def create_app_icon() -> QIcon:
     painter.setPen(Qt.PenStyle.NoPen)
     painter.drawRoundedRect(4, 4, 56, 56, 14, 14)
     painter.setPen(QColor("#171717"))
-    font = QFont("Segoe UI", 28, QFont.Weight.Bold)
+    # Cross-platform font stack: SF/PingFang on macOS, YaHei/Segoe on Windows
+    font = QFont("PingFang SC, SF Pro Text, Microsoft YaHei UI, Segoe UI", 28, QFont.Weight.Bold)
+    font.setFamilies(["PingFang SC", "SF Pro Text", "Microsoft YaHei UI", "Segoe UI"])
     painter.setFont(font)
     painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "日")
     painter.end()
@@ -104,7 +106,7 @@ class TrayApp(QApplication):
             self.widget,
             "关于飞书日程",
             "<h3>飞书日程桌面助手</h3>"
-            "<p>在 Windows 桌面显示飞书日历日程</p>"
+            "<p>在桌面显示飞书日历日程（Windows / macOS）</p>"
             "<p>功能：查看 / 添加 / 删除飞书日程</p>"
             "<p style='color: gray;'>基于 PySide6 + lark-cli 构建</p>"
             "<p style='color: gray;'>参考 PaperTodo 设计理念</p>",

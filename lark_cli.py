@@ -3,6 +3,7 @@
 import json
 import subprocess
 import shutil
+import sys
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -34,14 +35,16 @@ class LarkCli:
     def _run(self, args: list[str]) -> dict:
         """Run a lark-cli command and return parsed JSON response."""
         cmd = [self._bin] + args + ["--format", "json"]
+        kwargs = {
+            "capture_output": True,
+            "text": True,
+            "timeout": 30,
+        }
+        # CREATE_NO_WINDOW — Windows only, hides the console popup
+        if sys.platform == "win32":
+            kwargs["creationflags"] = 0x08000000
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                creationflags=0x08000000,  # CREATE_NO_WINDOW
-            )
+            result = subprocess.run(cmd, **kwargs)
         except subprocess.TimeoutExpired:
             raise LarkCliError("lark-cli 命令超时，请重试")
         except FileNotFoundError:
