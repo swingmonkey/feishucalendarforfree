@@ -39,8 +39,6 @@ class Config:
         "opacity": 0.95,
         "pin_to_top": True,
         "calendar_id": "primary",
-        "app_id": "",
-        "app_secret": "",
         "auto_start": False,
     }
 

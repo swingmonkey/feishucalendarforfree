@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QSizePolicy,
 )
 from PySide6.QtCore import Qt, QTimer, QPoint, Signal
 from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen, QFont
@@ -97,6 +98,9 @@ class GridEventLabel(QFrame):
         else:
             self.setObjectName("gridEvent")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # 关键：事件标签不贡献水平最小宽度，否则长标题会把所在列撑宽，
+        # 导致网格列宽不均、与表头星期错位。
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -152,6 +156,8 @@ class DayCell(QFrame):
         self._is_current_month = is_current_month
         self._is_today = date.date() == datetime.now().date()
         self._original_object_name = ""
+        # 单元格同样不贡献水平最小宽度，保证 7 列严格等宽（与表头对齐）
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._setup_ui()
         self.setMouseTracking(True)
 
@@ -468,14 +474,8 @@ class CalendarWidget(QMainWindow):
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
         self.config = config
-        # Choose API backend: FeishuApiAsync if app credentials configured, else lark-cli
-        app_id = config.get("app_id", "")
-        app_secret = config.get("app_secret", "")
-        if app_id and app_secret:
-            from feishu_api import FeishuApiAsync
-            self.lark_cli = FeishuApiAsync(config, self)
-        else:
-            self.lark_cli = LarkCliAsync(config, self)
+        # 认证方式：lark-cli 用户授权（唯一方式）
+        self.lark_cli = LarkCliAsync(config, self)
         self.current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.events: list[dict] = []
         self._drag_offset: QPoint | None = None
@@ -659,9 +659,11 @@ class CalendarWidget(QMainWindow):
     def _build_weekday_header(self) -> QWidget:
         header = QFrame()
         header.setFixedHeight(24)
-        h = QHBoxLayout(header)
-        h.setContentsMargins(4, 0, 4, 0)
-        h.setSpacing(2)
+        # 表头改用与网格完全相同的 QGridLayout（同样的 margins/spacing/stretch），
+        # 保证表头每列与网格 7 列严格对齐，不再受各自布局类型差异影响。
+        g = QGridLayout(header)
+        g.setContentsMargins(4, 0, 4, 0)
+        g.setSpacing(2)
 
         for i, name in enumerate(WEEKDAY_NAMES):
             lbl = QLabel(name)
@@ -670,7 +672,8 @@ class CalendarWidget(QMainWindow):
             else:
                 lbl.setObjectName("weekDay")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            h.addWidget(lbl, 1)
+            g.addWidget(lbl, 0, i)
+            g.setColumnStretch(i, 1)
 
         return header
 
@@ -740,30 +743,7 @@ class CalendarWidget(QMainWindow):
         self.setWindowOpacity(float(self.config.get("opacity", 0.95)))
         # Apply new refresh interval
         self.refresh_timer.setInterval(self.config.get("auto_refresh_interval", 300) * 1000)
-        # Rebuild API client if credentials changed
-        app_id = self.config.get("app_id", "")
-        app_secret = self.config.get("app_secret", "")
-        was_feishu_api = type(self.lark_cli).__name__ == "FeishuApiAsync"
-        should_use_feishu_api = bool(app_id and app_secret)
-        if was_feishu_api != should_use_feishu_api:
-            # Disconnect old signals
-            try:
-                self.lark_cli.agenda_fetched.disconnect()
-                self.lark_cli.fetch_error.disconnect()
-                self.lark_cli.event_deleted.disconnect()
-                self.lark_cli.delete_error.disconnect()
-            except RuntimeError:
-                pass
-            if should_use_feishu_api:
-                from feishu_api import FeishuApiAsync
-                self.lark_cli = FeishuApiAsync(self.config, self)
-            else:
-                self.lark_cli = LarkCliAsync(self.config, self)
-            self.lark_cli.agenda_fetched.connect(self._on_events_fetched)
-            self.lark_cli.fetch_error.connect(self._on_fetch_error)
-            self.lark_cli.event_deleted.connect(self._on_deleted)
-            self.lark_cli.delete_error.connect(self._on_delete_error)
-        # Refresh events (in case app credentials changed)
+        # 应用设置变更后刷新日程
         self.refresh_events()
 
     def _setup_timer(self):

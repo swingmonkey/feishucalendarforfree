@@ -232,133 +232,57 @@ class SettingsDialog(QDialog):
         layout.addLayout(btn_row)
 
     def _build_connection_tab(self) -> QWidget:
-        """Build the connection configuration tab."""
+        """Build the connection configuration tab (lark-cli 授权，唯一认证方式)."""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        # Mode hint
-        mode_hint = QLabel(
-            "选择一种方式连接飞书日历：\n"
-            "• 方式一（推荐）：安装 lark-cli，扫码授权即可使用\n"
-            "• 方式二：填写飞书应用凭证（App ID + App Secret）"
+        hint = QLabel(
+            "应用使用 lark-cli 用户授权连接飞书日历。 首次使用点击下方按钮登录，扫码或网页授权日历读写权限即可。"
         )
-        mode_hint.setObjectName("detailLabel")
-        mode_hint.setWordWrap(True)
-        layout.addWidget(mode_hint)
+        hint.setObjectName("detailLabel")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
 
-        # === Method 1: lark-cli ===
-        cli_group = QGroupBox("方式一：lark-cli 授权（推荐）")
+        cli_group = QGroupBox("飞书账号")
         cli_layout = QVBoxLayout(cli_group)
         cli_layout.setSpacing(6)
 
-        cli_hint = QTextEdit()
-        cli_hint.setReadOnly(True)
-        cli_hint.setMaximumHeight(200)
-        cli_hint.setHtml(
-            "<b>安装和使用步骤：</b><br>"
-            "1. 安装 Node.js（https://nodejs.org）<br>"
-            "2. 打开命令行，执行：<br>"
-            "&nbsp;&nbsp;&nbsp;<code>npm install -g @larksuite/cli</code><br>"
-            "3. 初始化配置：<br>"
-            "&nbsp;&nbsp;&nbsp;<code>lark-cli config init</code><br>"
-            "4. 扫码登录授权（必须包含日历日程读取权限）：<br>"
-            "&nbsp;&nbsp;&nbsp;<code>lark-cli auth login "
-            "--scope \"calendar:calendar.event:read\" "
-            "--scope \"calendar:calendar:read\"</code><br>"
-            "5. 完成后无需在此页面填写任何内容，直接保存即可<br>"
-            "<br><b>注意：</b>--recommend 不包含 calendar:calendar.event:read，"
-            "必须用上面的 --scope 参数明确指定。"
-            "若已授权过其他 scope，再次运行 login 命令会增量叠加，不会丢失已有权限。"
-        )
-        cli_layout.addWidget(cli_hint)
-
-        # Check lark-cli status
         import shutil
         has_cli = shutil.which("lark-cli") is not None
-        status_label = QLabel()
+        self.cli_status_label = QLabel()
         if has_cli:
-            status_label.setText("✅ 已检测到 lark-cli，可直接使用")
-            status_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+            self.cli_status_label.setText("✅ 已检测到 lark-cli")
+            self.cli_status_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
         else:
-            status_label.setText("❌ 未检测到 lark-cli，请按上方步骤安装")
-            status_label.setStyleSheet("color: #f38ba8; font-size: 12px;")
-        cli_layout.addWidget(status_label)
+            self.cli_status_label.setText("❌ 未检测到 lark-cli，请先执行：npm install -g @larksuite/cli")
+            self.cli_status_label.setStyleSheet("color: #f38ba8; font-size: 12px;")
+        self.cli_status_label.setWordWrap(True)
+        cli_layout.addWidget(self.cli_status_label)
+
+        self.login_btn = QPushButton("登录飞书账号（扫码 / 网页授权）")
+        self.login_btn.setObjectName("primaryBtn")
+        self.login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.login_btn.clicked.connect(self._on_login_clicked)
+        cli_layout.addWidget(self.login_btn)
 
         layout.addWidget(cli_group)
-
-        # === Method 2: App credentials ===
-        api_group = QGroupBox("方式二：飞书应用凭证")
-        api_layout = QFormLayout(api_group)
-        api_layout.setSpacing(6)
-
-        api_hint = QTextEdit()
-        api_hint.setReadOnly(True)
-        api_hint.setMaximumHeight(170)
-        api_hint.setHtml(
-            "<b>获取步骤：</b><br>"
-            "1. 访问飞书开放平台 https://open.feishu.cn<br>"
-            "2. 创建企业自建应用<br>"
-            "3. 在「应用能力」中开启「机器人」<br>"
-            "4. 在「权限管理」中添加日历权限：<br>"
-            "&nbsp;&nbsp;&nbsp;• calendar:calendar:readonly（读取日历）<br>"
-            "&nbsp;&nbsp;&nbsp;• calendar:calendar（管理日历）<br>"
-            "5. 在「版本管理与发布」中创建版本并发布<br>"
-            "6. 复制 App ID 和 App Secret 填入下方"
-        )
-        api_layout.addRow(api_hint)
-
-        self.app_id_input = QLineEdit()
-        self.app_id_input.setPlaceholderText("cli_xxxxxxxx")
-        self.app_id_input.setText(self.config.get("app_id", ""))
-        api_layout.addRow("App ID", self.app_id_input)
-
-        secret_row = QHBoxLayout()
-        self.app_secret_input = QLineEdit()
-        self.app_secret_input.setPlaceholderText("应用密钥")
-        self.app_secret_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.app_secret_input.setText(self.config.get("app_secret", ""))
-        secret_row.addWidget(self.app_secret_input)
-
-        show_secret_btn = QPushButton("显示")
-        show_secret_btn.setObjectName("secondaryBtn")
-        show_secret_btn.setFixedWidth(50)
-        show_secret_btn.clicked.connect(self._toggle_secret_visibility)
-        secret_row.addWidget(show_secret_btn)
-        api_layout.addRow("App Secret", secret_row)
-
-        note_label = QLabel("提示：留空 App ID 和 App Secret 则使用方式一（lark-cli）")
-        note_label.setObjectName("detailLabel")
-        note_label.setWordWrap(True)
-        api_layout.addRow(note_label)
-
-        # Test connection and clear credentials buttons
-        test_row = QHBoxLayout()
-        test_btn = QPushButton("测试连接")
-        test_btn.setObjectName("primaryBtn")
-        test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        test_btn.clicked.connect(self._on_test_connection)
-        test_row.addStretch()
-        test_row.addWidget(test_btn)
-
-        clear_btn = QPushButton("清除凭证")
-        clear_btn.setObjectName("secondaryBtn")
-        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        clear_btn.clicked.connect(self._on_clear_credentials)
-        test_row.addWidget(clear_btn)
-        api_layout.addRow(test_row)
-
-        self.test_result = QTextEdit()
-        self.test_result.setReadOnly(True)
-        self.test_result.setMaximumHeight(100)
-        self.test_result.setObjectName("detailLabel")
-        api_layout.addRow(self.test_result)
-
-        layout.addWidget(api_group)
-
         layout.addStretch()
         return tab
+
+    def _on_login_clicked(self):
+        """打开应用内登录对话框（二维码 + 网页授权）。"""
+        from login_dialog import LoginDialog
+
+        dlg = LoginDialog(self)
+        dlg.exec()
+        # 登录后刷新 lark-cli 状态提示
+        import shutil
+        has_cli = shutil.which("lark-cli") is not None
+        if has_cli:
+            self.cli_status_label.setText("✅ 已检测到 lark-cli")
+            self.cli_status_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
 
     def _build_general_tab(self) -> QWidget:
         """Build the general settings tab."""
@@ -411,60 +335,10 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return tab
 
-    def _toggle_secret_visibility(self):
-        if self.app_secret_input.echoMode() == QLineEdit.EchoMode.Password:
-            self.app_secret_input.setEchoMode(QLineEdit.EchoMode.Normal)
-        else:
-            self.app_secret_input.setEchoMode(QLineEdit.EchoMode.Password)
-
-    def _on_clear_credentials(self):
-        """Clear App ID and App Secret fields, switching to lark-cli mode."""
-        self.app_id_input.clear()
-        self.app_secret_input.clear()
-        self.test_result.setPlainText("已清除凭证，保存后将使用方式一（lark-cli）")
-        self.test_result.setStyleSheet("color: #a6e3a1; font-size: 12px;")
-
     def _on_opacity_change(self, val):
         self.opacity_label.setText(f"窗口透明度: {val}%")
 
-    def _on_test_connection(self):
-        """Test Feishu API connection with current credentials."""
-        app_id = self.app_id_input.text().strip()
-        app_secret = self.app_secret_input.text().strip()
-
-        if not app_id or not app_secret:
-            self.test_result.setPlainText("⚠ 请先填写 App ID 和 App Secret")
-            self.test_result.setStyleSheet("color: #f38ba8; font-size: 12px;")
-            return
-
-        self.test_result.setPlainText("正在测试连接...")
-        self.test_result.setStyleSheet("color: #a6adc8; font-size: 12px;")
-        QApplication.processEvents()
-
-        try:
-            from feishu_api import FeishuApiWorker
-            worker = FeishuApiWorker(app_id, app_secret)
-            # Step 1: Get token
-            worker._get_token()
-            # Step 2: Try to list calendars
-            worker._get_primary_calendar_id()
-            self.test_result.setPlainText(
-                "✅ 连接成功！\n"
-                f"Token 获取成功，日历 ID: {worker._calendar_id[:30]}...\n"
-                "可以保存设置并使用。"
-            )
-            self.test_result.setStyleSheet("color: #a6e3a1; font-size: 12px;")
-        except Exception as e:
-            msg = str(e)
-            self.test_result.setPlainText(f"❌ 连接失败\n{msg}")
-            self.test_result.setStyleSheet("color: #f38ba8; font-size: 12px;")
-
     def _on_save(self):
-        app_id = self.app_id_input.text().strip()
-        app_secret = self.app_secret_input.text().strip()
-
-        self.config.set("app_id", app_id)
-        self.config.set("app_secret", app_secret)
         self.config.set("auto_refresh_interval", self.refresh_spin.value())
         self.config.set("opacity", self.opacity_slider.value() / 100.0)
 

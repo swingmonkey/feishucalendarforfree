@@ -183,6 +183,22 @@ class TrayApp(QApplication):
         self.quit()
 
 
+def _has_lark_auth() -> bool:
+    """Check whether the lark-cli user identity is authorized (ready)."""
+    import json
+
+    from login_dialog import _lark_cli
+
+    rc, out, _ = _lark_cli(["auth", "status"], timeout=15)
+    if rc == 0:
+        try:
+            data = json.loads(out)
+            return data.get("identities", {}).get("user", {}).get("status") == "ready"
+        except json.JSONDecodeError:
+            pass
+    return False
+
+
 def main():
     # Make sure npm/brew/nvm-installed CLIs (lark-cli, node) are reachable
     # even when launched from a .app bundle with a minimal PATH.
@@ -192,25 +208,27 @@ def main():
 
     # Check if we have either lark-cli or app credentials
     has_lark_cli = shutil.which("lark-cli") is not None
-    has_app_credentials = bool(config.get("app_id", "") and config.get("app_secret", ""))
 
     # Launch the main app regardless of auth state — if not configured yet,
     # pop up the settings dialog so the user can configure credentials
     # instead of hard-exiting with only an "OK" button.
     app = TrayApp(sys.argv)
 
-    if not has_lark_cli and not has_app_credentials:
+    if not has_lark_cli:
         QMessageBox.information(
             app.widget,
             "首次使用",
-            "未检测到 lark-cli 且未配置飞书应用凭证。\n\n"
-            "请在弹出的设置面板中配置认证方式：\n"
-            "• 方式一：安装 lark-cli（推荐个人使用）\n"
-            "• 方式二：填写飞书应用 App ID 和 App Secret\n\n"
-            "配置完成后点击保存即可使用。",
+            "未检测到 lark-cli。\n\n请先在命令行执行：\n"
+            "  npm install -g @larksuite/cli\n\n"
+            "安装完成后重新启动本应用即可扫码登录。",
         )
-        # Auto-open the settings dialog for first-time setup
-        app.widget._on_settings()
+    elif not _has_lark_auth():
+        from login_dialog import LoginDialog
+
+        dlg = LoginDialog(app.widget)
+        dlg.exec()
+        if _has_lark_auth():
+            app.widget.refresh_events()
 
     sys.exit(app.exec())
 
