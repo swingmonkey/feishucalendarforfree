@@ -7,10 +7,11 @@ Requires the app to have calendar permissions and bot capability enabled.
 import json
 import urllib.request
 import urllib.parse
-import os
 from datetime import datetime, timedelta
 from typing import Optional
 from PySide6.QtCore import QObject, QThread, Signal
+
+from utils import month_range, wide_range, event_sort_key
 
 
 FEISHU_BASE = "https://open.feishu.cn/open-apis"
@@ -275,79 +276,56 @@ class FeishuApiAsync(QObject):
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self._config = config
-        self._pending_op = None
         # Keep strong refs to worker+thread so they aren't garbage-collected
         # before the background call finishes (otherwise Qt signals silently
         # drop and the UI shows neither results nor errors).
         self._workers: set = set()
 
     def _on_result(self, data):
-        if self._pending_op == "agenda":
+        worker = self.sender()
+        op = getattr(worker, "_op", None)
+        if op == "agenda":
             if isinstance(data, list):
-                # Sort by start_time
-                def sort_key(e):
-                    st = e.get("start_time", {})
-                    if isinstance(st, dict):
-                        ts = st.get("timestamp", "")
-                        if ts:
-                            return int(ts)
-                        dt_str = st.get("datetime", "")
-                        if dt_str:
-                            return dt_str
-                        date_str = st.get("date", "")
-                        if date_str:
-                            return date_str
-                    return 0
-                data.sort(key=sort_key)
+                data.sort(key=event_sort_key)
                 self.agenda_fetched.emit(data)
             else:
                 self.agenda_fetched.emit([])
-        elif self._pending_op == "search":
+        elif op == "search":
             if isinstance(data, list):
-                def sort_key(e):
-                    st = e.get("start_time", {})
-                    if isinstance(st, dict):
-                        ts = st.get("timestamp", "")
-                        if ts:
-                            return int(ts)
-                        dt_str = st.get("datetime", "")
-                        if dt_str:
-                            return dt_str
-                        date_str = st.get("date", "")
-                        if date_str:
-                            return date_str
-                    return 0
-                data.sort(key=sort_key)
+                data.sort(key=event_sort_key)
                 self.search_fetched.emit(data)
             else:
                 self.search_fetched.emit([])
-        elif self._pending_op == "create":
+        elif op == "create":
             self.event_created.emit(data if isinstance(data, dict) else {})
-        elif self._pending_op == "delete":
+        elif op == "delete":
             self.event_deleted.emit(str(data))
-        elif self._pending_op == "update":
+        elif op == "update":
             self.event_updated.emit(data if isinstance(data, dict) else {})
-        self._pending_op = None
 
     def _on_error(self, msg):
-        if self._pending_op == "agenda":
+        worker = self.sender()
+        op = getattr(worker, "_op", None)
+        if op == "agenda":
             self.fetch_error.emit(msg)
-        elif self._pending_op == "create":
+        elif op == "create":
             self.create_error.emit(msg)
-        elif self._pending_op == "delete":
+        elif op == "delete":
             self.delete_error.emit(msg)
-        elif self._pending_op == "update":
+        elif op == "update":
             self.update_error.emit(msg)
-        self._pending_op = None
 
     def _run_async(self, func, *args, **kwargs):
         """Run a function in a background thread."""
-        self._pending_op = kwargs.pop("_op", None)
+        op = kwargs.pop("_op", None)
         thread = QThread(self)
         worker = FeishuApiWorker(
             self._config.get("app_id", ""),
             self._config.get("app_secret", ""),
         )
+        # Tag the worker with its operation so results are routed back to the
+        # right signal even when multiple calls overlap in flight.
+        worker._op = op
         worker.moveToThread(thread)
         # Hold a strong reference until the call completes — without this
         # `worker` is GC'd when _run_async returns and its signals vanish.
@@ -374,11 +352,7 @@ class FeishuApiAsync(QObject):
     def fetch_agenda(self, date: datetime, monthly: bool = False):
         """Fetch calendar agenda for a date range."""
         if monthly:
-            start = date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            if date.month == 12:
-                end = date.replace(year=date.year + 1, month=1, day=1) - timedelta(seconds=1)
-            else:
-                end = date.replace(month=date.month + 1, day=1) - timedelta(seconds=1)
+            start, end = month_range(date)
         else:
             start = date.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start.replace(hour=23, minute=59, second=59)
@@ -390,22 +364,7 @@ class FeishuApiAsync(QObject):
 
     def search_events(self, months_back: int = 12, months_forward: int = 3):
         """Fetch events from a wide date range for search purposes."""
-        now = datetime.now()
-        start_year = now.year - (now.month - months_back - 1) // 12
-        start_month = (now.month - months_back - 1) % 12 + 1
-        if start_month <= 0:
-            start_month += 12
-            start_year -= 1
-        start = datetime(start_year, start_month, 1, 0, 0, 0)
-        end_month = now.month + months_forward
-        end_year = now.year
-        while end_month > 12:
-            end_month -= 12
-            end_year += 1
-        if end_month == 12:
-            end = datetime(end_year + 1, 1, 1) - timedelta(seconds=1)
-        else:
-            end = datetime(end_year, end_month + 1, 1) - timedelta(seconds=1)
+        start, end = wide_range(months_back, months_forward)
 
         self._run_async(
             lambda w: w.fetch_agenda(start, end),

@@ -43,8 +43,8 @@ def export_events_to_excel(events: list, file_path: str) -> bool:
     ws = wb.active
     ws.title = "飞书日程"
 
-    # Title row
-    ws.merge_cells("A1:G1")
+    # Title row (8 columns: 序号…会议链接)
+    ws.merge_cells("A1:H1")
     ws["A1"] = "飞书日程导出"
     ws["A1"].font = Font(size=14, bold=True, color="4B3FE3")
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
@@ -52,8 +52,6 @@ def export_events_to_excel(events: list, file_path: str) -> bool:
 
     # Header row
     headers = ["序号", "日期", "开始时间", "结束时间", "时长", "标题", "组织者", "会议链接"]
-    # Expand to 8 columns
-    ws.merge_cells("A1:H1")
 
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="4B3FE3", end_color="4B3FE3", fill_type="solid")

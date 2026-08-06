@@ -481,6 +481,13 @@ class CalendarWidget(QMainWindow):
         self._drag_offset: QPoint | None = None
         self._pinned = self.config.get("pin_to_top", True)
 
+        # Debounced config writer — resize events fire continuously while the
+        # user drags the grip, so batch them instead of writing on every tick.
+        self._geometry_save_timer = QTimer(self)
+        self._geometry_save_timer.setSingleShot(True)
+        self._geometry_save_timer.setInterval(250)
+        self._geometry_save_timer.timeout.connect(self._persist_geometry)
+
         # Connect async signals
         self.lark_cli.agenda_fetched.connect(self._on_events_fetched)
         self.lark_cli.fetch_error.connect(self._on_fetch_error)
@@ -736,7 +743,7 @@ class CalendarWidget(QMainWindow):
         # Rebuild API client if credentials changed
         app_id = self.config.get("app_id", "")
         app_secret = self.config.get("app_secret", "")
-        was_feishu_api = isinstance(self.lark_cli, FeishuApiAsync) if 'FeishuApiAsync' in dir() else False
+        was_feishu_api = type(self.lark_cli).__name__ == "FeishuApiAsync"
         should_use_feishu_api = bool(app_id and app_secret)
         if was_feishu_api != should_use_feishu_api:
             # Disconnect old signals
@@ -842,26 +849,40 @@ class CalendarWidget(QMainWindow):
             if item and item.widget():
                 item.widget().deleteLater()
 
+    def _group_events_by_date(self) -> dict:
+        """Group events by date, expanding multi-day events across the grid.
+
+        Multi-day events appear on every date they span within the currently
+        displayed month. The expansion is clamped to the month so an event
+        spanning years never forces a matching per-day loop.
+        """
+        month_start = self.current_date.replace(day=1)
+        if month_start.month == 12:
+            month_end = month_start.replace(year=month_start.year + 1, month=1) - timedelta(days=1)
+        else:
+            month_end = month_start.replace(month=month_start.month + 1) - timedelta(days=1)
+
+        events_by_date: dict[str, list] = {}
+        for ev in self.events:
+            start = parse_event_time(ev.get("start_time", {}))
+            end = parse_event_time(ev.get("end_time", {}))
+            start_date = max(start.date(), month_start.date())
+            end_date = min(end.date(), month_end.date())
+            if start_date > end_date:
+                continue
+            span = (end_date - start_date).days + 1
+            for i in range(span):
+                current = start_date + timedelta(days=i)
+                date_key = current.strftime("%Y-%m-%d")
+                is_continuation = current != start.date()
+                events_by_date.setdefault(date_key, []).append((ev, is_continuation))
+        return events_by_date
+
     def _render_grid(self):
         self._clear_grid()
 
         # Group events by date — multi-day events appear on all spanning dates
-        events_by_date: dict[str, list[tuple[dict, bool]]] = {}
-        for ev in self.events:
-            start = parse_event_time(ev.get("start_time", {}))
-            end = parse_event_time(ev.get("end_time", {}))
-            start_date = start.date()
-            end_date = end.date()
-
-            # Iterate through all dates the event spans
-            current = start_date
-            while current <= end_date:
-                date_key = current.strftime("%Y-%m-%d")
-                if date_key not in events_by_date:
-                    events_by_date[date_key] = []
-                is_continuation = (current != start_date)
-                events_by_date[date_key].append((ev, is_continuation))
-                current += timedelta(days=1)
+        self._events_by_date = self._group_events_by_date()
 
         # Build calendar grid using Python's calendar module
         cal = cal_module.Calendar(firstweekday=0)  # Monday = 0
@@ -870,7 +891,7 @@ class CalendarWidget(QMainWindow):
         for row, week in enumerate(weeks):
             for col, date_obj in enumerate(week):
                 date_key = date_obj.strftime("%Y-%m-%d")
-                day_events = events_by_date.get(date_key, [])
+                day_events = self._events_by_date.get(date_key, [])
                 is_current_month = date_obj.month == self.current_date.month
 
                 cell = DayCell(
@@ -897,13 +918,17 @@ class CalendarWidget(QMainWindow):
 
     def _show_day_detail(self, date: datetime):
         date_key = date.strftime("%Y-%m-%d")
-        # Include events that span this date (multi-day events)
-        day_events = []
-        for e in self.events:
-            start = parse_event_time(e.get("start_time", {}))
-            end = parse_event_time(e.get("end_time", {}))
-            if start.date() <= date.date() <= end.date():
-                day_events.append(e)
+        # Reuse the grouping computed during the last render when available
+        if hasattr(self, "_events_by_date"):
+            day_events = [ev for ev, _ in self._events_by_date.get(date_key, [])]
+        else:
+            # Fallback: include events that span this date (multi-day events)
+            day_events = []
+            for e in self.events:
+                start = parse_event_time(e.get("start_time", {}))
+                end = parse_event_time(e.get("end_time", {}))
+                if start.date() <= date.date() <= end.date():
+                    day_events.append(e)
         dialog = DayDetailDialog(date, day_events, self.lark_cli, self)
         dialog.event_delete_requested.connect(self._confirm_delete)
         dialog.exec()
@@ -1019,6 +1044,11 @@ class CalendarWidget(QMainWindow):
         super().resizeEvent(ev)
 
     def _save_window_size(self):
+        # Debounce writes so dragging the resize grip doesn't hit disk on
+        # every mouse-move tick.
+        self._geometry_save_timer.start()
+
+    def _persist_geometry(self):
         self.config.set("window_width", self.width())
         self.config.set("window_height", self.height())
 

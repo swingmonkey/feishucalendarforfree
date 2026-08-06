@@ -3,11 +3,11 @@
 import json
 import sys
 import shutil
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 from PySide6.QtCore import QObject, QProcess, Signal
 
 from lark_cli import find_lark_cli, LarkCliError
+from utils import month_range, wide_range, event_sort_key
 
 
 def _escape_ps_arg(arg: str) -> str:
@@ -47,6 +47,9 @@ class LarkCliAsync(QObject):
 
         def on_finished(exit_code, exit_status):
             output = bytes(process.readAll()).decode("utf-8", errors="replace").strip()
+            # Release the QProcess once the call completes to avoid leaking
+            # one process object per request.
+            process.deleteLater()
 
             if not output:
                 on_error("lark-cli 没有输出，请检查授权状态\n\n请确认已完成以下步骤：\n1. lark-cli auth login --scope \"calendar:calendar.event:read\" --scope \"calendar:calendar:read\"\n2. 在浏览器中扫码授权")
@@ -135,13 +138,7 @@ class LarkCliAsync(QObject):
         """
         tz = "+08:00"
         if monthly:
-            # First day of the month
-            start = date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            # Last day of the month
-            if date.month == 12:
-                end = date.replace(year=date.year + 1, month=1, day=1) - timedelta(seconds=1)
-            else:
-                end = date.replace(month=date.month + 1, day=1) - timedelta(seconds=1)
+            start, end = month_range(date)
         else:
             start = date.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start.replace(hour=23, minute=59, second=59)
@@ -150,14 +147,7 @@ class LarkCliAsync(QObject):
 
         def on_success(data):
             if isinstance(data, list):
-                # Sort by start_time: use 'datetime' for timed events,
-                # fall back to 'date' for all-day events
-                def sort_key(e):
-                    st = e.get("start_time", {})
-                    if not isinstance(st, dict):
-                        return ""
-                    return st.get("datetime", "") or st.get("date", "") or ""
-                data.sort(key=sort_key)
+                data.sort(key=event_sort_key)
                 self.agenda_fetched.emit(data)
             else:
                 self.agenda_fetched.emit([])
@@ -179,36 +169,13 @@ class LarkCliAsync(QObject):
             months_forward: How many months after now to search.
         """
         tz = "+08:00"
-        now = datetime.now()
-        # Calculate start date (months_back from now)
-        start_year = now.year - (now.month - months_back - 1) // 12
-        start_month = (now.month - months_back - 1) % 12 + 1
-        if start_month <= 0:
-            start_month += 12
-            start_year -= 1
-        start = datetime(start_year, start_month, 1, 0, 0, 0)
-        # Calculate end date (months_forward from now)
-        end_month = now.month + months_forward
-        end_year = now.year
-        while end_month > 12:
-            end_month -= 12
-            end_year += 1
-        if end_month == 12:
-            end = datetime(end_year + 1, 1, 1) - timedelta(seconds=1)
-        else:
-            end = datetime(end_year, end_month + 1, 1) - timedelta(seconds=1)
-
+        start, end = wide_range(months_back, months_forward)
         start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
         end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
 
         def on_success(data):
             if isinstance(data, list):
-                def sort_key(e):
-                    st = e.get("start_time", {})
-                    if not isinstance(st, dict):
-                        return ""
-                    return st.get("datetime", "") or st.get("date", "") or ""
-                data.sort(key=sort_key)
+                data.sort(key=event_sort_key)
                 self.search_fetched.emit(data)
             else:
                 self.search_fetched.emit([])

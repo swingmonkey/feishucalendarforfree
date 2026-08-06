@@ -678,7 +678,7 @@ QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QDateTi
 }
 
 QPushButton#primaryBtn {
-    background-color: #262626;
+    background-color: #4B3FE3;
     color: #FFFFFF;
     border: none;
     border-radius: 6px;
@@ -686,10 +686,10 @@ QPushButton#primaryBtn {
     font-weight: 600;
 }
 QPushButton#primaryBtn:hover {
-    background-color: #404040;
+    background-color: #6A6FFF;
 }
 QPushButton#primaryBtn:pressed {
-    background-color: #171717;
+    background-color: #3F31C6;
 }
 QPushButton#secondaryBtn {
     background-color: rgba(115, 115, 115, 0.08);

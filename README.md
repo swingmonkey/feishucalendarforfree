@@ -176,6 +176,7 @@ FeishuCalendarDesktop/
 ├── event_detail_dialog.py # 日程详情对话框
 ├── settings_dialog.py     # 设置对话框（开机启动跨平台分发）
 ├── export_dialog.py       # 导出日程到 Excel
+├── utils.py               # 共享的日期范围计算与日程排序工具
 ├── config.py              # 配置管理（macOS 配置存放在 ~/Library/Application Support）
 ├── styles.py              # 主题样式（深色/浅色）
 ├── requirements.txt       # Python 依赖
