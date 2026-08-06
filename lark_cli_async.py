@@ -4,6 +4,7 @@ import json
 import sys
 import shutil
 from datetime import datetime
+from pathlib import Path
 from PySide6.QtCore import QObject, QProcess, Signal
 
 from lark_cli import find_lark_cli, LarkCliError
@@ -112,20 +113,34 @@ class LarkCliAsync(QObject):
         # Build full command — lark-cli uses stored auth, no app credentials needed
         full_cmd = [self._bin] + args + ["--format", "json"]
 
-        # On Windows, lark-cli is typically a .CMD file
-        # QProcess cannot execute .CMD directly, and cmd.exe is blocked
-        # Solution: use PowerShell with & call operator to run the command
+        # On Windows, lark-cli is typically a npm .CMD wrapper.
+        # QProcess cannot execute .CMD directly. 优先定位真实 node 入口
+        # (node_modules/@larksuite/cli/scripts/run.js) 用 node 直调：
+        # QProcess -> node 是单一参数解析层，JSON 里的双引号能正确往返；
+        # 旧方案经 PowerShell 中转时，QProcess 会把 JSON 的双引号转义成 \"，
+        # PowerShell 单引号字符串原样透传，导致 lark-cli 收到非法 JSON
+        # （报错 "--data invalid JSON FORMAT"）。
         if sys.platform == "win32":
-            # Build PowerShell command string with proper escaping
-            # Use & call operator so PowerShell treats the quoted path as a command
-            # Set OutputEncoding to UTF-8 to avoid mojibake on Chinese Windows
-            ps_parts = [_escape_ps_arg(c) for c in full_cmd]
-            ps_command = "& " + " ".join(ps_parts)
-            process.start("powershell.exe", [
-                "-NoProfile",
-                "-Command",
-                "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " + ps_command,
-            ])
+            run_js = None
+            try:
+                bin_path = Path(self._bin).resolve()
+                cand = bin_path.parent / "node_modules" / "@larksuite" / "cli" / "scripts" / "run.js"
+                if cand.is_file():
+                    run_js = str(cand)
+            except (OSError, ValueError):
+                run_js = None
+            node = shutil.which("node")
+            if node and run_js:
+                process.start(node, [run_js] + full_cmd)
+            else:
+                # 回退：PowerShell 中转（旧逻辑）
+                ps_parts = [_escape_ps_arg(c) for c in full_cmd]
+                ps_command = "& " + " ".join(ps_parts)
+                process.start("powershell.exe", [
+                    "-NoProfile",
+                    "-Command",
+                    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " + ps_command,
+                ])
         else:
             process.start(full_cmd[0], full_cmd[1:])
 
