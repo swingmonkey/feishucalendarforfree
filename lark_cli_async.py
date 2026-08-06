@@ -131,7 +131,10 @@ class LarkCliAsync(QObject):
                 run_js = None
             node = shutil.which("node")
             if node and run_js:
-                process.start(node, [run_js] + full_cmd)
+                # 注意：这里不能再带 full_cmd（其首元素是 lark-cli.CMD 路径），
+                # 否则 lark-cli 会把该路径当作子命令（报 unknown command "....CMD"）。
+                # node run.js 直接吃原始 args。
+                process.start(node, [run_js] + args + ["--format", "json"])
             else:
                 # 回退：PowerShell 中转（旧逻辑）
                 ps_parts = [_escape_ps_arg(c) for c in full_cmd]
