@@ -16,8 +16,8 @@
 - **可调节窗口** - 拖拽右下角调整窗口大小，尺寸自动保存
 - **置顶切换** - 📌置顶 / 📍不置顶，图标一目了然
 - **今天高亮** - 当天日期用蓝色圆圈标记
-- **设置面板** - 配置飞书应用凭证、开机启动、透明度、刷新间隔
-- **双模式认证** - 支持 lark-cli 用户授权 或 飞书 App ID/Secret 直接 API 调用
+- **设置面板** - 配置登录、开机启动、透明度、刷新间隔
+- **应用内扫码登录** - 首次启动自动弹出登录窗口，扫码或网页授权，无需手动配置
 - **开机启动** - 可设置开机自动运行
 - **系统托盘** - 后台运行，托盘菜单快捷操作
 - **主题切换** - 深色 / 浅色主题
@@ -26,9 +26,7 @@
 - **错误信息可复制** - 错误提示支持选中和复制，方便排查问题
 - **导出日程** - 一键导出当月日程到 Excel
 
-## 两种认证方式
-
-### 方式一：lark-cli 用户授权（推荐个人使用）
+## 认证方式（lark-cli 用户授权）
 
 ```bash
 npm install -g @larksuite/cli
@@ -37,14 +35,6 @@ lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:cal
 ```
 
 > **注意：** `--recommend` 不包含日历日程读取权限，必须使用上面的 `--scope` 参数明确指定。
-
-### 方式二：飞书应用凭证（推荐企业/团队部署）
-
-1. 在[飞书开放平台](https://open.feishu.cn/)创建企业自建应用
-2. 开启日历权限（`calendar:calendar`、`calendar:calendar:readonly`）
-3. 在应用设置中填入 App ID 和 App Secret
-
-配置后无需安装 lark-cli，直接通过飞书 API 获取日程。
 
 ## 安装与运行
 
@@ -79,8 +69,7 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
   --hidden-import styles \
   --hidden-import lark_cli \
   --hidden-import lark_cli_async \
-  --hidden-import feishu_api \
-  --hidden-import calendar_widget \
+  --hidden-import login_dialog \n  --hidden-import calendar_widget \
   --hidden-import event_card \
   --hidden-import add_event_dialog \
   --hidden-import event_detail_dialog \
@@ -155,9 +144,7 @@ bash build_macos.sh
 
 ### 设置面板
 
-- **飞书应用凭证** - 配置 App ID 和 App Secret（可切换显示/隐藏）
-- **清除凭证** - 一键清除凭证，切换到 lark-cli 模式
-- **测试连接** - 验证 API 凭证是否有效（结果可复制）
+- **登录飞书账号** - 打开应用内登录窗口（扫码 / 网页授权，device flow）
 - **开机启动** - 开关开机自动运行（Windows 写注册表，macOS 写 LaunchAgent）
 - **自动刷新间隔** - 设置日程自动刷新频率（60-3600秒）
 - **窗口透明度** - 调整窗口透明度（50%-100%）
@@ -168,9 +155,9 @@ bash build_macos.sh
 FeishuCalendarDesktop/
 ├── main.py                # 程序入口，系统托盘
 ├── calendar_widget.py     # 月历网格主窗口、搜索对话框、当日详情对话框
-├── feishu_api.py          # 飞书 API 直接调用（App ID/Secret 模式）
+├── login_dialog.py        # 应用内扫码/网页登录（lark-cli device flow）
 ├── lark_cli.py            # lark-cli 同步封装（备用）
-├── lark_cli_async.py      # lark-cli 异步封装（QProcess；Windows 走 PowerShell，macOS 直接调用）
+├── lark_cli_async.py      # lark-cli 异步封装（QProcess；Windows 优先 node 直调，避免 cmd/PowerShell 拆解参数）
 ├── event_card.py          # 日程卡片组件
 ├── add_event_dialog.py    # 添加日程对话框
 ├── event_detail_dialog.py # 日程详情对话框
@@ -216,7 +203,6 @@ FeishuCalendarDesktop/
 ## 隐私说明
 
 - 本项目不存储任何飞书账号凭据
-- App ID 和 App Secret 保存在本地 `config.json` 中，已被 `.gitignore` 排除
 - lark-cli 授权信息由 lark-cli 独立管理
 - 所有日程数据通过 API 实时获取，不在本地持久化
 
