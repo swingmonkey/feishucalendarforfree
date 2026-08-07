@@ -653,6 +653,13 @@ class CalendarWidget(QMainWindow):
         today_btn.clicked.connect(self._go_today)
         h.addWidget(today_btn)
 
+        self.login_btn = QPushButton("⚙ 一键登录")
+        self.login_btn.setObjectName("primaryBtn")
+        self.login_btn.setToolTip("授权/配置飞书登录（扫码或链接）")
+        self.login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.login_btn.clicked.connect(self._open_login)
+        h.addWidget(self.login_btn)
+
         self._update_month_label()
         return bar
 
@@ -737,6 +744,14 @@ class CalendarWidget(QMainWindow):
         dialog = SettingsDialog(self.config, self)
         dialog.settings_changed.connect(self._on_settings_changed)
         dialog.exec()
+
+    def _open_login(self):
+        """Open the in-app lark-cli login dialog from the main window."""
+        from login_dialog import LoginDialog
+
+        dialog = LoginDialog(self)
+        dialog.exec()
+        self.refresh_events()
 
     def _on_settings_changed(self):
         # Apply new opacity

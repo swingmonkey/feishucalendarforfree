@@ -1,4 +1,4 @@
-# 飞书日程桌面助手 (FeishuCalendarDesktop)
+﻿# 飞书日程桌面助手 (FeishuCalendarDesktop)
 
 在 Windows / macOS 桌面显示飞书日历日程的月历网格视图，支持添加、删除、查看日程。
 
@@ -30,11 +30,14 @@
 
 ```bash
 npm install -g @larksuite/cli
-lark-cli config init
-lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"
+lark-cli config init --new
+lark-cli auth login --scope "calendar:calendar.event:read calendar:calendar:read"
 ```
 
-> **注意：** `--recommend` 不包含日历日程读取权限，必须使用上面的 `--scope` 参数明确指定。
+> **注意：**
+> - `--recommend` 不包含日程读取权限，必须用 `--scope` 显式指定。
+> - 新版 lark-cli（≥1.0.84）的 `--scope` 是**单个空格分隔参数**；重复写 `--scope A --scope B` 只会保留最后一个，会漏掉 `calendar:calendar.event:read`，因此上面用一条字符串同时列出两个 scope。
+> - 初始化用 `config init --new`（阻塞并输出验证链接，在浏览器打开完成）。
 
 ## 安装与运行
 
@@ -44,7 +47,7 @@ lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:cal
 
 1. 下载 `dist/飞书日程.exe`
 2. 双击运行
-3. 首次运行点击 ⚙ 设置按钮配置认证方式
+3. 首次运行自动弹出登录窗口，或点击月历栏「⚙ 一键登录」完成飞书授权
 
 #### 方式二：从源码运行
 
@@ -86,7 +89,7 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
 
 1. 下载 `dist/飞书日程.app.zip` 并解压
 2. 首次打开若提示"无法验证开发者"，右键 → 打开 → 打开
-3. 首次运行点击 ⚙ 设置按钮配置认证方式
+3. 首次运行自动弹出登录窗口，或点击月历栏「⚙ 一键登录」完成飞书授权
 
 > 配置文件位于 `~/Library/Application Support/FeishuCalendar/config.json`
 
@@ -119,6 +122,7 @@ bash build_macos.sh
 - **+** - 添加日程
 - **🔍** - 搜索日程（跨月搜索历史和未来日程）
 - **⟳** - 刷新日程
+- **⚙ 一键登录**（月历栏右侧） - 授权/配置飞书登录（二维码或链接）
 - **📤** - 导出当月日程到 Excel
 - **📌/📍** - 切换置顶（图标区分状态）
 - **⚙** - 打开设置

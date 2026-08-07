@@ -33,7 +33,8 @@ fi
     --hidden-import styles \
     --hidden-import lark_cli \
     --hidden-import lark_cli_async \
-    --hidden-import feishu_api \
+    --hidden-import login_dialog \
+    --hidden-import utils \
     --hidden-import calendar_widget \
     --hidden-import event_card \
     --hidden-import add_event_dialog \
