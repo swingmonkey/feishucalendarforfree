@@ -7,6 +7,7 @@ Windows/macOS 桌面月历日程应用（PySide6 GUI），展示飞书日历日�
 ```bash
 python -m pip install -r requirements.txt   # PySide6 + openpyxl
 python main.py                              # 或双击 启动飞书日程.bat
+python -m pytest                            # 10 个测试：utils 日期范围/排序逻辑
 ```
 首次运行自动弹登录窗口（lark-cli device flow：二维码/网页授权，scope 见 login_dialog.py LOGIN_SCOPES）。
 
@@ -23,4 +24,4 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 ## 当前状态
 - 认证仅 lark-cli 用户授权（App ID/Secret 模式已移除，feishu_api.py 已删除）
 - 已修复：日期星期错位、编辑日程 invalid JSON、node 直调参数、新版 lark-cli scope 授权（单字符串）
-- 最近提交 66e1e1f 已推送 GitHub（origin/main）
+- 已添加（2026-08-08）：`tests/test_utils.py`（10 用例）+ pytest.ini（`pythonpath=.`）；CI 已移除（不需要）
