@@ -36,3 +36,6 @@ crash.log
 # lark-cli credentials (stored in user home, but just in case)
 .lark/
 lark_config/
+
+# Runtime QR temp file
+feishu-login-qr.png
