@@ -40,6 +40,7 @@ class Config:
         "pin_to_top": True,
         "calendar_id": "primary",
         "auto_start": False,
+        "desktop_shortcut_created": False,
     }
 
     def __init__(self):

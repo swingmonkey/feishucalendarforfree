@@ -611,6 +611,13 @@ class CalendarWidget(QMainWindow):
         self.theme_btn.clicked.connect(self._toggle_theme)
         h.addWidget(self.theme_btn)
 
+        self.min_btn = QPushButton("—")
+        self.min_btn.setObjectName("iconBtn")
+        self.min_btn.setToolTip("最小化")
+        self.min_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.min_btn.clicked.connect(self.showMinimized)
+        h.addWidget(self.min_btn)
+
         close_btn = QPushButton("✕")
         close_btn.setObjectName("iconBtn")
         close_btn.setToolTip("隐藏到托盘")
