@@ -25,3 +25,5 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 认证仅 lark-cli 用户授权（App ID/Secret 模式已移除，feishu_api.py 已删除）
 - 已修复：日期星期错位、编辑日程 invalid JSON、node 直调参数、新版 lark-cli scope 授权（单字符串）
 - 已添加（2026-08-08）：`tests/test_utils.py`（10 用例）+ pytest.ini（`pythonpath=.`）；CI 已移除（不需要）
+- 已添加（2026-08-10）：最小化按钮（`calendar_widget.py:min_btn`）、桌面快捷方式自动创建（`main.py:_ensure_desktop_shortcut`，config 键 `desktop_shortcut_created`）、已授权后隐藏「一键登录」按钮（`calendar_widget.py:_update_login_btn_visibility`，逻辑在 `login_dialog.py:has_lark_auth`）
+- 样式：飞书视觉规范（styles.py，品牌蓝 #3370FF + N 系列灰阶；曾为 TRAE 紫 #4B3FE3，勿改回）
