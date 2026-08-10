@@ -552,6 +552,7 @@ class CalendarWidget(QMainWindow):
 
     def _build_header(self) -> QWidget:
         header = QFrame()
+        header.setObjectName("headerBar")
         header.setFixedHeight(44)
         h = QHBoxLayout(header)
         h.setContentsMargins(12, 4, 8, 4)
