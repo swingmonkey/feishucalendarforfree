@@ -254,10 +254,10 @@ class SettingsDialog(QDialog):
         self.cli_status_label = QLabel()
         if has_cli:
             self.cli_status_label.setText("✅ 已检测到 lark-cli")
-            self.cli_status_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+            self.cli_status_label.setStyleSheet("color: #34C724; font-size: 12px;")
         else:
             self.cli_status_label.setText("❌ 未检测到 lark-cli，请先执行：npm install -g @larksuite/cli")
-            self.cli_status_label.setStyleSheet("color: #f38ba8; font-size: 12px;")
+            self.cli_status_label.setStyleSheet("color: #F54A45; font-size: 12px;")
         self.cli_status_label.setWordWrap(True)
         cli_layout.addWidget(self.cli_status_label)
 
@@ -282,7 +282,7 @@ class SettingsDialog(QDialog):
         has_cli = shutil.which("lark-cli") is not None
         if has_cli:
             self.cli_status_label.setText("✅ 已检测到 lark-cli")
-            self.cli_status_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+            self.cli_status_label.setStyleSheet("color: #34C724; font-size: 12px;")
 
     def _build_general_tab(self) -> QWidget:
         """Build the general settings tab."""

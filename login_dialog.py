@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QTextEdit,
-    QMessageBox,
     QFrame,
 )
 
@@ -75,6 +74,18 @@ def _lark_cli(args, timeout=60):
         return -1, "", "lark-cli 执行超时"
     except Exception as e:  # noqa: BLE001
         return -1, "", str(e)
+
+
+def has_lark_auth() -> bool:
+    """Check whether the lark-cli user identity is authorized (ready)."""
+    rc, out, _ = _lark_cli(["auth", "status"], timeout=15)
+    if rc == 0:
+        try:
+            data = json.loads(out)
+            return data.get("identities", {}).get("user", {}).get("status") == "ready"
+        except json.JSONDecodeError:
+            pass
+    return False
 
 
 class _DeviceCodeWorker(QThread):
@@ -168,9 +179,10 @@ class LoginDialog(QDialog):
     # --------------------------------------------------------------- login
     def _start_login(self):
         self.status_label.setText("正在发起登录...")
-        args = ["auth", "login", "--no-wait", "--json"]
-        for scope in LOGIN_SCOPES:
-            args += ["--scope", scope]
+        # 新版 lark-cli（>=1.0.84）的 --scope 是单个空格分隔参数：
+        # 重复传 --scope A --scope B 只会保留最后一个，会漏掉
+        # calendar:calendar.event:read 导致拿不到日程，故拼成一条字符串。
+        args = ["auth", "login", "--no-wait", "--json", "--scope", " ".join(LOGIN_SCOPES)]
         rc, out, err = _lark_cli(args, timeout=30)
         if rc != 0:
             self.status_label.setText(f"❌ 发起登录失败：{err or out}")
@@ -235,7 +247,7 @@ class LoginDialog(QDialog):
 
     def _on_success(self):
         self.status_label.setText("✅ 登录成功！")
-        QMessageBox.information(self, "登录成功", "已授权飞书日历读写权限。")
+        # 登录成功即自动关闭窗口，无需再点确认框
         self.accept()
 
     def _on_fail(self, msg: str):

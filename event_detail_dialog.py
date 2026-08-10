@@ -93,7 +93,7 @@ class EventDetailDialog(QDialog):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(115, 115, 115, 0.18); background-color: rgba(115, 115, 115, 0.18); max-height: 1px;")
+        sep.setStyleSheet("color: rgba(31, 35, 41, 0.15); background-color: rgba(31, 35, 41, 0.15); max-height: 1px;")
         layout.addWidget(sep)
 
         form = QFormLayout()
@@ -258,7 +258,7 @@ class EventDetailDialog(QDialog):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(115, 115, 115, 0.18); background-color: rgba(115, 115, 115, 0.18); max-height: 1px;")
+        sep.setStyleSheet("color: rgba(31, 35, 41, 0.15); background-color: rgba(31, 35, 41, 0.15); max-height: 1px;")
         layout.addWidget(sep)
 
         form = QFormLayout()

@@ -47,30 +47,42 @@ class LarkCliAsync(QObject):
         process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
 
         def on_finished(exit_code, exit_status):
-            output = bytes(process.readAll()).decode("utf-8", errors="replace").strip()
+            try:
+                output = bytes(process.readAll()).decode("utf-8", errors="replace").strip()
+            except RuntimeError:
+                # QProcess 的 C++ 对象已被销毁（例如应用正在退出），直接跳过。
+                return
             # Release the QProcess once the call completes to avoid leaking
             # one process object per request.
             process.deleteLater()
 
             if not output:
-                on_error("lark-cli 没有输出，请检查授权状态\n\n请确认已完成以下步骤：\n1. lark-cli auth login --scope \"calendar:calendar.event:read\" --scope \"calendar:calendar:read\"\n2. 在浏览器中扫码授权")
+                on_error("lark-cli 没有输出，请检查授权状态\n\n请确认已完成以下步骤：\n1. lark-cli auth login --scope \"calendar:calendar.event:read calendar:calendar:read\"\n2. 在浏览器中完成授权")
                 return
 
+            data = None
             try:
-                data = json.loads(output)
+                parsed = json.loads(output)
+                if isinstance(parsed, dict):
+                    data = parsed
             except json.JSONDecodeError:
-                # Try line by line for multi-line output
+                pass
+            if data is None:
+                # Try line by line for multi-line / mixed output, keeping only dict lines
                 for line in output.split("\n"):
                     line = line.strip()
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            break
-                        except json.JSONDecodeError:
-                            continue
-                else:
-                    on_error(f"无法解析 lark-cli 输出:\n{output[:500]}")
-                    return
+                    if not line:
+                        continue
+                    try:
+                        parsed = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(parsed, dict):
+                        data = parsed
+                        break
+            if data is None:
+                on_error(f"无法解析 lark-cli 输出:\n{output[:500]}")
+                return
 
             if data.get("ok"):
                 on_success(data.get("data", []))
@@ -103,9 +115,9 @@ class LarkCliAsync(QObject):
                                 scope = scope_match.group(1)
                                 msg += f'\n\n请运行以下命令授权缺失的权限：\nlark-cli auth login --scope "{scope}"'
                             else:
-                                msg += '\n\n请运行以下命令授权日历权限：\nlark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"'
+                                msg += '\n\n请运行以下命令授权日历权限：\nlark-cli auth login --scope "calendar:calendar.event:read calendar:calendar:read"'
                 elif err_type == "authorization" or "auth" in full_msg:
-                    msg += '\n\n请运行: lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:calendar:read"'
+                    msg += '\n\n请运行: lark-cli auth login --scope "calendar:calendar.event:read calendar:calendar:read"'
                 on_error(msg)
 
         process.finished.connect(on_finished)
