@@ -212,6 +212,14 @@ class MainWindow(QMainWindow):
         self.theme_btn.clicked.connect(self._toggle_theme)
         h.addWidget(self.theme_btn)
 
+        # Minimize button (ported from the old CalendarWidget)
+        self.min_btn = QPushButton("—")
+        self.min_btn.setObjectName("iconBtn")
+        self.min_btn.setToolTip("最小化")
+        self.min_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.min_btn.clicked.connect(self.showMinimized)
+        h.addWidget(self.min_btn)
+
         close_btn = QPushButton("✕")
         close_btn.setObjectName("iconBtn")
         close_btn.setToolTip("隐藏到托盘")
@@ -253,6 +261,16 @@ class MainWindow(QMainWindow):
         today_btn.setFixedWidth(44)
         today_btn.clicked.connect(self._go_today)
         h.addWidget(today_btn)
+
+        # In-app lark-cli login entry (ported from the old CalendarWidget).
+        # Hidden automatically once the user is already authorized.
+        self.login_btn = QPushButton("⚙ 一键登录")
+        self.login_btn.setObjectName("primaryBtn")
+        self.login_btn.setToolTip("授权/配置飞书登录（扫码或链接）")
+        self.login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.login_btn.clicked.connect(self._open_login)
+        h.addWidget(self.login_btn)
+        self._update_login_btn_visibility()
 
         self._update_period_label()
         return bar
@@ -353,6 +371,28 @@ class MainWindow(QMainWindow):
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.refresh_events)
         self.refresh_timer.start(self.config.get("auto_refresh_interval", 300) * 1000)
+
+    # ── Login entry (ported from the old CalendarWidget) ──
+
+    def _open_login(self):
+        """Open the in-app lark-cli login dialog from the main window."""
+        from login_dialog import LoginDialog
+
+        dialog = LoginDialog(self)
+        dialog.exec()
+        self._update_login_btn_visibility()
+        self.refresh_events()
+
+    def _update_login_btn_visibility(self):
+        """Hide the 「一键登录」button once the user is already authorized."""
+        try:
+            from login_dialog import has_lark_auth
+
+            self.login_btn.setVisible(not has_lark_auth())
+        except Exception:
+            # Authorization state unknown → show the button to avoid locking
+            # the user out of the login entry point.
+            self.login_btn.setVisible(True)
 
     # ── Refresh / fetch ──
 

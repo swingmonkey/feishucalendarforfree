@@ -26,4 +26,6 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 ## 当前状态
 - 认证仅 lark-cli 用户授权（App ID/Secret 模式已移除，feishu_api.py 已删除）
 - 已重构：拆分 calendar_widget.py 为 main_window + month_view + week_view + widgets + dialogs；新增月/周双视图、拖拽改期、颜色分类、重复日程、Markdown 子任务
+- 已移植协作者 UI 增强到新架构（`main_window.py`）：最小化按钮（`min_btn`→`showMinimized`）、桌面快捷方式自动创建（`main.py:_ensure_desktop_shortcut`，config 键 `desktop_shortcut_created`）、已授权后隐藏「一键登录」按钮（`_update_login_btn_visibility`，逻辑在 `login_dialog.has_lark_auth`）
+- 离线回归测试：`tests/test_refactor_features.py`（11 例，覆盖月/周切换、重复展开、子任务往返、拖拽改期接线、登录按钮显隐、桌面快捷方式逻辑），需 `QT_QPA_PLATFORM=offscreen` + PySide6
 - 最近提交已推送 GitHub（origin/main）

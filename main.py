@@ -3,6 +3,8 @@
 import os
 import sys
 import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication,
@@ -199,12 +201,95 @@ def _has_lark_auth() -> bool:
     return False
 
 
+def _ensure_desktop_shortcut(config):
+    """首次运行时自动在桌面创建快捷方式（Windows .lnk / macOS symlink）。
+
+    用 config 标记 desktop_shortcut_created，只创建一次；失败不阻塞启动。
+    快捷方式已存在（例如手动删除标记）时直接补标记，不重复创建。
+    """
+    if config.get("desktop_shortcut_created"):
+        return
+    desktop = Path.home() / "Desktop"
+    if not desktop.exists():
+        return
+    try:
+        # 快捷方式已存在则视为完成，避免重复创建
+        candidate = None
+        if sys.platform == "win32":
+            candidate = desktop / "飞书日程.lnk"
+        elif sys.platform == "darwin":
+            candidate = desktop / "飞书日程.app"
+            if not candidate.exists():
+                candidate = desktop / "启动飞书日程.command"
+        if candidate is not None and candidate.exists():
+            config.set("desktop_shortcut_created", True)
+            return
+        if sys.platform == "win32":
+            _create_windows_shortcut(desktop)
+        elif sys.platform == "darwin":
+            _create_macos_shortcut(desktop)
+        config.set("desktop_shortcut_created", True)
+    except Exception:
+        # 创建失败不阻塞启动，下次运行会重试
+        pass
+
+
+def _create_windows_shortcut(desktop: Path):
+    """用 PowerShell COM 创建 .lnk，指向 pythonw + main.py（无控制台窗口）。"""
+    script = Path(__file__).resolve()
+    target = Path(sys.executable).with_name("pythonw.exe")
+    if not target.exists():
+        target = Path(sys.executable)
+    lnk = desktop / "飞书日程.lnk"
+
+    ps = (
+        "$ws = New-Object -ComObject WScript.Shell" + "\n"
+        + f"$s = $ws.CreateShortcut('{lnk}')" + "\n"
+        + f"$s.TargetPath = '{target}'" + "\n"
+        + f"$s.Arguments = '\"{script}\"'" + "\n"
+        + f"$s.WorkingDirectory = '{script.parent}'" + "\n"
+        + "$s.Save()" + "\n"
+    )
+    # 写入临时 .ps1（UTF-8 with BOM），避免命令行中文编码问题
+    fd, tmp = tempfile.mkstemp(suffix=".ps1")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8-sig") as f:
+            f.write(ps)
+        subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tmp],
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
+    finally:
+        os.unlink(tmp)
+
+
+def _create_macos_shortcut(desktop: Path):
+    """macOS：优先软链 .app，否则软链启动脚本 .command。"""
+    app = Path(__file__).parent / "dist" / "飞书日程.app"
+    if app.exists():
+        link = desktop / "飞书日程.app"
+        if not link.exists():
+            link.symlink_to(app)
+        return
+    cmd = Path(__file__).parent / "启动飞书日程.command"
+    if cmd.exists():
+        link = desktop / "启动飞书日程.command"
+        if not link.exists():
+            link.symlink_to(cmd)
+
+
 def main():
     # Make sure npm/brew/nvm-installed CLIs (lark-cli, node) are reachable
     # even when launched from a .app bundle with a minimal PATH.
     _extend_path_for_app_bundle()
 
     config = Config()
+
+    # Create a desktop shortcut on first run (before TrayApp loads its own
+    # Config instance, so the flag is persisted and not overwritten to False).
+    _ensure_desktop_shortcut(config)
 
     # Check if we have either lark-cli or app credentials
     has_lark_cli = shutil.which("lark-cli") is not None

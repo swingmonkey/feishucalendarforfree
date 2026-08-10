@@ -42,6 +42,7 @@ class Config:
         "auto_start": False,
         "view_mode": "month",  # month | week
         "event_colors": {},  # {event_id: "#hex"} — local-only categorization
+        "desktop_shortcut_created": False,  # 首次运行已在桌面创建快捷方式
     }
 
     def __init__(self):
