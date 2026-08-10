@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 
 from config import Config
 from calendar_widget import CalendarWidget
+from login_dialog import has_lark_auth
 
 
 def _extend_path_for_app_bundle():
@@ -183,22 +184,6 @@ class TrayApp(QApplication):
         self.quit()
 
 
-def _has_lark_auth() -> bool:
-    """Check whether the lark-cli user identity is authorized (ready)."""
-    import json
-
-    from login_dialog import _lark_cli
-
-    rc, out, _ = _lark_cli(["auth", "status"], timeout=15)
-    if rc == 0:
-        try:
-            data = json.loads(out)
-            return data.get("identities", {}).get("user", {}).get("status") == "ready"
-        except json.JSONDecodeError:
-            pass
-    return False
-
-
 def main():
     # Make sure npm/brew/nvm-installed CLIs (lark-cli, node) are reachable
     # even when launched from a .app bundle with a minimal PATH.
@@ -222,12 +207,13 @@ def main():
             "  npm install -g @larksuite/cli\n\n"
             "安装完成后重新启动本应用即可扫码登录。",
         )
-    elif not _has_lark_auth():
+    elif not has_lark_auth():
         from login_dialog import LoginDialog
 
         dlg = LoginDialog(app.widget)
         dlg.exec()
-        if _has_lark_auth():
+        if has_lark_auth():
+            app.widget._update_login_btn_visibility()
             app.widget.refresh_events()
 
     sys.exit(app.exec())

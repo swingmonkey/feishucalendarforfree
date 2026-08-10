@@ -659,6 +659,7 @@ class CalendarWidget(QMainWindow):
         self.login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.login_btn.clicked.connect(self._open_login)
         h.addWidget(self.login_btn)
+        self._update_login_btn_visibility()
 
         self._update_month_label()
         return bar
@@ -740,6 +741,16 @@ class CalendarWidget(QMainWindow):
             self.pin_btn.setToolTip("置顶")
         self.show()
 
+    def _update_login_btn_visibility(self):
+        """已授权后隐藏月历栏的「一键登录」按钮。"""
+        try:
+            from login_dialog import has_lark_auth
+
+            self.login_btn.setVisible(not has_lark_auth())
+        except Exception:
+            # 授权状态未知时保守显示按钮，避免用户失去登录入口
+            self.login_btn.setVisible(True)
+
     def _on_settings(self):
         dialog = SettingsDialog(self.config, self)
         dialog.settings_changed.connect(self._on_settings_changed)
@@ -751,6 +762,7 @@ class CalendarWidget(QMainWindow):
 
         dialog = LoginDialog(self)
         dialog.exec()
+        self._update_login_btn_visibility()
         self.refresh_events()
 
     def _on_settings_changed(self):
