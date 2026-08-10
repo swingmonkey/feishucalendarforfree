@@ -14,12 +14,16 @@ python main.py                              # 或双击 启动飞书日程.bat
 Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共享授权凭据）。
 
 ## 目录与约定
-- `main.py` 入口+托盘；`calendar_widget.py` 月历网格；`login_dialog.py` 应用内登录
+- `main.py` 入口+托盘；`main_window.py` 主窗口（月/周视图切换、刷新/错误重试/拖拽改期/持久化）
+- `month_view.py` 月历网格组件；`week_view.py` 周计划组件（weektodo 风格 7 列）
+- `widgets.py` 共享小组件（日期徽标 / 可点击标签 / 紧凑日程标签=拖拽源 / 日格=放置目标）；`models_event.py` 事件模型（时间解析、重复展开 RFC5545、Markdown→HTML、颜色/子任务工具）
+- `event_card.py` 日程卡片（颜色条 / ♻ 徽标 / 拖拽源）；`day_detail_dialog.py` + `search_dialog.py` 由旧 calendar_widget.py 拆分而出
 - `lark_cli_async.py` 异步封装（QProcess）；**Windows 必须 node 直调 run.js**（cmd/PowerShell 会拆解 `--data` JSON 的双引号和 URL 的 `&`，报 invalid JSON）
 - 月历 7 列等宽约定：GridEventLabel/DayCell 水平 sizePolicy=Ignored，表头用 QGridLayout，勿让内容撑宽列
-- `config.json` 存窗口/主题/刷新间隔（`.gitignore` 排除，不含任何凭据）
+- 飞书读写能力集中在 `lark_cli.py`/`lark_cli_async.py`，**重构只动 UI 层**：拖拽改期复用 `update_event`，重复写入复用 `+create --rrule`/`patch recurrence`，颜色仅存本地 `config.json.event_colors`，子任务即描述里的 Markdown 勾选清单 `- [ ]`
+- `config.json` 存窗口/主题/刷新间隔/视图模式/颜色（`.gitignore` 排除，不含任何凭据）
 
 ## 当前状态
 - 认证仅 lark-cli 用户授权（App ID/Secret 模式已移除，feishu_api.py 已删除）
-- 已修复：日期星期错位、编辑日程 invalid JSON、node 直调参数
-- 最近提交 66e1e1f 已推送 GitHub（origin/main）
+- 已重构：拆分 calendar_widget.py 为 main_window + month_view + week_view + widgets + dialogs；新增月/周双视图、拖拽改期、颜色分类、重复日程、Markdown 子任务
+- 最近提交已推送 GitHub（origin/main）

@@ -1,4 +1,14 @@
-"""Event card widget for displaying a single calendar event."""
+"""Event card widget for displaying a single calendar event.
+
+Now supports the weektodo-style enhancements requested in the refactor:
+- a left color stripe driven by the local color registry (``config.event_colors``)
+- a ♻ badge for recurring events
+- drag-and-drop rescheduling (the card is a drag *source*; month/week cells
+  are the drop targets)
+
+Time parsing / all-day detection now live in :mod:`models_event` and are
+re-exported here for backward compatibility.
+"""
 
 from datetime import datetime
 from PySide6.QtWidgets import (
@@ -8,51 +18,21 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QPoint
+from PySide6.QtGui import QMouseEvent, QDrag
+from PySide6.QtWidgets import QApplication
 
+from models_event import (
+    parse_event_time,
+    is_all_day_event,
+    has_recurrence,
+    get_event_color,
+)
+from widgets import build_event_mime
+from config import Config
 
-def parse_event_time(time_data) -> datetime:
-    """Parse event time from lark-cli or Feishu API response.
-
-    Handles:
-    - Timed events (lark-cli): {'datetime': '2026-07-15T10:00:00+08:00'}
-    - All-day events (lark-cli): {'date': '2026-07-15', 'timezone': 'UTC'}
-    - Feishu API: {'timestamp': '1690000000', 'timezone': 'Asia/Shanghai'}
-    """
-    if not isinstance(time_data, dict):
-        return datetime.now()
-    # Feishu API: has 'timestamp' field (Unix seconds as string)
-    ts_str = time_data.get("timestamp", "")
-    if ts_str:
-        try:
-            return datetime.fromtimestamp(int(ts_str))
-        except (ValueError, TypeError):
-            pass
-    # lark-cli: has 'datetime' field like '2026-07-15T10:00:00+08:00'
-    dt_str = time_data.get("datetime", "")
-    if dt_str:
-        try:
-            dt = datetime.fromisoformat(dt_str)
-            # Strip timezone to avoid offset-naive vs offset-aware comparison errors
-            return dt.replace(tzinfo=None)
-        except (ValueError, TypeError):
-            pass
-    # All-day event: has 'date' field like '2026-07-15'
-    date_str = time_data.get("date", "")
-    if date_str:
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d")
-        except (ValueError, TypeError):
-            pass
-    return datetime.now()
-
-
-def is_all_day_event(event: dict) -> bool:
-    """Check if an event is an all-day event (date-only, no datetime/timestamp)."""
-    start = event.get("start_time", {})
-    if isinstance(start, dict):
-        return bool(start.get("date")) and not start.get("datetime") and not start.get("timestamp")
-    return False
+# Re-export for legacy imports (``from event_card import parse_event_time``).
+__all__ = ["EventCard", "parse_event_time", "is_all_day_event"]
 
 
 class EventCard(QFrame):
@@ -61,16 +41,25 @@ class EventCard(QFrame):
     clicked = Signal(dict)
     delete_clicked = Signal(dict)
 
-    def __init__(self, event: dict, parent=None):
+    def __init__(self, event: dict, config: Config = None, parent=None):
         super().__init__(parent)
         # IMPORTANT: use 'event_data' not 'event' — 'event' would shadow
         # QObject.event(), a core Qt virtual method, causing C++ segfaults.
         self.event_data = event
+        self._config = config
+        self._press_pos: QPoint | None = None
+        self._dragging = False
         self._is_past = False
         self._is_current = False
         self._all_day = is_all_day_event(event)
         self._setup_ui()
+        self._apply_color()
         self._update_status()
+
+    def _apply_color(self):
+        color = get_event_color(self._config, self.event_data.get("event_id", ""))
+        if color:
+            self.setStyleSheet(f"border-left: 3px solid {color};")
 
     def _setup_ui(self):
         self.setObjectName("eventCard")
@@ -79,25 +68,26 @@ class EventCard(QFrame):
         layout.setContentsMargins(12, 8, 8, 8)
         layout.setSpacing(4)
 
-        # Top row: time + delete button
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.setSpacing(8)
 
-        # Time label
         start = parse_event_time(self.event_data.get("start_time", {}))
         end = parse_event_time(self.event_data.get("end_time", {}))
+        recurring = bool(self.event_data.get("_is_recurring_instance") or has_recurrence(self.event_data))
         if self._all_day:
             time_text = "全天"
         else:
             time_text = f"{start.strftime('%H:%M')} - {end.strftime('%H:%M')}"
+        if recurring:
+            time_text = "♻ " + time_text
+
         self.time_label = QLabel(time_text)
         self.time_label.setObjectName("eventTime")
         top_row.addWidget(self.time_label)
 
         top_row.addStretch()
 
-        # Delete button
         self.delete_btn = QPushButton("x")
         self.delete_btn.setObjectName("deleteBtn")
         self.delete_btn.setToolTip("删除日程")
@@ -107,7 +97,6 @@ class EventCard(QFrame):
 
         layout.addLayout(top_row)
 
-        # Title
         summary = self.event_data.get("summary", "(无标题)")
         if not isinstance(summary, str):
             summary = str(summary)
@@ -117,7 +106,6 @@ class EventCard(QFrame):
         self.title_label.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self.title_label)
 
-        # Meta info (organizer, location, etc.)
         meta_parts = []
         organizer = self.event_data.get("event_organizer", {})
         if isinstance(organizer, dict) and organizer.get("display_name"):
@@ -143,7 +131,6 @@ class EventCard(QFrame):
         elif start <= now <= end:
             self._is_current = True
 
-        # Use objectName switching instead of dynamic properties
         if self._is_past:
             self.setObjectName("eventCardPast")
             self.time_label.setObjectName("eventTimePast")
@@ -156,10 +143,38 @@ class EventCard(QFrame):
             self.time_label.setObjectName("eventTime")
             self.title_label.setObjectName("eventTitle")
 
-    def mousePressEvent(self, ev):
+    # ── Drag to reschedule ──
+
+    def mousePressEvent(self, ev: QMouseEvent):
         if ev.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit(self.event_data)
+            self._press_pos = ev.position().toPoint()
+            self._dragging = False
         super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if (
+            self._press_pos is not None
+            and ev.buttons() & Qt.MouseButton.LeftButton
+            and not self._dragging
+        ):
+            if (ev.position().toPoint() - self._press_pos).manhattanLength() >= QApplication.startDragDistance():
+                # Don't start a drag when the press began on the delete button.
+                child = self.childAt(self._press_pos)
+                if child is self.delete_btn:
+                    return
+                self._dragging = True
+                recurring = bool(self.event_data.get("_is_recurring_instance") or has_recurrence(self.event_data))
+                if not recurring:
+                    drag = QDrag(self)
+                    drag.setMimeData(build_event_mime(self.event_data))
+                    drag.exec(Qt.DropAction.MoveAction)
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev: QMouseEvent):
+        if ev.button() == Qt.MouseButton.LeftButton and not self._dragging:
+            self.clicked.emit(self.event_data)
+        self._press_pos = None
+        super().mouseReleaseEvent(ev)
 
     def refresh_status(self):
         """Re-evaluate and refresh the card's time status."""

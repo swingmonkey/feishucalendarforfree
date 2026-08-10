@@ -129,6 +129,7 @@ class LarkCli:
         end: datetime,
         description: str = "",
         calendar_id: str = "primary",
+        rrule: str = None,
     ) -> dict:
         """Create a new calendar event.
 
@@ -138,6 +139,7 @@ class LarkCli:
             end: End datetime.
             description: Event description.
             calendar_id: Calendar ID (default: primary).
+            rrule: Optional RFC5545 recurrence rule.
 
         Returns:
             Created event data.
@@ -160,6 +162,8 @@ class LarkCli:
         ]
         if description:
             args.extend(["--description", description])
+        if rrule:
+            args.extend(["--rrule", rrule])
 
         result = self._run(args)
         return result.get("data", {})

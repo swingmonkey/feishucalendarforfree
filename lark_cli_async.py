@@ -214,8 +214,14 @@ class LarkCliAsync(QObject):
         end: datetime,
         description: str = "",
         calendar_id: str = "primary",
+        rrule: str = None,
     ):
-        """Create a new calendar event."""
+        """Create a new calendar event.
+
+        ``rrule`` is an optional RFC5545 recurrence rule passed straight through
+        to ``lark-cli calendar +create --rrule``. ``None``/empty means a normal
+        one-off event.
+        """
         tz = "+08:00"
         start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
         end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
@@ -234,6 +240,8 @@ class LarkCliAsync(QObject):
         ]
         if description:
             args.extend(["--description", description])
+        if rrule:
+            args.extend(["--rrule", rrule])
 
         def on_success(data):
             self.event_created.emit(data if isinstance(data, dict) else {})
@@ -278,10 +286,12 @@ class LarkCliAsync(QObject):
         start: datetime = None,
         end: datetime = None,
         description: str = "",
+        rrule: str = None,
     ):
         """Update an existing calendar event via raw API call.
 
         Uses lark-cli's raw API mode: `api PATCH /open-apis/...`
+        ``rrule`` optionally replaces the recurrence rule (RFC5545).
         """
         body = {}
         if summary:
@@ -299,6 +309,8 @@ class LarkCliAsync(QObject):
             }
         if description is not None:
             body["description"] = description
+        if rrule is not None:
+            body["recurrence"] = rrule
 
         # Resolve calendar_id
         if not calendar_id or calendar_id == "primary":

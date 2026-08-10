@@ -40,6 +40,8 @@ class Config:
         "pin_to_top": True,
         "calendar_id": "primary",
         "auto_start": False,
+        "view_mode": "month",  # month | week
+        "event_colors": {},  # {event_id: "#hex"} — local-only categorization
     }
 
     def __init__(self):

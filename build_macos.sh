@@ -33,11 +33,16 @@ fi
     --hidden-import styles \
     --hidden-import lark_cli \
     --hidden-import lark_cli_async \
-    --hidden-import feishu_api \
-    --hidden-import calendar_widget \
+    --hidden-import models_event \
+    --hidden-import widgets \
+    --hidden-import month_view \
+    --hidden-import week_view \
+    --hidden-import main_window \
     --hidden-import event_card \
     --hidden-import add_event_dialog \
     --hidden-import event_detail_dialog \
+    --hidden-import day_detail_dialog \
+    --hidden-import search_dialog \
     --hidden-import settings_dialog \
     --hidden-import export_dialog \
     "$ENTRY"

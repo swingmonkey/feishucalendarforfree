@@ -14,7 +14,7 @@ from PySide6.QtGui import QIcon, QAction, QPixmap, QPainter, QColor, QFont
 from PySide6.QtCore import Qt
 
 from config import Config
-from calendar_widget import CalendarWidget
+from main_window import MainWindow
 
 
 def _extend_path_for_app_bundle():
@@ -105,7 +105,7 @@ class TrayApp(QApplication):
 
         self.config = Config()
         self.icon = create_app_icon()
-        self.widget = CalendarWidget(self.config)
+        self.widget = MainWindow(self.config)
         self._setup_tray()
         self.widget.show()
 

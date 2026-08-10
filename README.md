@@ -1,12 +1,16 @@
 # 飞书日程桌面助手 (FeishuCalendarDesktop)
 
-在 Windows / macOS 桌面显示飞书日历日程的月历网格视图，支持添加、删除、查看日程。
+在 Windows / macOS 桌面显示飞书日历日程的**月历 / 周计划双视图**应用，支持添加、删除、查看、拖拽改期日程，并参考 [WeekToDo](https://github.com/manuelernestog/weektodo) 的交互理念做了组件化重构。
 
-参考 [PaperTodo](https://github.com/snownico0722/PaperTodo) 的设计理念，支持 lark-cli 和飞书开放平台 API 两种方式对接飞书日历。
+底层对接飞书日历的方式不变：仍然通过 `lark-cli` 读取与写入日程（认证统一走 lark-cli 用户授权，应用内扫码登录），**飞书读写能力完全保留**。
 
 ## 功能
 
-- **月历网格视图** - 整月日程一目了然，每个日期格内直接显示日程
+- **月 / 周双视图** - 顶部「月 / 周」切换。月历网格纵览整月；周计划（weektodo 风格）以 7 列展示本周每天的可滚动日程卡片
+- **拖拽改期** - 在月历格之间、或在周计划各列之间拖动日程卡片即可改期，自动写回飞书
+- **日程颜色 / 分类** - 新建或查看日程时可设置颜色（本地分类，按 event id 存于 config.json，不影响飞书）
+- **重复日程** - 创建时选择每天 / 每工作日 / 每周 / 每两周 / 每月，写入飞书 RFC5545 重复规则；读取时按规则在视图内展开显示（♻ 标记）
+- **子任务 / Markdown** - 描述支持 Markdown 渲染；描述中以 `- [ ]` 书写的勾选清单会渲染为可交互子任务，勾选后写回飞书
 - **日程预览** - 格内显示时间和部分标题，放不下自动截断，悬停查看完整标题
 - **当日详情** - 点击"+N更多"查看某天全部日程列表，点击日程查看详情
 - **日程详情** - 点击日程查看完整信息（时间、组织者、会议链接等）
@@ -24,7 +28,7 @@
 - **自动刷新** - 定时自动同步最新日程
 - **授权后自动刷新** - 检测到授权错误时自动重试获取日程
 - **错误信息可复制** - 错误提示支持选中和复制，方便排查问题
-- **导出日程** - 一键导出当月日程到 Excel
+- **导出日程** - 一键导出当前范围日程到 Excel
 
 ## 认证方式（lark-cli 用户授权）
 
@@ -69,10 +73,16 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
   --hidden-import styles \
   --hidden-import lark_cli \
   --hidden-import lark_cli_async \
-  --hidden-import login_dialog \n  --hidden-import calendar_widget \
+  --hidden-import models_event \
+  --hidden-import widgets \
+  --hidden-import month_view \
+  --hidden-import week_view \
+  --hidden-import main_window \
   --hidden-import event_card \
   --hidden-import add_event_dialog \
   --hidden-import event_detail_dialog \
+  --hidden-import day_detail_dialog \
+  --hidden-import search_dialog \
   --hidden-import settings_dialog \
   --hidden-import export_dialog \
   main.py
@@ -116,22 +126,24 @@ bash build_macos.sh
 
 - **拖动** - 按住窗口顶部拖动移动位置
 - **调整大小** - 拖拽窗口右下角 ⇲ 图标调整大小
+- **月 / 周** - 切换月历网格 / 周计划视图
 - **+** - 添加日程
 - **🔍** - 搜索日程（跨月搜索历史和未来日程）
 - **⟳** - 刷新日程
-- **📤** - 导出当月日程到 Excel
+- **📤** - 导出当前范围日程到 Excel
 - **📌/📍** - 切换置顶（图标区分状态）
 - **⚙** - 打开设置
 - **◐** - 切换深色/浅色主题
 - **✕** - 隐藏到系统托盘
 
-### 月历网格
+### 月历网格 / 周计划
 
 - 每个日期格最多显示 3 条日程，超出显示"+N更多"
 - 点击日程条 → 查看日程详情
 - 点击"+N更多" → 查看当日全部日程列表，点击列表中日程查看详情
+- 拖动日程卡片到其他日期格 / 其他周列 → 改期并写回飞书
 - 鼠标悬停日期格 → 变色高亮强调
-- 全天事件显示"全天"标记
+- 全天事件显示"全天"标记；重复事件显示 ♻ 标记
 - 今天用蓝色圆圈标记
 - 点击日期格空白处 → 快速添加该日日程
 
@@ -154,24 +166,32 @@ bash build_macos.sh
 ```
 FeishuCalendarDesktop/
 ├── main.py                # 程序入口，系统托盘
-├── calendar_widget.py     # 月历网格主窗口、搜索对话框、当日详情对话框
+├── main_window.py         # 主窗口（月/周视图切换、刷新/错误重试/设置/增删/拖拽改期/持久化）
+├── month_view.py          # 月历网格视图组件
+├── week_view.py           # 周计划视图组件（weektodo 风格 7 列）
+├── widgets.py             # 共享小组件：日期徽标、可点击标签、紧凑日程标签（拖拽源）、日格（放置目标）
+├── models_event.py        # 事件模型：时间解析、重复展开、Markdown→HTML、颜色/子任务工具
+├── event_card.py          # 日程卡片组件（颜色条 / ♻ 徽标 / 拖拽源）
+├── day_detail_dialog.py   # 当日详情对话框
+├── search_dialog.py       # 搜索对话框
+├── add_event_dialog.py    # 添加日程对话框（颜色 + 重复规则）
+├── event_detail_dialog.py # 日程详情对话框（Markdown / 子任务 / 颜色 / 重复）
 ├── login_dialog.py        # 应用内扫码/网页登录（lark-cli device flow）
 ├── lark_cli.py            # lark-cli 同步封装（备用）
 ├── lark_cli_async.py      # lark-cli 异步封装（QProcess；Windows 优先 node 直调，避免 cmd/PowerShell 拆解参数）
-├── event_card.py          # 日程卡片组件
-├── add_event_dialog.py    # 添加日程对话框
-├── event_detail_dialog.py # 日程详情对话框
 ├── settings_dialog.py     # 设置对话框（开机启动跨平台分发）
 ├── export_dialog.py       # 导出日程到 Excel
 ├── utils.py               # 共享的日期范围计算与日程排序工具
 ├── config.py              # 配置管理（macOS 配置存放在 ~/Library/Application Support）
-├── styles.py              # 主题样式（深色/浅色）
+├── styles.py              # 主题样式（深色/浅色 + 周视图/切换按钮/拖放高亮）
 ├── requirements.txt       # Python 依赖
 ├── config.example.json    # 配置文件示例
 ├── 启动飞书日程.bat        # Windows 启动脚本
 ├── 启动飞书日程.command    # macOS 启动脚本
 └── build_macos.sh         # macOS PyInstaller 打包脚本
 ```
+
+> **架构约定**：飞书读写能力集中在 `lark_cli.py` / `lark_cli_async.py`（通过 QProcess 调 node 版 `lark-cli`），重构只改动 UI 层；新增的拖拽改期、颜色、重复、子任务全部复用既有读写接口，不改变与飞书的数据通路。
 
 ## 配置文件
 
@@ -191,8 +211,8 @@ FeishuCalendarDesktop/
   "opacity": 0.95,
   "pin_to_top": true,
   "calendar_id": "primary",
-  "app_id": "",
-  "app_secret": "",
+  "view_mode": "month",
+  "event_colors": {},
   "auto_start": false
 }
 ```

@@ -871,8 +871,98 @@ QRadioButton::indicator:checked::after {
 """
 
 
+def _extra_rules(name: str) -> str:
+    """Additional QSS for the weektodo-style refactor (view toggle, week
+    planner columns, drag highlight, subtasks). Theme-aware colors."""
+    dark = name != "light"
+    if dark:
+        col_bg = "#262626"
+        col_border = "rgba(115, 115, 115, 0.12)"
+        col_today_border = "#4B3FE3"
+        drop_bg = "#1a2e1e"
+        drop_border = "#15A877"
+        date_color = "#E5E5E5"
+        add_color = "#A1A1A1"
+        add_hover = "#AAB7FF"
+        range_color = "#737373"
+        toggle_fg = "#A1A1A1"
+        toggle_hover = "#E5E5E5"
+    else:
+        col_bg = "#FFFFFF"
+        col_border = "rgba(115, 115, 115, 0.12)"
+        col_today_border = "#4B3FE3"
+        drop_bg = "rgba(21, 168, 119, 0.10)"
+        drop_border = "#15A877"
+        date_color = "#171717"
+        add_color = "#737373"
+        add_hover = "#4B3FE3"
+        range_color = "#737373"
+        toggle_fg = "#737373"
+        toggle_hover = "#171717"
+
+    return f"""
+/* === View toggle (month / week) === */
+QPushButton#toggleBtn {{
+    background-color: transparent;
+    border: 1px solid {col_border};
+    border-radius: 6px;
+    padding: 4px 10px;
+    min-width: 32px;
+    color: {toggle_fg};
+    font-size: 13px;
+}}
+QPushButton#toggleBtn:hover {{
+    background-color: rgba(115, 115, 115, 0.20);
+    color: {toggle_hover};
+}}
+QPushButton#toggleBtnActive {{
+    background-color: #4B3FE3;
+    border: 1px solid #4B3FE3;
+    border-radius: 6px;
+    padding: 4px 10px;
+    min-width: 32px;
+    color: #FFFFFF;
+    font-weight: 600;
+    font-size: 13px;
+}}
+
+/* === Week planner columns === */
+QFrame#weekDayCol {{
+    background-color: {col_bg};
+    border: 1px solid {col_border};
+    border-radius: 8px;
+}}
+QFrame#weekDayColToday {{
+    background-color: {col_bg};
+    border: 2px solid {col_today_border};
+    border-radius: 8px;
+}}
+QFrame#weekDayColDrop {{
+    background-color: {drop_bg};
+    border: 2px dashed {drop_border};
+    border-radius: 8px;
+}}
+QLabel#weekColDate {{
+    font-size: 11px;
+    font-weight: 600;
+    color: {date_color};
+}}
+QLabel#weekColAdd {{
+    font-size: 16px;
+    color: {add_color};
+}}
+QLabel#weekColAdd:hover {{
+    color: {add_hover};
+}}
+QLabel#weekRangeLabel {{
+    font-size: 12px;
+    color: {range_color};
+    padding: 4px 0;
+}}
+"""
+
+
 def get_theme(name: str) -> str:
     """Get QSS stylesheet by theme name."""
-    if name == "light":
-        return LIGHT_THEME
-    return DARK_THEME
+    base = LIGHT_THEME if name == "light" else DARK_THEME
+    return base + _extra_rules(name)
