@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt
 
 from config import Config
 from main_window import MainWindow
+import updater
 
 
 def _extend_path_for_app_bundle():
@@ -110,6 +111,7 @@ class TrayApp(QApplication):
         self.widget = MainWindow(self.config)
         self._setup_tray()
         self.widget.show()
+        self._setup_update_check()
 
     def _setup_tray(self):
         self.tray = QSystemTrayIcon(self.icon, self)
@@ -174,6 +176,28 @@ class TrayApp(QApplication):
             "<p style='color: gray;'>基于 PySide6 + lark-cli 构建</p>"
             "<p style='color: gray;'>参考 PaperTodo 设计理念</p>",
         )
+
+    def _setup_update_check(self):
+        """Silently check for a newer release shortly after launch."""
+        if not self.config.get("check_update_on_start", True):
+            return
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(4000, self._background_check)
+
+    def _background_check(self):
+        self._check_worker = updater.CheckWorker()
+        self._check_worker.result.connect(self._on_update_available)
+        self._check_worker.start()
+
+    def _on_update_available(self, release):
+        if not release:
+            return
+        if updater.is_newer(release.get("tag", ""), updater.APP_VERSION):
+            from update_dialog import UpdateDialog
+
+            dlg = UpdateDialog(release, updater.APP_VERSION, self.widget)
+            dlg.exec()
 
     def _quit(self):
         pos = self.widget.pos()

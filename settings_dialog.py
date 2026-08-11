@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
+import updater
+
 
 def _auto_start_label() -> str:
     """Stable identifier used both for Windows registry value name and
@@ -321,7 +323,7 @@ class SettingsDialog(QDialog):
         about_group = QGroupBox("关于")
         about_layout = QVBoxLayout(about_group)
         about_label = QLabel(
-            "飞书日程桌面助手 v2.0\n\n"
+            f"飞书日程桌面助手 v{updater.APP_VERSION}\n\n"
             "在桌面显示飞书日历日程（Windows / macOS）\n"
             "支持月历网格视图、添加/删除/导出日程\n\n"
             "GitHub: github.com/swingmonkey/feishucalendarforfree\n"
@@ -330,6 +332,13 @@ class SettingsDialog(QDialog):
         about_label.setObjectName("detailLabel")
         about_label.setWordWrap(True)
         about_layout.addWidget(about_label)
+
+        self.check_update_btn = QPushButton("检查更新")
+        self.check_update_btn.setObjectName("secondaryBtn")
+        self.check_update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.check_update_btn.clicked.connect(self._on_check_update)
+        about_layout.addWidget(self.check_update_btn)
+
         layout.addWidget(about_group)
 
         layout.addStretch()
@@ -337,6 +346,30 @@ class SettingsDialog(QDialog):
 
     def _on_opacity_change(self, val):
         self.opacity_label.setText(f"窗口透明度: {val}%")
+
+    def _on_check_update(self):
+        """Check GitHub for a newer release and prompt to update."""
+        self.check_update_btn.setEnabled(False)
+        self.check_update_btn.setText("检查中…")
+        try:
+            release = updater.get_latest_release()
+        except Exception as e:
+            self.check_update_btn.setEnabled(True)
+            self.check_update_btn.setText("检查更新")
+            QMessageBox.information(self, "检查更新", f"检查失败：{e}")
+            return
+        self.check_update_btn.setEnabled(True)
+        self.check_update_btn.setText("检查更新")
+        if not release or not release.get("tag"):
+            QMessageBox.information(self, "检查更新", "无法获取版本信息")
+            return
+        if updater.is_newer(release.get("tag", "")):
+            from update_dialog import UpdateDialog
+
+            dlg = UpdateDialog(release, updater.APP_VERSION, self)
+            dlg.exec()
+        else:
+            QMessageBox.information(self, "检查更新", "已是最新版本 ✓")
 
     def _on_save(self):
         self.config.set("auto_refresh_interval", self.refresh_spin.value())

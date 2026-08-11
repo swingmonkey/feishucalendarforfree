@@ -43,6 +43,7 @@ class Config:
         "view_mode": "month",  # month | week
         "event_colors": {},  # {event_id: "#hex"} — local-only categorization
         "desktop_shortcut_created": False,  # 首次运行已在桌面创建快捷方式
+        "check_update_on_start": True,  # 启动时静默检查 GitHub 更新
     }
 
     def __init__(self):
