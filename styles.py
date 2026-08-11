@@ -94,7 +94,6 @@ QPushButton#iconBtn {
     max-height: 28px;
     color: #8F959E;
     font-size: 15px;
-    transition: background-color 120ms ease;
 }
 QPushButton#iconBtn:hover {
     background-color: rgba(245, 246, 247, 0.08);
@@ -400,7 +399,7 @@ QLineEdit#searchInput {
     border-radius: 8px;
     padding: 8px 12px 8px 32px;
     font-size: 13px;
-    background-image: url(data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238F959E' stroke-width='2'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>);
+    background-image: url(assets/search.svg);
     background-repeat: no-repeat;
     background-position: 9px center;
 }
@@ -471,7 +470,7 @@ QCheckBox::indicator {
 QCheckBox::indicator:checked {
     background: #3370FF;
     border-color: #3370FF;
-    image: url(data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3'><polyline points='20 6 9 17 4 12'/></svg>);
+    image: url(assets/check.svg);
 }
 
 QSpinBox {
@@ -598,7 +597,6 @@ QPushButton#iconBtn {
     max-height: 28px;
     color: #646A73;
     font-size: 15px;
-    transition: background-color 120ms ease;
 }
 QPushButton#iconBtn:hover {
     background-color: rgba(31, 35, 41, 0.08);
@@ -904,7 +902,7 @@ QLineEdit#searchInput {
     border-radius: 8px;
     padding: 8px 12px 8px 32px;
     font-size: 13px;
-    background-image: url(data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238F959E' stroke-width='2'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>);
+    background-image: url(assets/search.svg);
     background-repeat: no-repeat;
     background-position: 9px center;
 }
@@ -975,7 +973,7 @@ QCheckBox::indicator {
 QCheckBox::indicator:checked {
     background: #3370FF;
     border-color: #3370FF;
-    image: url(data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3'><polyline points='20 6 9 17 4 12'/></svg>);
+    image: url(assets/check.svg);
 }
 
 QSpinBox {
