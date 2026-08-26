@@ -50,7 +50,7 @@ lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:cal
 #### 方式一：下载安装包（推荐）
 
 1. 前往 [**Releases 页面**](https://github.com/swingmonkey/feishucalendarforfree/releases/latest)
-2. 下载最新版本附件中的 `飞书日程.exe`
+2. 下载最新版本附件中的 `FeishuCalendar.exe`（CI 构建产物为 ASCII 文件名）
 3. 双击运行
 4. 首次运行点击 ⚙ 设置按钮配置认证方式
 
@@ -111,7 +111,7 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
 
 #### 方式一：下载安装包（推荐）
 
-1. 前往 [**Releases 页面**](https://github.com/swingmonkey/feishucalendarforfree/releases/latest) 下载 `飞书日程.app.zip` 并解压
+1. 前往 [**Releases 页面**](https://github.com/swingmonkey/feishucalendarforfree/releases/latest) 下载 `FeishuCalendar.app.zip` 并解压
 2. 首次打开若提示"无法验证开发者"，右键 → 打开 → 打开
 3. 首次运行点击 ⚙ 设置按钮配置认证方式
 
@@ -247,7 +247,7 @@ FeishuCalendarDesktop/
 
 `dist/` 是 PyInstaller 的**本地构建产物目录**，已在 [.gitignore](.gitignore) 中排除，不会随源码一起上传到仓库，所以在仓库文件列表里看不到它是正常的。获取 EXE 有两种方式：
 
-1. **下载现成的（推荐）**：打开 [Releases 页面](https://github.com/swingmonkey/feishucalendarforfree/releases/latest)，在最新版本下方 **Assets** 里下载 `飞书日程.exe`
+1. **下载现成的（推荐）**：打开 [Releases 页面](https://github.com/swingmonkey/feishucalendarforfree/releases/latest)，在最新版本下方 **Assets** 里下载 `FeishuCalendar.exe`（CI 自动构建；本地自行打包则得到 `飞书日程.exe`，两者等价）
 2. **自己打包**：克隆仓库后双击 `build_windows.bat`（或按上文「打包 EXE」命令手动执行），生成的 `dist/飞书日程.exe` 就在你本地
 
 ## 隐私说明

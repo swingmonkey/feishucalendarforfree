@@ -1,11 +1,13 @@
-﻿# Windows PyInstaller 打包脚本 — 生成 dist\飞书日程.exe
+# Windows PyInstaller 打包脚本 — 生成 dist\飞书日程.exe
 # 使用方法：双击 build_windows.bat，或命令行执行：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File build_windows.ps1
 # 可用环境变量 PY 指定 Python：  $env:PY = "C:\path\to\python.exe"
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
 
-$AppName = "飞书日程"
+# 产物名：默认中文名；CI 环境可设 FC_APP_NAME 覆盖为 ASCII 名，
+# 避免 GitHub Actions 等链路吞掉非 ASCII 字符导致附件命名错误
+if ($env:FC_APP_NAME) { $AppName = $env:FC_APP_NAME } else { $AppName = "飞书日程" }
 
 Write-Host "=== 飞书日程 Windows 打包 ===" -ForegroundColor Cyan
 

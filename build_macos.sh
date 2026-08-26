@@ -5,7 +5,8 @@ set -e
 
 cd "$(dirname "$0")"
 
-APP_NAME="飞书日程"
+# 产物名：默认中文名；CI 可设 FC_APP_NAME 覆盖为 ASCII 名
+APP_NAME="${FC_APP_NAME:-飞书日程}"
 BUNDLE_ID="com.swingmonkey.feishucalendar"
 ENTRY="main.py"
 
