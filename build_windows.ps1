@@ -1,15 +1,22 @@
-# Windows PyInstaller 打包脚本 — 生成 dist\飞书日程.exe
+﻿# Windows PyInstaller 打包脚本 — 生成 dist\飞书日程.exe（或 FC_APP_NAME 指定名）
 # 使用方法：双击 build_windows.bat，或命令行执行：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File build_windows.ps1
-# 可用环境变量 PY 指定 Python：  $env:PY = "C:\path\to\python.exe"
-$ErrorActionPreference = "Stop"
+# 环境变量：
+#   PY           指定 Python 可执行文件路径
+#   FC_APP_NAME  覆盖产物名（CI 设为 ASCII 名，避免链路吞非 ASCII 字符）
+$ErrorActionPreference = "Continue"
 Set-Location -LiteralPath $PSScriptRoot
 
-# 产物名：默认中文名；CI 环境可设 FC_APP_NAME 覆盖为 ASCII 名，
-# 避免 GitHub Actions 等链路吞掉非 ASCII 字符导致附件命名错误
 if ($env:FC_APP_NAME) { $AppName = $env:FC_APP_NAME } else { $AppName = "飞书日程" }
 
-Write-Host "=== 飞书日程 Windows 打包 ===" -ForegroundColor Cyan
+function Fail([string]$msg) {
+    Write-Host "`n[错误] $msg" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "=== FeishuCalendar Windows 打包 (产物: $AppName.exe) ===" -ForegroundColor Cyan
+Write-Host "[diag] cwd=$PWD"
+Write-Host "[diag] python on PATH: $((Get-Command python -ErrorAction SilentlyContinue).Source)"
 
 # ── 选择 Python ──
 # 优先级：环境变量 PY > PATH 中的 python > py 启动器(-3)
@@ -25,40 +32,45 @@ foreach ($cand in $candidates) {
     $exe = $cand[0]
     $pre = @()
     if ($cand.Count -gt 1) { $pre = $cand[1..($cand.Count - 1)] }
+    Write-Host "[diag] probing python candidate: $exe $($pre -join ' ')"
+    $ver = ""
     try {
-        $ver = & $exe @pre -c "import sys; print('%d%d' % sys.version_info[:2])" 2>$null
-        if ($LASTEXITCODE -eq 0 -and $ver -and [int]$ver -ge 310) {
-            $py = @{ Exe = $exe; Pre = $pre }
-            break
-        }
-    } catch { continue }
+        $ver = (& $exe @pre -c "import sys; print('%d%d' % sys.version_info[:2])" 2>&1 | Out-String).Trim()
+    } catch {
+        Write-Host "[diag] probe threw: $_"
+        continue
+    }
+    Write-Host "[diag] probe output='$ver' exitcode=$LASTEXITCODE"
+    if ($LASTEXITCODE -eq 0 -and $ver -match '^\d{2,}$' -and [int]$ver -ge 310) {
+        $py = @{ Exe = $exe; Pre = $pre }
+        break
+    }
 }
-if (-not $py) {
-    Write-Host "[错误] 未找到 Python 3.10+，请安装后勾选 Add to PATH。" -ForegroundColor Red
-    exit 1
-}
-$ver = & $py.Exe @($py.Pre) --version
-Write-Host "使用 Python：$ver"
+if (-not $py) { Fail "未找到 Python 3.10+，请安装后勾选 Add to PATH。" }
+$fullVer = (& $py.Exe @($py.Pre) --version) -join " "
+Write-Host "[diag] using python: $($py.Exe) -> $fullVer"
 
 # ── 依赖与 PyInstaller ──
-& $py.Exe @($py.Pre) -c "import PySide6, openpyxl" 2>$null
+& $py.Exe @($py.Pre) -c "import PySide6, openpyxl" *> $null
+Write-Host "[diag] deps check exitcode=$LASTEXITCODE"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "未检测到依赖，正在安装 requirements.txt ..."
-    & $py.Exe @($py.Pre) -m pip install -r requirements.txt
-    if ($LASTEXITCODE -ne 0) { Write-Host "[错误] 依赖安装失败。" -ForegroundColor Red; exit 1 }
+    & $py.Exe @($py.Pre) -m pip install --disable-pip-version-check -r requirements.txt
+    if ($LASTEXITCODE -ne 0) { Fail "依赖安装失败 (exitcode=$LASTEXITCODE)。" }
 }
-& $py.Exe @($py.Pre) -c "import PyInstaller" 2>$null
+& $py.Exe @($py.Pre) -c "import PyInstaller; print('PyInstaller', PyInstaller.__version__)" *> $null
+Write-Host "[diag] pyinstaller check exitcode=$LASTEXITCODE"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "正在安装 pyinstaller ..."
-    & $py.Exe @($py.Pre) -m pip install pyinstaller
-    if ($LASTEXITCODE -ne 0) { Write-Host "[错误] pyinstaller 安装失败。" -ForegroundColor Red; exit 1 }
+    & $py.Exe @($py.Pre) -m pip install --disable-pip-version-check pyinstaller
+    if ($LASTEXITCODE -ne 0) { Fail "pyinstaller 安装失败 (exitcode=$LASTEXITCODE)。" }
 }
 
 # ── 清理上次构建产物 ──
 Remove-Item -LiteralPath "build", "dist", "$AppName.spec" -Recurse -Force -ErrorAction SilentlyContinue
 
 # ── 打包参数 ──
-$args = @(
+$pyiArgs = @(
     "-m", "PyInstaller",
     "--noconfirm",
     "--onefile",
@@ -88,13 +100,13 @@ $args = @(
     "--hidden-import", "__version__",
     "main.py"
 )
-if (Test-Path "assets\icon.ico") { $args += @("--icon", "assets\icon.ico") }
+if (Test-Path "assets\icon.ico") { $pyiArgs += @("--icon", "assets\icon.ico") }
 
-& $py.Exe @($py.Pre) @args
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "`n[错误] 打包失败，请检查上方日志。" -ForegroundColor Red
-    exit 1
-}
+Write-Host "[diag] launching PyInstaller..."
+& $py.Exe @($py.Pre) @pyiArgs
+$buildCode = $LASTEXITCODE
+Write-Host "[diag] PyInstaller exitcode=$buildCode"
+if ($buildCode -ne 0) { Fail "打包失败 (exitcode=$buildCode)，请检查上方 PyInstaller 日志。" }
 
 $out = Join-Path $PSScriptRoot "dist\$AppName.exe"
 Write-Host ""
