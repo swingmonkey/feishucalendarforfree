@@ -55,4 +55,8 @@ cp -f assets/icon.icns "dist/${APP_NAME}.app/Contents/Resources/icon-windowed.ic
 
 echo ""
 echo "构建完成：dist/${APP_NAME}.app"
+
+# 打成 zip 供上传 Release（在脚本内做，避免 CI 内联命令的中文编码问题）
+ditto -c -k --sequesterRsrc --keepParent "dist/${APP_NAME}.app" "dist/${APP_NAME}.app.zip"
+
 ls -la "dist/"
