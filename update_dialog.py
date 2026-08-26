@@ -1,6 +1,7 @@
 """Update confirmation + progress dialog (OTA)."""
 
 import os
+import sys
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -11,7 +12,8 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPlainTextEdit,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 
 import updater
 
@@ -71,19 +73,45 @@ class UpdateDialog(QDialog):
         layout.addLayout(row)
 
     def _start_update(self):
+        frozen = getattr(sys, "frozen", False)
+
+        if frozen and sys.platform == "win32":
+            # PyInstaller EXE：直接下载 Release 里的新 EXE 自替换
+            asset = updater.find_exe_asset(self.release)
+            if not asset:
+                self.status_label.setText("最新版本暂未上传 EXE 安装包，已为你打开下载页面…")
+                self._open_releases_page()
+                return
+            self._begin(updater.UpdateWorker(None, "", exe_url=asset.get("browser_download_url")))
+            return
+
+        if frozen:
+            # macOS .app 暂不支持应用内自更新，引导到 Releases 页面
+            self.update_btn.setEnabled(False)
+            self.later_btn.setEnabled(False)
+            self.status_label.setText("请到 Releases 页面下载最新 .app 替换，正在为你打开…")
+            QTimer.singleShot(1200, self._open_releases_page)
+            return
+
         zipball = self.release.get("zipball_url")
         if not zipball:
             self.status_label.setText("错误：未找到更新包下载地址")
             return
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self._begin(updater.UpdateWorker(zipball, base_dir))
+
+    def _begin(self, worker):
+        self._worker = worker
         self.update_btn.setEnabled(False)
         self.later_btn.setEnabled(False)
         self.progress.setVisible(True)
         self.status_label.setText("正在下载更新…")
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        self._worker = updater.UpdateWorker(zipball, base_dir)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.start()
+
+    def _open_releases_page(self):
+        QDesktopServices.openUrl(QUrl(updater.REPO_WEB + "/releases/latest"))
 
     def _on_progress(self, done, total):
         if total and total > 0:

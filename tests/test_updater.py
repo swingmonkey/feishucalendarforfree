@@ -105,3 +105,34 @@ def test_get_latest_release_returns_none_without_release():
 
     with mock.patch.object(updater, "urlopen", side_effect=urllib.error.HTTPError(None, 404, "n/a", None, None)):
         assert updater.get_latest_release() is None
+
+
+# ── 冻结(EXE)模式自更新 ──
+
+def test_find_exe_asset_prefers_canonical_name():
+    rel = {"assets": [
+        {"name": "飞书日程.app.zip", "browser_download_url": "u-app", "size": 1},
+        {"name": "FeishuCalendar.exe", "browser_download_url": "u-any", "size": 2},
+        {"name": "飞书日程.exe", "browser_download_url": "u-exe", "size": 3},
+    ]}
+    assert updater.find_exe_asset(rel)["browser_download_url"] == "u-exe"
+
+
+def test_find_exe_asset_fallback_and_missing():
+    rel_any = {"assets": [{"name": "App.exe", "browser_download_url": "u"}]}
+    assert updater.find_exe_asset(rel_any)["browser_download_url"] == "u"
+    assert updater.find_exe_asset({}) is None
+    assert updater.find_exe_asset({"assets": [{"name": "readme.txt"}]}) is None
+
+
+def test_cleanup_old_executable_noop_in_source_mode(tmp=None):
+    """源码运行时清理函数应为安全 no-op（不抛异常）。"""
+    updater.cleanup_old_executable()
+
+
+def test_update_worker_accepts_exe_url():
+    """UpdateWorker 兼容旧签名，同时支持冻结模式 exe_url 参数。"""
+    w = updater.UpdateWorker("http://x/zipball", "/tmp")
+    assert w.exe_url is None
+    w2 = updater.UpdateWorker(None, "", exe_url="http://x/app.exe")
+    assert w2.exe_url == "http://x/app.exe"

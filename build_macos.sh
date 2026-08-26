@@ -45,6 +45,9 @@ fi
     --hidden-import search_dialog \
     --hidden-import settings_dialog \
     --hidden-import export_dialog \
+    --hidden-import updater \
+    --hidden-import update_dialog \
+    --hidden-import __version__ \
     "$ENTRY"
 
 # 拷贝 icon.icns 到 .app/Contents/Resources/ 作为 Finder/Dock 图标（PyInstaller 已经做了，双保险）

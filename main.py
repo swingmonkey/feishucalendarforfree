@@ -309,6 +309,10 @@ def main():
     # even when launched from a .app bundle with a minimal PATH.
     _extend_path_for_app_bundle()
 
+    # Remove the '.old' EXE left behind by a previous frozen self-update
+    # (no-op when running from source).
+    updater.cleanup_old_executable()
+
     config = Config()
 
     # Create a desktop shortcut on first run (before TrayApp loads its own

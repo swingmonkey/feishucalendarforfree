@@ -1,0 +1,99 @@
+name: Build Release Artifacts
+
+# 推送 v* 标签时自动打包 Windows EXE 和 macOS .app，
+# 并作为附件上传到对应的 GitHub Release。
+# 也支持在 Actions 页面手动触发（仅上传构建产物 artifact，便于测试）。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build EXE
+        shell: pwsh
+        run: >
+          python -m PyInstaller --noconfirm --onefile --windowed
+          --name "飞书日程"
+          --icon "assets/icon.ico"
+          --add-data "assets;assets"
+          --paths "."
+          --hidden-import openpyxl
+          --hidden-import config
+          --hidden-import styles
+          --hidden-import lark_cli
+          --hidden-import lark_cli_async
+          --hidden-import models_event
+          --hidden-import widgets
+          --hidden-import month_view
+          --hidden-import week_view
+          --hidden-import main_window
+          --hidden-import event_card
+          --hidden-import add_event_dialog
+          --hidden-import event_detail_dialog
+          --hidden-import day_detail_dialog
+          --hidden-import search_dialog
+          --hidden-import settings_dialog
+          --hidden-import export_dialog
+          --hidden-import updater
+          --hidden-import update_dialog
+          --hidden-import __version__
+          main.py
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feishu-calendar-windows
+          path: dist/飞书日程.exe
+          if-no-files-found: error
+
+      - name: Attach EXE to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/飞书日程.exe
+          fail_on_unmatched_files: true
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build .app
+        run: bash build_macos.sh
+
+      - name: Zip .app
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/飞书日程.app" "dist/飞书日程.app.zip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feishu-calendar-macos
+          path: dist/飞书日程.app.zip
+          if-no-files-found: error
+
+      - name: Attach .app.zip to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/飞书日程.app.zip
+          fail_on_unmatched_files: true

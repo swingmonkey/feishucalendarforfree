@@ -47,11 +47,15 @@ lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:cal
 
 ### Windows
 
-#### 方式一：直接运行 EXE（推荐）
+#### 方式一：下载安装包（推荐）
 
-1. 下载 `dist/飞书日程.exe`
-2. 双击运行
-3. 首次运行点击 ⚙ 设置按钮配置认证方式
+1. 前往 [**Releases 页面**](https://github.com/swingmonkey/feishucalendarforfree/releases/latest)
+2. 下载最新版本附件中的 `飞书日程.exe`
+3. 双击运行
+4. 首次运行点击 ⚙ 设置按钮配置认证方式
+
+> **注意：** `dist/` 是本地构建产物目录，已列入 `.gitignore`，**不在仓库源码里**。
+> 请从 Releases 下载，或按下方「打包 EXE」自行构建。
 
 #### 方式二：从源码运行
 
@@ -67,9 +71,13 @@ python main.py
 
 #### 打包 EXE
 
+双击 `build_windows.bat` 一键打包；或手动执行：
+
 ```bash
 pip install pyinstaller
 python -m PyInstaller --onefile --windowed --name "飞书日程" \
+  --icon "assets/icon.ico" \
+  --add-data "assets;assets" \
   --paths "." \
   --hidden-import openpyxl \
   --hidden-import config \
@@ -88,16 +96,22 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
   --hidden-import search_dialog \
   --hidden-import settings_dialog \
   --hidden-import export_dialog \
+  --hidden-import updater \
+  --hidden-import update_dialog \
+  --hidden-import __version__ \
   main.py
 ```
 
 生成的 EXE 在 `dist/飞书日程.exe`。
 
+> **发布新版本：** 推送 `v*` 标签（如 `git tag v2.0.1 && git push origin v2.0.1`）后，
+> GitHub Actions 会自动打包 Windows EXE 与 macOS .app 并上传到对应 Release。
+
 ### macOS
 
-#### 方式一：直接运行 .app（推荐）
+#### 方式一：下载安装包（推荐）
 
-1. 下载 `dist/飞书日程.app.zip` 并解压
+1. 前往 [**Releases 页面**](https://github.com/swingmonkey/feishucalendarforfree/releases/latest) 下载 `飞书日程.app.zip` 并解压
 2. 首次打开若提示"无法验证开发者"，右键 → 打开 → 打开
 3. 首次运行点击 ⚙ 设置按钮配置认证方式
 
@@ -191,7 +205,11 @@ FeishuCalendarDesktop/
 ├── config.example.json    # 配置文件示例
 ├── 启动飞书日程.bat        # Windows 启动脚本
 ├── 启动飞书日程.command    # macOS 启动脚本
-└── build_macos.sh         # macOS PyInstaller 打包脚本
+├── build_windows.bat      # Windows 一键打包（双击即用，调用 build_windows.ps1）
+├── build_windows.ps1      # Windows PyInstaller 打包实体脚本
+├── build_macos.sh         # macOS PyInstaller 打包脚本
+├── tools/make_ico.py      # 从 PNG 生成 assets/icon.ico（已提交生成结果，无需重复执行）
+└── .github/workflows/release.yml  # 推送 v* 标签自动打包并上传 Release
 ```
 
 > **架构约定**：飞书读写能力集中在 `lark_cli.py` / `lark_cli_async.py`（通过 QProcess 调 node 版 `lark-cli`），重构只改动 UI 层；新增的拖拽改期、颜色、重复、子任务全部复用既有读写接口，不改变与飞书的数据通路。
@@ -222,6 +240,15 @@ FeishuCalendarDesktop/
 
 > `config.json` 已在 `.gitignore` 中排除，不会上传个人配置。
 <img width="1006" height="714" alt="image" src="https://github.com/user-attachments/assets/c580b150-df0c-449b-bded-02fb96217853" />
+
+## 常见问题
+
+### GitHub 仓库里找不到 `dist/飞书日程.exe`？
+
+`dist/` 是 PyInstaller 的**本地构建产物目录**，已在 [.gitignore](.gitignore) 中排除，不会随源码一起上传到仓库，所以在仓库文件列表里看不到它是正常的。获取 EXE 有两种方式：
+
+1. **下载现成的（推荐）**：打开 [Releases 页面](https://github.com/swingmonkey/feishucalendarforfree/releases/latest)，在最新版本下方 **Assets** 里下载 `飞书日程.exe`
+2. **自己打包**：克隆仓库后双击 `build_windows.bat`（或按上文「打包 EXE」命令手动执行），生成的 `dist/飞书日程.exe` 就在你本地
 
 ## 隐私说明
 
