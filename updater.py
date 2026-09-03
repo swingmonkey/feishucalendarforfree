@@ -1,5 +1,6 @@
 """OTA updater: check GitHub releases and apply in-place updates."""
 
+import hashlib
 import json
 import os
 import sys
@@ -24,9 +25,20 @@ _EXCLUDE = {"config.json", ".git", "__pycache__", ".workbuddy", ".idea", ".vscod
 
 
 def parse_version(tag: str):
+    """Parse a version tag into a comparable tuple.
+
+    Returns ``(major, minor, patch, release_flag)`` where ``release_flag``
+    is ``1`` for a final release and ``0`` for a pre-release (anything after
+    a ``-``, e.g. ``2.0.4-beta.1``).  This makes pre-release versions sort
+    *lower* than the same numeric release, so ``2.0.4`` > ``2.0.4-beta.1``.
+    """
     tag = (tag or "").lstrip("vV").strip()
+    base = tag
+    prerelease = ""
+    if "-" in tag:
+        base, prerelease = tag.split("-", 1)
     parts = []
-    for seg in tag.split("."):
+    for seg in base.split("."):
         num = ""
         for ch in seg:
             if ch.isdigit():
@@ -36,7 +48,8 @@ def parse_version(tag: str):
         parts.append(int(num) if num else 0)
     while len(parts) < 3:
         parts.append(0)
-    return tuple(parts[:3])
+    release_flag = 0 if prerelease else 1
+    return tuple(parts[:3]) + (release_flag,)
 
 
 def is_newer(latest_tag: str, current: str = APP_VERSION) -> bool:
@@ -79,11 +92,93 @@ def find_exe_asset(release):
     return exes[0]
 
 
-def install_frozen_windows(exe_url: str, progress_cb=None):
+def find_sha256_sums_asset(release):
+    """Return the SHA256SUMS asset dict, or None if the release has none."""
+    for a in (release.get("assets") or []):
+        name = (a.get("name") or "").lower()
+        if name in ("sha256sums", "sha256sums.txt", "sha256sum.txt"):
+            return a
+    return None
+
+
+def download_sha256_sums(release, timeout: int = 15) -> dict[str, str]:
+    """Download and parse a SHA256SUMS file from the release assets.
+
+    Returns a mapping of ``filename -> expected_sha256_hex``.
+    Returns an empty dict when no SHA256SUMS asset exists (older releases).
+    """
+    asset = find_sha256_sums_asset(release)
+    if not asset:
+        return {}
+    url = asset.get("browser_download_url", "")
+    if not url:
+        return {}
+    try:
+        req = Request(url, headers={"User-Agent": "feishucalendar-updater"})
+        with urlopen(req, timeout=timeout) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+    except Exception:
+        return {}
+    sums: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Format: <hex-hash>  <filename>  (two spaces, GNU style)
+        parts = line.split(None, 1)
+        if len(parts) == 2 and len(parts[0]) == 64:
+            fname = parts[1].lstrip("*").strip()
+            sums[fname] = parts[0].lower()
+    return sums
+
+
+def compute_sha256(file_path: str, chunk_size: int = 65536) -> str:
+    """Compute the SHA-256 hex digest of a file."""
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_file_checksum(file_path: str, expected_hash: str) -> bool:
+    """Return True if the file's SHA-256 matches ``expected_hash``."""
+    if not expected_hash:
+        return False
+    return compute_sha256(file_path).lower() == expected_hash.lower()
+
+
+def install_frozen_windows(exe_url: str, expected_hash: str = "", progress_cb=None):
+    """Download and replace the running EXE, verifying SHA-256 first.
+
+    Args:
+        exe_url: Direct download URL for the new EXE.
+        expected_hash: Expected SHA-256 hex digest.  Empty string skips
+            verification (for releases that do not publish checksums).
+        progress_cb: Optional ``(downloaded, total)`` callback.
+    """
     exe_path = os.path.abspath(sys.executable)
     downloading = exe_path + ".download"
     old = exe_path + ".old"
     download(exe_url, downloading, progress_cb=progress_cb)
+
+    if expected_hash:
+        actual = compute_sha256(downloading)
+        if actual.lower() != expected_hash.lower():
+            try:
+                os.unlink(downloading)
+            except OSError:
+                pass
+            raise ValueError(
+                f"SHA-256 校验失败！\n"
+                f"期望: {expected_hash}\n"
+                f"实际: {actual}\n"
+                f"下载文件可能已被篡改，已中止更新。"
+            )
+
     try:
         os.replace(exe_path, old)
         os.replace(downloading, exe_path)
@@ -185,17 +280,22 @@ class UpdateWorker(QThread):
     progress = Signal(int, int)
     finished = Signal(bool, str)
 
-    def __init__(self, zipball_url: str, base_dir: str, exe_url: str = None):
+    def __init__(self, zipball_url: str, base_dir: str, exe_url: str = None, expected_hash: str = ""):
         super().__init__()
         self.zipball_url = zipball_url
         self.base_dir = base_dir
         self.exe_url = exe_url
+        self.expected_hash = expected_hash
         self._zip = tempfile.mktemp(suffix=".zip")
 
     def run(self):
         try:
             if self.exe_url:
-                install_frozen_windows(self.exe_url, progress_cb=lambda d, t: self.progress.emit(d, t))
+                install_frozen_windows(
+                    self.exe_url,
+                    expected_hash=self.expected_hash,
+                    progress_cb=lambda d, t: self.progress.emit(d, t),
+                )
             else:
                 download(self.zipball_url, self._zip, progress_cb=lambda d, t: self.progress.emit(d, t))
                 apply_update(self._zip, self.base_dir)
