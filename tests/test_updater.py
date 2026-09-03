@@ -14,16 +14,89 @@ import updater
 
 # ── 版本解析 ──
 def test_parse_version():
-    assert updater.parse_version("v2.0.0") == (2, 0, 0)
-    assert updater.parse_version("2.1") == (2, 1, 0)
-    assert updater.parse_version("v1.9.9") == (1, 9, 9)
-    assert updater.parse_version("weird") == (0, 0, 0)
+    # Returns (major, minor, patch, release_flag) where release_flag=1 for
+    # final releases and 0 for pre-releases.
+    assert updater.parse_version("v2.0.0") == (2, 0, 0, 1)
+    assert updater.parse_version("2.1") == (2, 1, 0, 1)
+    assert updater.parse_version("v1.9.9") == (1, 9, 9, 1)
+    assert updater.parse_version("weird") == (0, 0, 0, 1)
+
+
+def test_parse_version_prerelease():
+    # Pre-release versions get release_flag=0 so they sort lower than the
+    # same numeric final release.
+    assert updater.parse_version("2.0.4-beta.1") == (2, 0, 4, 0)
+    assert updater.parse_version("v3.0.0-rc1") == (3, 0, 0, 0)
+    # Pre-release sorts lower than final
+    assert updater.parse_version("2.0.4-beta.1") < updater.parse_version("2.0.4")
 
 
 def test_is_newer():
     assert updater.is_newer("v2.0.1", "2.0.0") is True
     assert updater.is_newer("v2.0.0", "2.0.0") is False
     assert updater.is_newer("v1.9.9", "2.0.0") is False
+
+
+def test_is_newer_prerelease():
+    # Beta of same version is NOT newer than the final release
+    assert updater.is_newer("2.0.4-beta.1", "2.0.4") is False
+    # Beta of next version IS newer than current final
+    assert updater.is_newer("2.0.5-beta.1", "2.0.4") is True
+
+
+# ── SHA-256 checksum verification ──
+def test_compute_sha256(tmp_path):
+    f = tmp_path / "test.bin"
+    f.write_bytes(b"hello world")
+    # Known SHA-256 of "hello world"
+    assert updater.compute_sha256(str(f)) == "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+
+
+def test_verify_file_checksum_match(tmp_path):
+    f = tmp_path / "test.bin"
+    f.write_bytes(b"test data")
+    h = updater.compute_sha256(str(f))
+    assert updater.verify_file_checksum(str(f), h) is True
+
+
+def test_verify_file_checksum_mismatch(tmp_path):
+    f = tmp_path / "test.bin"
+    f.write_bytes(b"test data")
+    assert updater.verify_file_checksum(str(f), "0" * 64) is False
+
+
+def test_verify_file_checksum_empty_hash(tmp_path):
+    f = tmp_path / "test.bin"
+    f.write_bytes(b"test")
+    assert updater.verify_file_checksum(str(f), "") is False
+
+
+def test_find_sha256_sums_asset():
+    rel = {"assets": [
+        {"name": "FeishuCalendar.exe", "browser_download_url": "u1"},
+        {"name": "SHA256SUMS", "browser_download_url": "u-sums"},
+    ]}
+    assert updater.find_sha256_sums_asset(rel)["browser_download_url"] == "u-sums"
+
+
+def test_find_sha256_sums_asset_missing():
+    assert updater.find_sha256_sums_asset({"assets": []}) is None
+    assert updater.find_sha256_sums_asset({}) is None
+
+
+def test_download_sha256_sums_parses():
+    sums_text = "abc123  FeishuCalendar.exe\ndef456  FeishuCalendar.app.zip\n"
+    with mock.patch.object(updater, "find_sha256_sums_asset", return_value={"browser_download_url": "http://x/SHA256SUMS"}):
+        with mock.patch.object(updater, "urlopen") as m_urlopen:
+            m_urlopen.return_value.__enter__.return_value.read.return_value = sums_text.encode()
+            m_urlopen.return_value.__enter__.return_value.timeout = 15
+            result = updater.download_sha256_sums({"assets": []})
+            assert result.get("FeishuCalendar.exe") == "abc123"
+            assert result.get("FeishuCalendar.app.zip") == "def456"
+
+
+def test_download_sha256_sums_no_asset_returns_empty():
+    assert updater.download_sha256_sums({"assets": []}) == {}
 
 
 # ── apply_update 覆盖 + 排除 ──
@@ -131,8 +204,11 @@ def test_cleanup_old_executable_noop_in_source_mode(tmp=None):
 
 
 def test_update_worker_accepts_exe_url():
-    """UpdateWorker 兼容旧签名，同时支持冻结模式 exe_url 参数。"""
+    """UpdateWorker 兼容旧签名，同时支持冻结模式 exe_url 和 expected_hash 参数。"""
     w = updater.UpdateWorker("http://x/zipball", "/tmp")
     assert w.exe_url is None
+    assert w.expected_hash == ""
     w2 = updater.UpdateWorker(None, "", exe_url="http://x/app.exe")
     assert w2.exe_url == "http://x/app.exe"
+    w3 = updater.UpdateWorker(None, "", exe_url="http://x/app.exe", expected_hash="abc123")
+    assert w3.expected_hash == "abc123"
