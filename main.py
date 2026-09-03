@@ -1,5 +1,6 @@
 """FeishuCalendarDesktop - Main entry point with system tray."""
 
+import logging
 import os
 import sys
 import shutil
@@ -305,6 +306,13 @@ def _create_macos_shortcut(desktop: Path):
 
 
 def main():
+    # Configure logging so config.py and other modules can surface warnings
+    # (e.g. config save failures) without requiring external setup.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
     # Make sure npm/brew/nvm-installed CLIs (lark-cli, node) are reachable
     # even when launched from a .app bundle with a minimal PATH.
     _extend_path_for_app_bundle()

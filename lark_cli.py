@@ -7,6 +7,14 @@ import sys
 from datetime import datetime, timedelta
 from typing import Optional
 
+from lark_cli_args import (
+    agenda_args,
+    search_event_args,
+    create_event_args,
+    delete_event_args,
+    get_event_args,
+)
+
 
 def find_lark_cli() -> str:
     """Find the lark-cli executable path."""
@@ -109,17 +117,12 @@ class LarkCli:
         Returns:
             List of event dictionaries.
         """
-        tz = "+08:00"
         if start is None:
             start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         if end is None:
             end = start.replace(hour=23, minute=59, second=59)
 
-        start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-        end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-
-        args = ["calendar", "+agenda", "--start", start_str, "--end", end_str]
-        result = self._run(args)
+        result = self._run(agenda_args(start, end))
         return result.get("data", [])
 
     def create_event(
@@ -144,28 +147,9 @@ class LarkCli:
         Returns:
             Created event data.
         """
-        tz = "+08:00"
-        start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-        end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-
-        args = [
-            "calendar",
-            "+create",
-            "--summary",
-            summary,
-            "--start",
-            start_str,
-            "--end",
-            end_str,
-            "--calendar-id",
-            calendar_id,
-        ]
-        if description:
-            args.extend(["--description", description])
-        if rrule:
-            args.extend(["--rrule", rrule])
-
-        result = self._run(args)
+        result = self._run(
+            create_event_args(summary, start, end, description, calendar_id, rrule)
+        )
         return result.get("data", {})
 
     def delete_event(
@@ -184,18 +168,7 @@ class LarkCli:
         Returns:
             True if deleted successfully.
         """
-        args = [
-            "calendar",
-            "events",
-            "delete",
-            "--calendar-id",
-            calendar_id,
-            "--event-id",
-            event_id,
-            "--need-notification",
-            str(need_notification).lower(),
-        ]
-        self._run(args)
+        self._run(delete_event_args(calendar_id, event_id, need_notification))
         return True
 
     def get_event(self, calendar_id: str, event_id: str) -> dict:
@@ -208,15 +181,7 @@ class LarkCli:
         Returns:
             Event detail data.
         """
-        args = [
-            "calendar",
-            "+get",
-            "--calendar-id",
-            calendar_id,
-            "--event-id",
-            event_id,
-        ]
-        result = self._run(args)
+        result = self._run(get_event_args(calendar_id, event_id))
         return result.get("data", {})
 
     def search_events(
@@ -225,7 +190,7 @@ class LarkCli:
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
     ) -> list[dict]:
-        """Search calendar events by keyword and time range.
+        """Search calendar events by keyword and time range (server-side).
 
         Args:
             query: Search keyword.
@@ -235,25 +200,10 @@ class LarkCli:
         Returns:
             List of matching events.
         """
-        tz = "+08:00"
         if start is None:
             start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         if end is None:
             end = start + timedelta(days=7)
 
-        start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-        end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-
-        args = [
-            "calendar",
-            "+search-event",
-            "--start",
-            start_str,
-            "--end",
-            end_str,
-        ]
-        if query:
-            args.extend(["--query", query])
-
-        result = self._run(args)
+        result = self._run(search_event_args(query, start, end))
         return result.get("data", {}).get("items", [])

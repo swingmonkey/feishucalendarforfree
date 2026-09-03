@@ -194,11 +194,16 @@ def expand_recurrence(event: dict, range_start: datetime, range_end: datetime) -
     if freq == "WEEKLY" and byday_idx:
         # Day-by-day scan across the visible window (bounded to ~1 week of slack).
         cur = max(start, range_start - timedelta(days=7))
+        # Anchor week (Monday of the start date's week) for INTERVAL calculation.
+        start_week_monday = start - timedelta(days=start.weekday())
         while cur <= range_end and guard < 600:
             guard += 1
             if cur.weekday() in byday_idx and cur >= start:
-                results.append(_make_occurrence(event, cur, duration))
-                made += 1
+                cur_week_monday = cur - timedelta(days=cur.weekday())
+                weeks_diff = (cur_week_monday - start_week_monday).days // 7
+                if weeks_diff % interval == 0:
+                    results.append(_make_occurrence(event, cur, duration))
+                    made += 1
             cur += timedelta(days=1)
             if count is not None and made >= count:
                 break
@@ -317,7 +322,7 @@ def markdown_to_html(text: str) -> str:
         # links [text](url) — only http(s)/mailto
         s = re.sub(
             r"\[([^\]]+)\]\((https?://[^\s)]+|mailto:[^\s)]+)\)",
-            r'<a href="\1">\1</a>',
+            r'<a href="\2">\1</a>',
             s,
         )
         return s
@@ -348,7 +353,7 @@ def markdown_to_html(text: str) -> str:
             if not in_list:
                 out.append("<ul>"); in_list = True
             out.append(f"<li>{inline(stripped[2:])}</li>")
-        elif stripped[0].isdigit() and stripped[1:].startswith(". "):
+        elif len(stripped) >= 3 and stripped[0].isdigit() and stripped[1:].startswith(". "):
             if not in_list:
                 out.append("<ul>"); in_list = True
             out.append(f"<li>{inline(stripped.split('. ', 1)[1])}</li>")

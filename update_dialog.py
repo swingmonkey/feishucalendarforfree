@@ -72,6 +72,23 @@ class UpdateDialog(QDialog):
         row.addWidget(self.update_btn)
         layout.addLayout(row)
 
+    def _resolve_expected_hash(self, asset_name: str) -> str:
+        """Download SHA256SUMS from the release and look up the expected hash
+        for ``asset_name``.  Returns empty string when no checksums are
+        published (older releases) or the file is not listed."""
+        sums = updater.download_sha256_sums(self.release)
+        if not sums:
+            return ""
+        # Exact match first
+        if asset_name in sums:
+            return sums[asset_name]
+        # Case-insensitive / suffix match fallback
+        lower = asset_name.lower()
+        for fname, h in sums.items():
+            if fname.lower() == lower or fname.lower().endswith(lower):
+                return h
+        return ""
+
     def _start_update(self):
         frozen = getattr(sys, "frozen", False)
 
@@ -82,7 +99,15 @@ class UpdateDialog(QDialog):
                 self.status_label.setText("最新版本暂未上传 EXE 安装包，已为你打开下载页面…")
                 self._open_releases_page()
                 return
-            self._begin(updater.UpdateWorker(None, "", exe_url=asset.get("browser_download_url")))
+            asset_name = asset.get("name", "")
+            expected_hash = self._resolve_expected_hash(asset_name)
+            self._begin(
+                updater.UpdateWorker(
+                    None, "",
+                    exe_url=asset.get("browser_download_url"),
+                    expected_hash=expected_hash,
+                )
+            )
             return
 
         if frozen:
@@ -98,6 +123,8 @@ class UpdateDialog(QDialog):
             self.status_label.setText("错误：未找到更新包下载地址")
             return
         base_dir = os.path.dirname(os.path.abspath(__file__))
+        # Source-run zipball updates are not checksum-verified (the zipball
+        # is generated on-the-fly by GitHub, not a named release asset).
         self._begin(updater.UpdateWorker(zipball, base_dir))
 
     def _begin(self, worker):

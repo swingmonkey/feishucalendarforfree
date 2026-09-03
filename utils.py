@@ -1,4 +1,4 @@
-"""Shared date-range and event-sorting helpers for both API backends."""
+"""Shared date-range, event-sorting and timezone helpers for both API backends."""
 
 from datetime import datetime, timedelta
 
@@ -71,3 +71,34 @@ def event_sort_key(event: dict):
             pass
 
     return float("inf")
+
+
+def get_local_tz_offset() -> str:
+    """Return the system local timezone offset as ``'+08:00'`` format.
+
+    Uses the running machine's local timezone so users outside China get
+    correct start/end times instead of a hard-coded +08:00.
+    """
+    try:
+        offset = datetime.now().astimezone().utcoffset()
+    except (ValueError, OSError):
+        return "+08:00"
+    if offset is None:
+        return "+08:00"
+    total_minutes = int(offset.total_seconds() // 60)
+    sign = "+" if total_minutes >= 0 else "-"
+    hours = abs(total_minutes) // 60
+    minutes = abs(total_minutes) % 60
+    return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def get_local_tz_name() -> str:
+    """Return the IANA timezone name (e.g. ``'Asia/Shanghai'``) when
+    determinable, falling back to a sensible default."""
+    try:
+        tz = datetime.now().astimezone().tzinfo
+        if tz is not None and hasattr(tz, "key"):
+            return tz.key
+    except (ValueError, OSError):
+        pass
+    return "Asia/Shanghai"

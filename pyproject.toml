@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+# E: pycodestyle errors, F: pyflakes, W: pycodestyle warnings,
+# I: isort imports, UP: pyupgrade, B: flake8-bugbear
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+  "E501",  # line too long (handled by formatter; code has some long lines)
+  "E402",  # module level import not at top of file (late imports in GUI code)
+  "E731",  # do not assign a lambda expression (used in signal connections)
+  "B008",  # do not perform function call in argument defaults (QTimer etc.)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# GUI dialogs and windows use late imports to avoid circular imports
+"*_dialog.py" = ["E402"]
+"main_window.py" = ["E402"]
+"main.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

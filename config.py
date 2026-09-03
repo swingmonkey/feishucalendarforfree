@@ -1,9 +1,12 @@
 """Configuration management for FeishuCalendarDesktop."""
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def get_app_dir() -> Path:
@@ -92,7 +95,8 @@ class Config:
                     loaded = json.load(f)
                 if isinstance(loaded, dict):
                     raw = loaded
-            except (json.JSONDecodeError, OSError, TypeError):
+            except (json.JSONDecodeError, OSError, TypeError) as e:
+                logger.warning("Failed to load config from %s: %s", self._path, e)
                 raw = {}
         self._data = self._validated(raw)
 
@@ -107,7 +111,8 @@ class Config:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp, self._path)
-        except OSError:
+        except OSError as e:
+            logger.error("Failed to save config to %s: %s", self._path, e)
             try:
                 tmp.unlink(missing_ok=True)
             except OSError:

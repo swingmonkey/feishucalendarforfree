@@ -1,8 +1,15 @@
-"""utils.py 日期范围与排序逻辑测试"""
+"""utils.py 日期范围、排序逻辑与时区工具测试"""
 
+import re
 from datetime import datetime
 
-from utils import event_sort_key, month_range, wide_range
+from utils import (
+    event_sort_key,
+    month_range,
+    wide_range,
+    get_local_tz_offset,
+    get_local_tz_name,
+)
 
 
 class TestMonthRange:
@@ -64,3 +71,25 @@ class TestEventSortKey:
         ]
         sorted_events = sorted(events, key=event_sort_key)
         assert sorted_events[-1] == {}  # 无时间事件排最后
+
+
+class TestTimezoneHelpers:
+    def test_offset_format(self):
+        offset = get_local_tz_offset()
+        # Must match +HH:MM or -HH:MM
+        assert re.match(r"^[+-]\d{2}:\d{2}$", offset), f"Bad offset format: {offset}"
+
+    def test_offset_matches_system(self):
+        offset = get_local_tz_offset()
+        # Compare with Python's own timezone offset
+        system_offset = datetime.now().astimezone().utcoffset()
+        if system_offset is not None:
+            total_minutes = int(system_offset.total_seconds() // 60)
+            sign = "+" if total_minutes >= 0 else "-"
+            expected = f"{sign}{abs(total_minutes) // 60:02d}:{abs(total_minutes) % 60:02d}"
+            assert offset == expected, f"Offset mismatch: {offset} vs {expected}"
+
+    def test_tz_name_returns_string(self):
+        name = get_local_tz_name()
+        assert isinstance(name, str)
+        assert len(name) > 0
