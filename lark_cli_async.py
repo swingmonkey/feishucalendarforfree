@@ -5,10 +5,21 @@ import sys
 import shutil
 from datetime import datetime
 from pathlib import Path
-from PySide6.QtCore import QObject, QProcess, Signal
+from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
 from lark_cli import find_lark_cli, LarkCliError
-from utils import month_range, wide_range, event_sort_key
+from lark_cli_args import (
+    agenda_args,
+    search_event_args,
+    create_event_args,
+    delete_event_args,
+)
+from utils import month_range, wide_range, event_sort_key, get_local_tz_name
+
+# Default timeout for a single lark-cli QProcess invocation (milliseconds).
+# lark-cli spawns node and makes HTTPS calls; 45 s is generous but prevents
+# a hung process from leaving the UI stuck on "正在获取日程..." forever.
+_PROCESS_TIMEOUT_MS = 45000
 
 
 def _escape_ps_arg(arg: str) -> str:
@@ -46,7 +57,19 @@ class LarkCliAsync(QObject):
         process = QProcess(self)
         process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
 
+        # Watchdog: kill the process if it does not finish in time.
+        timeout_timer = QTimer(self)
+        timeout_timer.setSingleShot(True)
+
+        def _kill_on_timeout():
+            if process.state() != QProcess.ProcessState.NotRunning:
+                process.kill()
+                on_error("lark-cli 调用超时（45秒），请检查网络或授权状态后重试")
+
+        timeout_timer.timeout.connect(_kill_on_timeout)
+
         def on_finished(exit_code, exit_status):
+            timeout_timer.stop()
             try:
                 output = bytes(process.readAll()).decode("utf-8", errors="replace").strip()
             except RuntimeError:
@@ -159,6 +182,9 @@ class LarkCliAsync(QObject):
         else:
             process.start(full_cmd[0], full_cmd[1:])
 
+        # Start the watchdog *after* process.start() so it only counts from launch.
+        timeout_timer.start(_PROCESS_TIMEOUT_MS)
+
     def fetch_agenda(self, date: datetime, monthly: bool = False):
         """Fetch calendar agenda for a date range.
 
@@ -166,14 +192,11 @@ class LarkCliAsync(QObject):
             date: Reference date.
             monthly: If True, fetch the entire month containing date.
         """
-        tz = "+08:00"
         if monthly:
             start, end = month_range(date)
         else:
             start = date.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start.replace(hour=23, minute=59, second=59)
-        start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-        end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
 
         def on_success(data):
             if isinstance(data, list):
@@ -185,39 +208,35 @@ class LarkCliAsync(QObject):
         def on_error(msg):
             self.fetch_error.emit(msg)
 
-        self._start_process(
-            ["calendar", "+agenda", "--start", start_str, "--end", end_str],
-            on_success,
-            on_error,
-        )
+        self._start_process(agenda_args(start, end), on_success, on_error)
 
-    def search_events(self, months_back: int = 12, months_forward: int = 3):
-        """Fetch events from a wide date range for search purposes.
+    def search_events(self, query: str = "", months_back: int = 12, months_forward: int = 3):
+        """Search calendar events by keyword using lark-cli's server-side search.
+
+        Uses ``calendar +search-event --query`` instead of fetching a wide
+        agenda range and filtering locally, which is faster and avoids
+        downloading potentially thousands of events.
 
         Args:
+            query: Search keyword (empty returns all events in range).
             months_back: How many months before now to search.
             months_forward: How many months after now to search.
         """
-        tz = "+08:00"
         start, end = wide_range(months_back, months_forward)
-        start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-        end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
 
         def on_success(data):
-            if isinstance(data, list):
-                data.sort(key=event_sort_key)
-                self.search_fetched.emit(data)
+            # +search-event returns {"items": [...]} under data
+            items = data.get("items", []) if isinstance(data, dict) else data
+            if isinstance(items, list):
+                items.sort(key=event_sort_key)
+                self.search_fetched.emit(items)
             else:
                 self.search_fetched.emit([])
 
         def on_error(msg):
             self.fetch_error.emit(msg)
 
-        self._start_process(
-            ["calendar", "+agenda", "--start", start_str, "--end", end_str],
-            on_success,
-            on_error,
-        )
+        self._start_process(search_event_args(query, start, end), on_success, on_error)
 
     def create_event(
         self,
@@ -234,34 +253,17 @@ class LarkCliAsync(QObject):
         to ``lark-cli calendar +create --rrule``. ``None``/empty means a normal
         one-off event.
         """
-        tz = "+08:00"
-        start_str = start.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-        end_str = end.strftime(f"%Y-%m-%dT%H:%M:%S{tz}")
-
-        args = [
-            "calendar",
-            "+create",
-            "--summary",
-            summary,
-            "--start",
-            start_str,
-            "--end",
-            end_str,
-            "--calendar-id",
-            calendar_id,
-        ]
-        if description:
-            args.extend(["--description", description])
-        if rrule:
-            args.extend(["--rrule", rrule])
-
         def on_success(data):
             self.event_created.emit(data if isinstance(data, dict) else {})
 
         def on_error(msg):
             self.create_error.emit(msg)
 
-        self._start_process(args, on_success, on_error)
+        self._start_process(
+            create_event_args(summary, start, end, description, calendar_id, rrule),
+            on_success,
+            on_error,
+        )
 
     def delete_event(
         self,
@@ -270,25 +272,17 @@ class LarkCliAsync(QObject):
         need_notification: bool = False,
     ):
         """Delete a calendar event."""
-        args = [
-            "calendar",
-            "events",
-            "delete",
-            "--calendar-id",
-            calendar_id,
-            "--event-id",
-            event_id,
-            "--need-notification",
-            str(need_notification).lower(),
-        ]
-
         def on_success(data):
             self.event_deleted.emit(event_id)
 
         def on_error(msg):
             self.delete_error.emit(msg)
 
-        self._start_process(args, on_success, on_error)
+        self._start_process(
+            delete_event_args(calendar_id, event_id, need_notification),
+            on_success,
+            on_error,
+        )
 
     def update_event(
         self,
@@ -305,19 +299,19 @@ class LarkCliAsync(QObject):
         Uses lark-cli's raw API mode: `api PATCH /open-apis/...`
         ``rrule`` optionally replaces the recurrence rule (RFC5545).
         """
+        tz_name = get_local_tz_name()
         body = {}
         if summary:
             body["summary"] = summary
         if start:
-            tz = "+08:00"
             body["start_time"] = {
                 "timestamp": str(int(start.timestamp())),
-                "timezone": "Asia/Shanghai",
+                "timezone": tz_name,
             }
         if end:
             body["end_time"] = {
                 "timestamp": str(int(end.timestamp())),
-                "timezone": "Asia/Shanghai",
+                "timezone": tz_name,
             }
         if description is not None:
             body["description"] = description
