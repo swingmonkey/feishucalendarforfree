@@ -1,4 +1,4 @@
-# Windows PyInstaller 打包脚本 — 生成 dist\飞书日程.exe（或 FC_APP_NAME 指定名）
+﻿# Windows PyInstaller 打包脚本 — 生成 dist\飞书日程.exe（或 FC_APP_NAME 指定名）
 # 使用方法：双击 build_windows.bat，或命令行执行：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File build_windows.ps1
 # 环境变量：
@@ -83,6 +83,7 @@ $pyiArgs = @(
     "--hidden-import", "styles",
     "--hidden-import", "ui_common",
     "--hidden-import", "lark_cli",
+    "--hidden-import", "lark_cli_args",
     "--hidden-import", "lark_cli_async",
     "--hidden-import", "models_event",
     "--hidden-import", "widgets",
