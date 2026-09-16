@@ -1,22 +1,23 @@
 """FeishuCalendarDesktop - Main entry point with system tray."""
 
+import logging
 import os
-import sys
-import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
-    QSystemTrayIcon,
     QMenu,
+    QSystemTrayIcon,
 )
-from PySide6.QtGui import QIcon, QAction, QPixmap, QPainter, QColor, QFont
-from PySide6.QtCore import Qt
 
+import updater
 from config import Config
 from main_window import MainWindow
-import updater
 
 
 def _extend_path_for_app_bundle():
@@ -274,6 +275,13 @@ def _create_macos_shortcut(desktop: Path):
 
 
 def main():
+    # Configure logging so config.py and other modules can surface warnings
+    # (e.g. config save failures) without requiring external setup.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
     # Make sure npm/brew/nvm-installed CLIs (lark-cli, node) are reachable
     # even when launched from a .app bundle with a minimal PATH.
     _extend_path_for_app_bundle()

@@ -6,34 +6,32 @@ v2.1 调整：
 - 登录成功后主动发出 settings_changed，主窗口立即重新拉取日程。
 """
 
-import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTabWidget,
-    QWidget,
-    QGroupBox,
-    QLabel,
-    QSpinBox,
-    QSlider,
+    QButtonGroup,
     QCheckBox,
+    QDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
     QPushButton,
     QRadioButton,
-    QButtonGroup,
-    QFormLayout,
+    QSlider,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtCore import QUrl
 
-from config import Config
-from login_dialog import LoginDialog, AuthStatusWorker
 import updater
+from config import Config
+from login_dialog import AuthStatusWorker, LoginDialog
 
 
 class SettingsDialog(QDialog):

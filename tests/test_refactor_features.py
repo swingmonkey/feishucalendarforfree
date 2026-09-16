@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Offline regression tests for the v2.1 UX refactor.
 
 覆盖：
@@ -15,15 +14,14 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QObject, Signal, QTimer
 
 import login_dialog
-import main_window
 import settings_dialog
 from config import Config
 from main_window import MainWindow, _is_auth_error
-from ui_common import Toast, ConfirmDialog
+from ui_common import ConfirmDialog
 
 app = QApplication.instance() or QApplication(sys.argv)
 
@@ -166,7 +164,6 @@ def test_toast_action_button_shown_on_request(w):
 
 def test_confirm_dialog_danger_button():
     dlg = ConfirmDialog("删除日程", "确定删除吗？", ok_text="删除", danger=True, parent=None)
-    danger_btns = dlg.findChildren(type(dlg))
     # 危险确认按钮使用 dangerBtn 样式
     from PySide6.QtWidgets import QPushButton
     names = [b.objectName() for b in dlg.findChildren(QPushButton)]
@@ -221,3 +218,58 @@ def test_settings_dialog_shows_missing_cli_state(monkeypatch, cfg):
     app.processEvents()
     assert "lark-cli" in dlg.auth_status_label.text()
     dlg.close()
+
+# ---------------------------------------------------------------------------
+# 拖拽改期接线 & 桌面快捷方式（继承自重构回归套件，PR #7）
+# ---------------------------------------------------------------------------
+
+def test_reschedule_wiring_calls_update_event(w, monkeypatch):
+    from datetime import datetime
+
+    calls = []
+    monkeypatch.setattr(w.lark_cli, "update_event", lambda **kw: calls.append(kw))
+    w.events = [{
+        "event_id": "evt1",
+        "organizer_calendar_id": "primary",
+        "start_time": {"timestamp": str(int(datetime(2026, 8, 12, 10, 0).timestamp()))},
+        "end_time": {"timestamp": str(int(datetime(2026, 8, 12, 11, 0).timestamp()))},
+    }]
+    w._on_reschedule("evt1", datetime(2026, 8, 15), "2026-08-12T10:00:00", "2026-08-12T11:00:00", False)
+    assert calls, "拖拽改期未触发 update_event"
+    call = calls[-1]
+    assert call["event_id"] == "evt1" and call["start"].day == 15 and call["start"].hour == 10
+
+
+def test_reschedule_recurring_does_not_write(w):
+    from datetime import datetime
+
+    # 重复日程拖拽只给 Toast 提示，不写回飞书
+    w._on_reschedule("evt1", datetime(2026, 8, 15), "2026-08-12T10:00:00",
+                     "2026-08-12T11:00:00", True)
+
+
+def test_desktop_shortcut_skips_when_marked(cfg):
+    from pathlib import Path
+    from unittest import mock
+
+    import main
+
+    cfg.set("desktop_shortcut_created", True)
+    with mock.patch.object(Path, "home", return_value=Path("/tmp/fake_home")):
+        main._ensure_desktop_shortcut(cfg)
+    assert cfg.get("desktop_shortcut_created") is True
+
+
+def test_desktop_shortcut_creates_on_windows(cfg, tmp_path):
+    from pathlib import Path
+    from unittest import mock
+
+    import main
+
+    cfg.set("desktop_shortcut_created", False)
+    fake_home = tmp_path / "fake_home"
+    (fake_home / "Desktop").mkdir(parents=True)
+    with mock.patch.object(Path, "home", return_value=fake_home),             mock.patch("sys.platform", "win32"),             mock.patch("main._create_windows_shortcut") as create_shortcut:
+        main._ensure_desktop_shortcut(cfg)
+        create_shortcut.assert_called_once_with(fake_home / "Desktop")
+    assert cfg.get("desktop_shortcut_created") is True

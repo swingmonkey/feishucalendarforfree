@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """共享 UI 组件：Toast 轻提示与飞书风格确认对话框。
 
 设计目标：用不打断操作的轻量反馈替代散落各处的 QMessageBox 弹窗。
@@ -6,14 +5,14 @@
 - ``ConfirmDialog``：飞书风格的模态确认框（危险操作为红色主按钮）。
 """
 
-from PySide6.QtCore import Qt, QTimer, QEvent
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
     QHBoxLayout,
-    QVBoxLayout,
     QLabel,
     QPushButton,
+    QVBoxLayout,
     QWidget,
 )
 

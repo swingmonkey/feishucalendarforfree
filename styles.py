@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QSS stylesheets for FeishuCalendarDesktop - 飞书（Lark）设计规范。
 
 色板取自飞书开放平台「小程序设计规范 - 视觉规范」与 Arco Design 中性色板：
