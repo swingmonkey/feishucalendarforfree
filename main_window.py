@@ -19,37 +19,37 @@ It does **not** touch the Feishu read/write layer
 import shutil
 from datetime import datetime, timedelta
 
+from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtGui import QAction, QMouseEvent
 from PySide6.QtWidgets import (
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
+    QApplication,
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QFrame,
-    QStackedWidget,
-    QToolButton,
+    QMainWindow,
     QMenu,
     QProgressBar,
+    QPushButton,
+    QStackedWidget,
     QTextEdit,
-    QApplication,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QTimer, QPoint
-from PySide6.QtGui import QMouseEvent, QAction
 
-from lark_cli_async import LarkCliAsync
-from month_view import MonthView
-from week_view import WeekView
+from add_event_dialog import AddEventDialog
+from config import Config
 from day_detail_dialog import DayDetailDialog
 from event_detail_dialog import EventDetailDialog
-from add_event_dialog import AddEventDialog
-from settings_dialog import SettingsDialog
 from export_dialog import ExportDialog
-from search_dialog import SearchDialog
+from lark_cli_async import LarkCliAsync
 from login_dialog import LoginDialog, mark_authed
-from ui_common import Toast, ConfirmDialog
-from config import Config
+from month_view import MonthView
+from search_dialog import SearchDialog
+from settings_dialog import SettingsDialog
 from styles import get_theme
+from ui_common import ConfirmDialog, Toast
+from week_view import WeekView
 
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
 
@@ -803,8 +803,8 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _open_folder(path: str):
-        from PySide6.QtGui import QDesktopServices
         from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     def _on_search(self):
@@ -857,8 +857,8 @@ class MainWindow(QMainWindow):
             return
 
         def open_dialog():
-            from update_dialog import UpdateDialog
             import updater
+            from update_dialog import UpdateDialog
             dlg = UpdateDialog(release, updater.APP_VERSION, self)
             dlg.exec()
 

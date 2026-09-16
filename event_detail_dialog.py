@@ -9,40 +9,39 @@ v2.1：所有校验与保存错误改为对话框内联提示，保存成功不�
 由主窗口 Toast 统一反馈。
 """
 
-from datetime import datetime, timedelta
-from PySide6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QFormLayout,
-    QLabel,
-    QPushButton,
-    QHBoxLayout,
-    QFrame,
-    QLineEdit,
-    QTextEdit,
-    QDateTimeEdit,
-    QStackedWidget,
-    QWidget,
-    QGroupBox,
-    QCheckBox,
-    QComboBox,
-)
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDateTimeEdit,
+    QDialog,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QStackedWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
+from add_event_dialog import RECURRENCE_OPTIONS, ColorSwatch
+from config import Config
 from models_event import (
-    parse_event_time,
-    is_all_day_event,
-    markdown_to_html,
-    parse_task_list,
-    rebuild_description,
-    has_recurrence,
     PALETTE,
     get_event_color,
+    has_recurrence,
+    is_all_day_event,
+    markdown_to_html,
+    parse_event_time,
+    parse_task_list,
+    rebuild_description,
     set_event_color,
 )
-from add_event_dialog import ColorSwatch, RECURRENCE_OPTIONS
-from config import Config
 
 
 class EventDetailDialog(QDialog):
@@ -300,7 +299,7 @@ class EventDetailDialog(QDialog):
         recurring = has_recurrence(self.event_data)
         # Recurrence selector (defaults to current rule if present)
         self.edit_recurrence = QComboBox()
-        for label, rule in RECURRENCE_OPTIONS:
+        for label, _rule in RECURRENCE_OPTIONS:
             self.edit_recurrence.addItem(label)
         current_rule = self._recurrence_text()
         idx = next((i for i, (_, r) in enumerate(RECURRENCE_OPTIONS) if r == current_rule), 0)

@@ -11,25 +11,26 @@ re-exported here for backward compatibility.
 """
 
 from datetime import datetime
+
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QDrag, QMouseEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QVBoxLayout,
 )
-from PySide6.QtCore import Signal, Qt, QPoint
-from PySide6.QtGui import QMouseEvent, QDrag
-from PySide6.QtWidgets import QApplication
 
+from config import Config
 from models_event import (
-    parse_event_time,
-    is_all_day_event,
-    has_recurrence,
     get_event_color,
+    has_recurrence,
+    is_all_day_event,
+    parse_event_time,
 )
 from widgets import build_event_mime
-from config import Config
 
 # Re-export for legacy imports (``from event_card import parse_event_time``).
 __all__ = ["EventCard", "parse_event_time", "is_all_day_event"]

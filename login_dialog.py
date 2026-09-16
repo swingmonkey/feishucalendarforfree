@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """应用内飞书登录对话框。
 
 通过 lark-cli 的 Device Flow 完成授权（全程无需记忆命令）：
@@ -20,17 +19,16 @@ import tempfile
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
-from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
-    QVBoxLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QFrame,
+    QVBoxLayout,
 )
 
 LOGIN_SCOPES = ["calendar:calendar.event:read", "calendar:calendar:read"]

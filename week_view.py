@@ -16,19 +16,19 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QFrame,
     QScrollArea,
     QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
-from models_event import parse_event_time, expand_events_for_range
-from widgets import EVENT_MIME, parse_event_mime
-from event_card import EventCard
 from config import Config
+from event_card import EventCard
+from models_event import expand_events_for_range, parse_event_time
+from widgets import EVENT_MIME, parse_event_mime
 
 WEEKDAY_NAMES = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 

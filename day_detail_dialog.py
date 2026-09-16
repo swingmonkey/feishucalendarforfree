@@ -6,22 +6,22 @@ and focused (weektodo-style component separation).
 
 from datetime import datetime
 
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
-    QVBoxLayout,
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QPushButton,
-    QHBoxLayout,
-    QFrame,
     QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal
 
-from models_event import parse_event_time, is_all_day_event
-from event_card import EventCard
 from add_event_dialog import AddEventDialog
-from event_detail_dialog import EventDetailDialog
 from config import Config
+from event_card import EventCard
+from event_detail_dialog import EventDetailDialog
 
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
 

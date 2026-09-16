@@ -3,19 +3,19 @@
 Extracted from the old ``calendar_widget.py``.
 """
 
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
-    QVBoxLayout,
-    QLabel,
-    QPushButton,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
 )
-from PySide6.QtCore import Qt, Signal
 
-from models_event import parse_event_time, is_all_day_event
+from models_event import is_all_day_event, parse_event_time
 
 
 class SearchDialog(QDialog):

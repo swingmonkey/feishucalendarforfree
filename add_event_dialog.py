@@ -8,22 +8,23 @@ v2.1：校验与创建错误改为对话框内联红字提示，不再弹 QMessa
 """
 
 from datetime import datetime, timedelta
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QFormLayout,
-    QLineEdit,
-    QTextEdit,
+    QComboBox,
     QDateTimeEdit,
-    QPushButton,
+    QDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
-    QComboBox,
+    QLineEdit,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
 )
-from PySide6.QtCore import Qt, Signal
 
-from models_event import PALETTE, set_event_color
 from config import Config
+from models_event import PALETTE, set_event_color
 
 RECURRENCE_OPTIONS = [
     ("不重复", None),
