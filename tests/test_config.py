@@ -25,19 +25,21 @@ def test_invalid_values_are_replaced_with_defaults(tmp_path, monkeypatch):
     assert cfg.get("window_width") == 440
     assert cfg.get("window_height") == 640
     assert cfg.get("auto_refresh_interval") == 300
-    assert cfg.get("theme") == "dark"
+    assert cfg.get("theme") == "light"
     assert cfg.get("view_mode") == "month"
     assert cfg.get("opacity") == 1.0
     assert cfg.get("pin_to_top") is True
     assert cfg.get("event_colors") == {}
     assert cfg.get("calendar_id") == "primary"
+    assert cfg.get("auth_completed") is False
+    assert cfg.get("auth_user") == ""
 
 
 def test_malformed_json_recovers_to_defaults(tmp_path, monkeypatch):
     monkeypatch.setattr(config_module, "get_app_dir", lambda: tmp_path)
     (tmp_path / "config.json").write_text("{broken", encoding="utf-8")
     cfg = config_module.Config()
-    assert cfg.get("theme") == "dark"
+    assert cfg.get("theme") == "light"
     assert cfg.get("view_mode") == "month"
 
 

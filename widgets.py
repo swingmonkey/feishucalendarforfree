@@ -65,7 +65,7 @@ class DateCircleLabel(QLabel):
 
     def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
-        self._circle_color = QColor("#4B3FE3")
+        self._circle_color = QColor("#3370FF")
         self._circle_radius = 10
 
     def set_circle_color(self, color: str):

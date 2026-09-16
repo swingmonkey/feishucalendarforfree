@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QSystemTrayIcon,
     QMenu,
-    QMessageBox,
 )
 from PySide6.QtGui import QIcon, QAction, QPixmap, QPainter, QColor, QFont
 from PySide6.QtCore import Qt
@@ -69,8 +68,7 @@ def _resolve_assets_dir() -> Path:
 
 
 def create_app_icon() -> QIcon:
-    """Load the tray/app icon from assets (Pikachu icon), falling back to
-    a programmatically drawn icon if assets are missing."""
+    """Load the tray/app icon from assets, falling back to a drawn icon."""
     assets_dir = _resolve_assets_dir()
     # Prefer tray.png (small, transparent-background, good for menu bar)
     for candidate in ("tray.png", "icon_1024.png"):
@@ -79,15 +77,15 @@ def create_app_icon() -> QIcon:
             icon = QIcon(str(p))
             if not icon.isNull():
                 return icon
-    # Fallback: original programmatic icon
+    # Fallback: programmatic Feishu-blue badge
     pixmap = QPixmap(64, 64)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor("#4B3FE3"))
+    painter.setBrush(QColor("#3370FF"))
     painter.setPen(Qt.PenStyle.NoPen)
     painter.drawRoundedRect(4, 4, 56, 56, 14, 14)
-    painter.setPen(QColor("#171717"))
+    painter.setPen(QColor("#FFFFFF"))
     font = QFont()
     font.setFamilies(["PingFang SC", "SF Pro Text", "Microsoft YaHei UI", "Segoe UI"])
     font.setPixelSize(28)
@@ -136,15 +134,15 @@ class TrayApp(QApplication):
         add_action.triggered.connect(self.widget._on_add_event)
         menu.addAction(add_action)
 
+        login_action = QAction("登录 / 重新登录", self)
+        login_action.triggered.connect(self.widget.open_login)
+        menu.addAction(login_action)
+
         menu.addSeparator()
 
         settings_action = QAction("设置", self)
         settings_action.triggered.connect(self.widget._on_settings)
         menu.addAction(settings_action)
-
-        about_action = QAction("关于", self)
-        about_action.triggered.connect(self._show_about)
-        menu.addAction(about_action)
 
         exit_action = QAction("退出", self)
         exit_action.triggered.connect(self._quit)
@@ -166,17 +164,6 @@ class TrayApp(QApplication):
         self.widget.raise_()
         self.widget.activateWindow()
 
-    def _show_about(self):
-        QMessageBox.about(
-            self.widget,
-            "关于飞书日程",
-            "<h3>飞书日程桌面助手</h3>"
-            "<p>在桌面显示飞书日历日程（Windows / macOS）</p>"
-            "<p>功能：查看 / 添加 / 删除飞书日程</p>"
-            "<p style='color: gray;'>基于 PySide6 + lark-cli 构建</p>"
-            "<p style='color: gray;'>参考 PaperTodo 设计理念</p>",
-        )
-
     def _setup_update_check(self):
         """Silently check for a newer release shortly after launch."""
         if not self.config.get("check_update_on_start", True):
@@ -187,17 +174,15 @@ class TrayApp(QApplication):
 
     def _background_check(self):
         self._check_worker = updater.CheckWorker()
-        self._check_worker.result.connect(self._on_update_available)
+        self._check_worker.result.connect(self._on_update_checked)
         self._check_worker.start()
 
-    def _on_update_available(self, release):
+    def _on_update_checked(self, release):
         if not release:
             return
         if updater.is_newer(release.get("tag", ""), updater.APP_VERSION):
-            from update_dialog import UpdateDialog
-
-            dlg = UpdateDialog(release, updater.APP_VERSION, self.widget)
-            dlg.exec()
+            # 不再弹窗打断，仅在主窗口底部给一条可点击的轻提示
+            self.widget.notify_update(release)
 
     def _quit(self):
         pos = self.widget.pos()
@@ -207,22 +192,6 @@ class TrayApp(QApplication):
         self.config.set("window_height", self.widget.height())
         self.tray.hide()
         self.quit()
-
-
-def _has_lark_auth() -> bool:
-    """Check whether the lark-cli user identity is authorized (ready)."""
-    import json
-
-    from login_dialog import _lark_cli
-
-    rc, out, _ = _lark_cli(["auth", "status"], timeout=15)
-    if rc == 0:
-        try:
-            data = json.loads(out)
-            return data.get("identities", {}).get("user", {}).get("status") == "ready"
-        except json.JSONDecodeError:
-            pass
-    return False
 
 
 def _ensure_desktop_shortcut(config):
@@ -319,30 +288,10 @@ def main():
     # Config instance, so the flag is persisted and not overwritten to False).
     _ensure_desktop_shortcut(config)
 
-    # Check if we have either lark-cli or app credentials
-    has_lark_cli = shutil.which("lark-cli") is not None
-
-    # Launch the main app regardless of auth state — if not configured yet,
-    # pop up the settings dialog so the user can configure credentials
-    # instead of hard-exiting with only an "OK" button.
+    # 启动不再做任何阻塞式授权检查、也不弹登录/提示框：
+    # 主窗口会直接加载，未安装 lark-cli / 未登录 / 加载失败均以内联
+    # 状态面板引导，登录成功后由 lark-cli 全局持久化，重启无需重登。
     app = TrayApp(sys.argv)
-
-    if not has_lark_cli:
-        QMessageBox.information(
-            app.widget,
-            "首次使用",
-            "未检测到 lark-cli。\n\n请先在命令行执行：\n"
-            "  npm install -g @larksuite/cli\n\n"
-            "安装完成后重新启动本应用即可扫码登录。",
-        )
-    elif not _has_lark_auth():
-        from login_dialog import LoginDialog
-
-        dlg = LoginDialog(app.widget)
-        dlg.exec()
-        if _has_lark_auth():
-            app.widget.refresh_events()
-
     sys.exit(app.exec())
 
 
