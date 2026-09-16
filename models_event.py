@@ -335,27 +335,35 @@ def markdown_to_html(text: str) -> str:
             i += 1
             continue
         if stripped.startswith("### "):
-            close_list(); out.append(f"<h3>{inline(stripped[4:])}</h3>")
+            close_list()
+            out.append(f"<h3>{inline(stripped[4:])}</h3>")
         elif stripped.startswith("## "):
-            close_list(); out.append(f"<h2>{inline(stripped[3:])}</h2>")
+            close_list()
+            out.append(f"<h2>{inline(stripped[3:])}</h2>")
         elif stripped.startswith("# "):
-            close_list(); out.append(f"<h1>{inline(stripped[2:])}</h1>")
+            close_list()
+            out.append(f"<h1>{inline(stripped[2:])}</h1>")
         elif stripped.startswith("> "):
-            close_list(); out.append(f"<blockquote>{inline(stripped[2:])}</blockquote>")
+            close_list()
+            out.append(f"<blockquote>{inline(stripped[2:])}</blockquote>")
         elif stripped in ("---", "***", "___"):
-            close_list(); out.append("<hr>")
+            close_list()
+            out.append("<hr>")
         elif stripped.startswith("- [ ] ") or stripped.startswith("- [x] ") or stripped.startswith("- [X] "):
             if not in_list:
-                out.append("<ul>"); in_list = True
+                out.append("<ul>")
+                in_list = True
             checked = "checked" if stripped[3] in "xX" else ""
             out.append(f'<li><input type="checkbox" disabled {checked}> {inline(stripped[6:])}</li>')
         elif stripped.startswith("- "):
             if not in_list:
-                out.append("<ul>"); in_list = True
+                out.append("<ul>")
+                in_list = True
             out.append(f"<li>{inline(stripped[2:])}</li>")
         elif len(stripped) >= 3 and stripped[0].isdigit() and stripped[1:].startswith(". "):
             if not in_list:
-                out.append("<ul>"); in_list = True
+                out.append("<ul>")
+                in_list = True
             out.append(f"<li>{inline(stripped.split('. ', 1)[1])}</li>")
         else:
             close_list()

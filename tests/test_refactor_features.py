@@ -9,6 +9,7 @@
 - 桌面快捷方式 创建逻辑
 """
 import os
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from datetime import datetime, timedelta
@@ -19,10 +20,10 @@ from PySide6.QtWidgets import QApplication
 
 
 def test_refactor_features():
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
 
-    from lark_cli_async import LarkCliAsync
     import login_dialog
+    from lark_cli_async import LarkCliAsync
     update_calls = []
 
     def fake_fetch(self, current_date, monthly=True):

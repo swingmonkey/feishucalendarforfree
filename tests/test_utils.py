@@ -5,10 +5,10 @@ from datetime import datetime
 
 from utils import (
     event_sort_key,
+    get_local_tz_name,
+    get_local_tz_offset,
     month_range,
     wide_range,
-    get_local_tz_offset,
-    get_local_tz_name,
 )
 
 

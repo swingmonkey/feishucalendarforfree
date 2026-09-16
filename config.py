@@ -91,7 +91,7 @@ class Config:
         raw = {}
         if self._path.exists():
             try:
-                with open(self._path, "r", encoding="utf-8") as f:
+                with open(self._path, encoding="utf-8") as f:
                     loaded = json.load(f)
                 if isinstance(loaded, dict):
                     raw = loaded

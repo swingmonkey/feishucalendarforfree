@@ -1,25 +1,24 @@
 """Export dialog for exporting calendar events to Excel."""
 
 import os
-import sys
 from datetime import datetime, timedelta
+
 from PySide6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QFormLayout,
+    QButtonGroup,
     QDateTimeEdit,
-    QPushButton,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QFileDialog,
     QMessageBox,
+    QPushButton,
     QRadioButton,
-    QButtonGroup,
-    QFrame,
+    QVBoxLayout,
 )
-from PySide6.QtCore import Qt, Signal
 
-from event_card import parse_event_time, is_all_day_event
+from event_card import is_all_day_event, parse_event_time
 
 
 def get_desktop_path() -> str:
@@ -34,7 +33,7 @@ def export_events_to_excel(events: list, file_path: str) -> bool:
     """
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     except ImportError:
         # Fallback: export to CSV if openpyxl not available
         return export_events_to_csv(events, file_path)
@@ -206,9 +205,9 @@ class ExportDialog(QDialog):
 
         self.range_group = QButtonGroup(self)
 
-        self.radio_month = QRadioButton("当月（{0}）".format(
-            self._current_date.strftime("%Y年%m月")
-        ))
+        self.radio_month = QRadioButton(
+            f"当月（{self._current_date.strftime('%Y年%m月')}）"
+        )
         self.radio_month.setChecked(True)
         self.range_group.addButton(self.radio_month, 0)
         range_layout.addWidget(self.radio_month)

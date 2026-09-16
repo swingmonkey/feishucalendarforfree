@@ -2,23 +2,24 @@
 
 import logging
 import os
-import sys
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
-    QSystemTrayIcon,
     QMenu,
     QMessageBox,
+    QSystemTrayIcon,
 )
-from PySide6.QtGui import QIcon, QAction, QPixmap, QPainter, QColor, QFont
-from PySide6.QtCore import Qt
 
+import updater
 from config import Config
 from main_window import MainWindow
-import updater
 
 
 def _extend_path_for_app_bundle():

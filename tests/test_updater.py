@@ -1,8 +1,8 @@
 """OTA updater 离线回归测试（mock 网络，无需真实 GitHub）。"""
-import os
 import json
-import zipfile
+import os
 import tempfile
+import zipfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -85,14 +85,16 @@ def test_find_sha256_sums_asset_missing():
 
 
 def test_download_sha256_sums_parses():
-    sums_text = "abc123  FeishuCalendar.exe\ndef456  FeishuCalendar.app.zip\n"
+    exe_hash = "a" * 64
+    zip_hash = "b" * 64
+    sums_text = f"{exe_hash}  FeishuCalendar.exe\n{zip_hash}  FeishuCalendar.app.zip\n"
     with mock.patch.object(updater, "find_sha256_sums_asset", return_value={"browser_download_url": "http://x/SHA256SUMS"}):
         with mock.patch.object(updater, "urlopen") as m_urlopen:
             m_urlopen.return_value.__enter__.return_value.read.return_value = sums_text.encode()
             m_urlopen.return_value.__enter__.return_value.timeout = 15
             result = updater.download_sha256_sums({"assets": []})
-            assert result.get("FeishuCalendar.exe") == "abc123"
-            assert result.get("FeishuCalendar.app.zip") == "def456"
+            assert result.get("FeishuCalendar.exe") == exe_hash
+            assert result.get("FeishuCalendar.app.zip") == zip_hash
 
 
 def test_download_sha256_sums_no_asset_returns_empty():
@@ -144,7 +146,7 @@ def test_restart_launches_new_process():
 # ── UI 构造不崩 ──
 def test_update_dialog_construct():
     from PySide6.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     from update_dialog import UpdateDialog
 
     release = {"tag": "v2.0.1", "body": "# 更新\n- 修复样式", "zipball_url": "http://x/z.zip"}
@@ -155,7 +157,7 @@ def test_update_dialog_construct():
 
 def test_settings_check_update_opens_dialog():
     from PySide6.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     from config import Config
     from settings_dialog import SettingsDialog
 

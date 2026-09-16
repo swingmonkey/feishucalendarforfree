@@ -1,18 +1,17 @@
 """Lark CLI wrapper - encapsulates all lark-cli subprocess calls."""
 
 import json
-import subprocess
 import shutil
+import subprocess
 import sys
 from datetime import datetime, timedelta
-from typing import Optional
 
 from lark_cli_args import (
     agenda_args,
-    search_event_args,
     create_event_args,
     delete_event_args,
     get_event_args,
+    search_event_args,
 )
 
 
@@ -54,11 +53,11 @@ class LarkCli:
         try:
             result = subprocess.run(cmd, **kwargs)
         except subprocess.TimeoutExpired:
-            raise LarkCliError("lark-cli 命令超时，请重试")
+            raise LarkCliError("lark-cli 命令超时，请重试") from None
         except FileNotFoundError:
             raise LarkCliError(
                 "未找到 lark-cli，请先运行: npx @larksuite/cli@latest install"
-            )
+            ) from None
 
         stdout = result.stdout.strip()
         stderr = result.stderr.strip()
@@ -90,7 +89,7 @@ class LarkCli:
                     err.get("hint", ""),
                 )
             except json.JSONDecodeError:
-                raise LarkCliError(stderr)
+                raise LarkCliError(stderr) from None
 
         if result.returncode != 0:
             raise LarkCliError(f"lark-cli 返回错误码 {result.returncode}")
@@ -106,7 +105,7 @@ class LarkCli:
             return False
 
     def get_agenda(
-        self, start: Optional[datetime] = None, end: Optional[datetime] = None
+        self, start: datetime | None = None, end: datetime | None = None
     ) -> list[dict]:
         """Get calendar agenda for a date range.
 
@@ -187,8 +186,8 @@ class LarkCli:
     def search_events(
         self,
         query: str = "",
-        start: Optional[datetime] = None,
-        end: Optional[datetime] = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> list[dict]:
         """Search calendar events by keyword and time range (server-side).
 

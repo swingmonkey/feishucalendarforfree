@@ -11,34 +11,33 @@ Crucially, it does **not** touch the Feishu read/write layer
 existing ``LarkCliAsync.update_event`` — the same method the edit dialog uses.
 """
 
-import calendar as cal_module
 from datetime import datetime, timedelta
 
+from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QFrame,
-    QStackedWidget,
+    QMainWindow,
     QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QTimer, QPoint, Signal
-from PySide6.QtGui import QMouseEvent
 
-from lark_cli_async import LarkCliAsync
-from month_view import MonthView
-from week_view import WeekView
+from add_event_dialog import AddEventDialog
+from config import Config
 from day_detail_dialog import DayDetailDialog
 from event_detail_dialog import EventDetailDialog
-from add_event_dialog import AddEventDialog
-from settings_dialog import SettingsDialog
 from export_dialog import ExportDialog
+from lark_cli_async import LarkCliAsync
+from month_view import MonthView
 from search_dialog import SearchDialog
-from config import Config
+from settings_dialog import SettingsDialog
 from styles import get_theme
+from week_view import WeekView
 
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
 

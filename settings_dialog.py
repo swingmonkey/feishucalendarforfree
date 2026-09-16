@@ -1,27 +1,23 @@
 """Settings dialog for configuring App ID, App Secret, auto-start, etc."""
 
-import os
 import sys
 from pathlib import Path
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
-    QVBoxLayout,
     QFormLayout,
-    QLineEdit,
-    QPushButton,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QCheckBox,
-    QSpinBox,
-    QGroupBox,
     QMessageBox,
+    QPushButton,
+    QSpinBox,
     QTabWidget,
+    QVBoxLayout,
     QWidget,
-    QTextEdit,
-    QFrame,
-    QApplication,
 )
-from PySide6.QtCore import Qt, Signal
 
 import updater
 

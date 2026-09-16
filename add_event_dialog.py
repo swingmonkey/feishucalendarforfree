@@ -6,24 +6,24 @@ Extended in the weektodo-style refactor with:
 """
 
 from datetime import datetime, timedelta
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QFormLayout,
-    QLineEdit,
-    QTextEdit,
+    QComboBox,
     QDateTimeEdit,
-    QPushButton,
+    QDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
-    QComboBox,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
 
-from models_event import PALETTE, set_event_color
 from config import Config
+from models_event import PALETTE, set_event_color
 
 RECURRENCE_OPTIONS = [
     ("不重复", None),

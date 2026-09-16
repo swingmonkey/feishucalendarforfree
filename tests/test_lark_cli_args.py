@@ -4,10 +4,10 @@ from datetime import datetime
 
 from lark_cli_args import (
     agenda_args,
-    search_event_args,
     create_event_args,
     delete_event_args,
     get_event_args,
+    search_event_args,
 )
 
 # A fixed reference time for deterministic tests

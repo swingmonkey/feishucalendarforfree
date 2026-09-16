@@ -8,20 +8,19 @@ share identical building blocks, mirroring weektodo's component approach.
 import json
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QMimeData, QPoint, QByteArray, Signal, QSize, QEvent
-from PySide6.QtGui import QMouseEvent, QDrag, QPainter, QColor, QPen, QFont
+from PySide6.QtCore import QByteArray, QMimeData, QPoint, Qt, Signal
+from PySide6.QtGui import QColor, QDrag, QFont, QPainter
 from PySide6.QtWidgets import (
-    QFrame,
-    QLabel,
-    QHBoxLayout,
-    QVBoxLayout,
     QApplication,
-    QWidget,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
     QSizePolicy,
+    QVBoxLayout,
 )
 
-from models_event import parse_event_time, is_all_day_event, has_recurrence, get_event_color
 from config import Config
+from models_event import get_event_color, has_recurrence, is_all_day_event, parse_event_time
 
 # MIME type used to carry a dragged event between cells / week columns.
 EVENT_MIME = "application/x-feishu-event"

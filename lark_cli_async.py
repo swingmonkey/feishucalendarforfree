@@ -1,20 +1,21 @@
 """Async Lark CLI wrapper using QProcess for Qt-integrated async execution."""
 
 import json
-import sys
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
+
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
-from lark_cli import find_lark_cli, LarkCliError
+from lark_cli import find_lark_cli
 from lark_cli_args import (
     agenda_args,
-    search_event_args,
     create_event_args,
     delete_event_args,
+    search_event_args,
 )
-from utils import month_range, wide_range, event_sort_key, get_local_tz_name
+from utils import event_sort_key, get_local_tz_name, month_range, wide_range
 
 # Default timeout for a single lark-cli QProcess invocation (milliseconds).
 # lark-cli spawns node and makes HTTPS calls; 45 s is generous but prevents

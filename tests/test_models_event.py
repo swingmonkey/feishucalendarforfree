@@ -7,24 +7,21 @@ These tests are pure-Python (no Qt display required) and run under
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from models_event import (
     PALETTE,
-    parse_event_time,
-    is_all_day_event,
-    expand_recurrence,
+    _add_months,
+    _parse_rrule,
     expand_events_for_range,
+    expand_recurrence,
+    get_event_color,
     has_recurrence,
+    is_all_day_event,
     markdown_to_html,
+    parse_event_time,
     parse_task_list,
     rebuild_description,
-    get_event_color,
     set_event_color,
-    _parse_rrule,
-    _add_months,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # parse_event_time

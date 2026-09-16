@@ -3,13 +3,13 @@
 import hashlib
 import json
 import os
-import sys
 import shutil
-import zipfile
-import tempfile
 import subprocess
-from urllib.request import urlopen, Request
+import sys
+import tempfile
+import zipfile
 from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from PySide6.QtCore import QThread, Signal
 

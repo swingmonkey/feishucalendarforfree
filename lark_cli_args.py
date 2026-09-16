@@ -7,7 +7,6 @@ Every builder returns a ``list[str]`` ready to be appended with the global
 """
 
 from datetime import datetime
-from typing import Optional
 
 from utils import get_local_tz_offset
 
@@ -49,7 +48,7 @@ def create_event_args(
     end: datetime,
     description: str = "",
     calendar_id: str = "primary",
-    rrule: Optional[str] = None,
+    rrule: str | None = None,
 ) -> list[str]:
     """Arguments for ``calendar +create ...``."""
     args = [

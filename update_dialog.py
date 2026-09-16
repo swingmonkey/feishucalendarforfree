@@ -3,17 +3,17 @@
 import os
 import sys
 
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QProgressBar,
     QPlainTextEdit,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
 )
-from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
 
 import updater
 
