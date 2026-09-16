@@ -113,7 +113,8 @@ class EventCard(QFrame):
 
         vchat = self.event_data.get("vchat", {})
         if isinstance(vchat, dict) and vchat.get("meeting_url"):
-            meta_parts.append("有视频会议")
+            # 周列很窄，用紧凑的摄像机图标代替「有视频会议」文字
+            meta_parts.append("🎦")
 
         if meta_parts:
             self.meta_label = QLabel("  ".join(meta_parts))

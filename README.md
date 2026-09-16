@@ -21,16 +21,19 @@
 - **置顶切换** - 📌置顶 / 📍不置顶，图标一目了然
 - **今天高亮** - 当天日期用蓝色圆圈标记
 - **最小化** - 标题栏「—」一键最小化窗口，托盘点击恢复
-- **一键登录按钮** - 月历栏「⚙ 一键登录」打开应用内授权；已授权后自动隐藏
-- **设置面板** - 配置登录、开机启动、透明度、刷新间隔
+- **设置面板** - 4 个分页（通用 / 账号 / 外观 / 关于），配置登录、开机启动、透明度、刷新间隔、主题
 - **桌面快捷方式** - 首次运行自动在桌面创建快捷方式（Windows .lnk / macOS symlink），仅创建一次
-- **应用内扫码登录** - 首次启动自动弹出登录窗口，扫码或网页授权，无需手动配置
+- **扫码登录一次即可** - 应用内扫码 / 网页授权（device flow），授权成功后登录窗口自动关闭；凭据由 lark-cli 全局持久化，重启应用无需重复登录
+- **启动零打扰** - 启动不再弹任何模态框：加载中显示内联骨架面板，未登录显示引导卡片，授权过期才提示重新登录
+- **轻提示替代弹窗** - 增删改结果、导出结果、更新发现等改用窗口底部 Toast 轻提示；删除等不可逆操作才弹飞书风格确认框；表单校验错误在表单内红字提示
+- **精简工具栏** - 头部只保留 月/周 切换、＋、刷新、⋯ 更多菜单（搜索 / 导出 / 置顶 / 主题 / 登录 / 设置）、最小化、关闭
+- **飞书设计语言** - 默认浅色主题，品牌蓝 #3370FF、扁平按钮、下划线式分页、飞书中性色阶与状态色，深浅两套主题统一
 - **开机启动** - 可设置开机自动运行
 - **系统托盘** - 后台运行，托盘菜单快捷操作
-- **主题切换** - 深色 / 浅色主题
+- **主题切换** - 深色 / 浅色主题（默认浅色）
 - **自动刷新** - 定时自动同步最新日程
-- **授权后自动刷新** - 检测到授权错误时自动重试获取日程
-- **错误信息可复制** - 错误提示支持选中和复制，方便排查问题
+- **授权失效引导** - 检测到授权错误时切换到登录引导面板，重新授权后自动恢复
+- **错误信息可复制** - 错误面板支持选中和复制，方便排查问题
 - **导出日程** - 一键导出当前范围日程到 Excel
 
 ## 认证方式（lark-cli 用户授权）
@@ -82,6 +85,7 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
   --hidden-import openpyxl \
   --hidden-import config \
   --hidden-import styles \
+  --hidden-import ui_common \
   --hidden-import lark_cli \
   --hidden-import lark_cli_async \
   --hidden-import models_event \
@@ -144,14 +148,13 @@ bash build_macos.sh
 - **拖动** - 按住窗口顶部拖动移动位置
 - **调整大小** - 拖拽窗口右下角 ⇲ 图标调整大小
 - **月 / 周** - 切换月历网格 / 周计划视图
-- **+** - 添加日程
-- **🔍** - 搜索日程（跨月搜索历史和未来日程）
+- **＋** - 添加日程
 - **⟳** - 刷新日程
-- **📤** - 导出当前范围日程到 Excel
-- **📌/📍** - 切换置顶（图标区分状态）
-- **⚙** - 打开设置
-- **◐** - 切换深色/浅色主题
+- **⋯** - 更多操作菜单：搜索日程、导出到 Excel、窗口置顶、深色/浅色主题、登录 / 重新登录、设置
+- **—** - 最小化到任务栏
 - **✕** - 隐藏到系统托盘
+
+> 登录与首次使用：启动后应用先显示「正在加载」。若尚未安装 lark-cli，会显示安装引导（含 `npm install -g @larksuite/cli` 一键复制）；若未登录，显示扫码引导卡片。扫码授权一次后，lark-cli 会在本机持久化凭据，之后重启应用直接进入日历，不再重复登录。授权过期时才会出现「重新登录」引导。
 
 ### 月历网格 / 周计划
 
@@ -173,17 +176,18 @@ bash build_macos.sh
 
 ### 设置面板
 
-- **登录飞书账号** - 打开应用内登录窗口（扫码 / 网页授权，device flow）
-- **开机启动** - 开关开机自动运行（Windows 写注册表，macOS 写 LaunchAgent）
-- **自动刷新间隔** - 设置日程自动刷新频率（60-3600秒）
-- **窗口透明度** - 调整窗口透明度（50%-100%）
+- **通用** - 开机启动（Windows 写注册表，macOS 写 LaunchAgent）、自动刷新间隔（60-3600 秒）、窗口透明度（50%-100%）
+- **账号** - 异步检测 lark-cli 安装与登录状态；打开应用内登录窗口（扫码 / 网页授权，device flow），登录成功自动刷新状态
+- **外观** - 浅色 / 深色主题（默认浅色）
+- **关于** - 版本信息、检查更新（结果内联展示，发现新版本才弹更新确认框）
 
 ## 项目结构
 
 ```
 FeishuCalendarDesktop/
 ├── main.py                # 程序入口，系统托盘
-├── main_window.py         # 主窗口（月/周视图切换、刷新/错误重试/设置/增删/拖拽改期/持久化）
+├── main_window.py         # 主窗口（QStackedWidget 状态机：月视图/周视图/加载/登录引导/错误；溢出菜单、Toast、增删改、拖拽改期、持久化）
+├── ui_common.py           # 通用 UI：Toast 轻提示、飞书风格 ConfirmDialog 确认框
 ├── month_view.py          # 月历网格视图组件
 ├── week_view.py           # 周计划视图组件（weektodo 风格 7 列）
 ├── widgets.py             # 共享小组件：日期徽标、可点击标签、紧凑日程标签（拖拽源）、日格（放置目标）
@@ -193,14 +197,14 @@ FeishuCalendarDesktop/
 ├── search_dialog.py       # 搜索对话框
 ├── add_event_dialog.py    # 添加日程对话框（颜色 + 重复规则）
 ├── event_detail_dialog.py # 日程详情对话框（Markdown / 子任务 / 颜色 / 重复）
-├── login_dialog.py        # 应用内扫码/网页登录（lark-cli device flow）
+├── login_dialog.py        # 应用内扫码/网页登录（lark-cli device flow，后台线程自动轮询，成功自动关闭）
 ├── lark_cli.py            # lark-cli 同步封装（备用）
 ├── lark_cli_async.py      # lark-cli 异步封装（QProcess；Windows 优先 node 直调，避免 cmd/PowerShell 拆解参数）
-├── settings_dialog.py     # 设置对话框（开机启动跨平台分发）
+├── settings_dialog.py     # 设置对话框（通用/账号/外观/关于 4 个分页，登录态与更新检查均为异步）
 ├── export_dialog.py       # 导出日程到 Excel
 ├── utils.py               # 共享的日期范围计算与日程排序工具
 ├── config.py              # 配置管理（macOS 配置存放在 ~/Library/Application Support）
-├── styles.py              # 主题样式（深色/浅色 + 周视图/切换按钮/拖放高亮）
+├── styles.py              # 主题样式（飞书设计语言，浅色/深色 + 周视图/切换按钮/拖放高亮/Toast/菜单）
 ├── requirements.txt       # Python 依赖
 ├── config.example.json    # 配置文件示例
 ├── 启动飞书日程.bat        # Windows 启动脚本
@@ -228,12 +232,14 @@ FeishuCalendarDesktop/
   "window_width": 440,
   "window_height": 640,
   "auto_refresh_interval": 300,
-  "theme": "dark",
-  "opacity": 0.95,
+  "theme": "light",
+  "opacity": 1.0,
   "pin_to_top": true,
   "calendar_id": "primary",
   "view_mode": "month",
   "event_colors": {},
+  "auth_completed": false,
+  "auth_user": "",
   "auto_start": false
 }
 ```

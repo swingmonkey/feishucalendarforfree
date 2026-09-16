@@ -92,8 +92,17 @@ def test_settings_check_update_opens_dialog():
         m_dlg.return_value.exec.return_value = None
         dlg = SettingsDialog(Config())
         dlg._on_check_update()
+        # v2.1 起检查更新在后台线程进行，需驱动事件循环等待结果
+        import time
+        from PySide6.QtWidgets import QApplication as _QApp
+        deadline = time.monotonic() + 5
+        while not m_dlg.called and time.monotonic() < deadline:
+            _QApp.processEvents()
+            time.sleep(0.02)
         assert m_dlg.called
         dlg.close()
+        from PySide6.QtWidgets import QApplication as _QApp
+        _QApp.processEvents()
 
 
 def test_get_latest_release_returns_none_without_release():

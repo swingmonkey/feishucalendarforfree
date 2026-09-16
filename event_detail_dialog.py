@@ -1,11 +1,12 @@
 """Dialog for viewing and editing calendar event details.
 
-Extended in the weektodo-style refactor:
-- the description is rendered as **Markdown** (via ``markdown_to_html``)
-- a **subtask** checklist (``- [ ]`` items inside the description) is shown as
-  interactive checkboxes that write straight back to Feishu
-- a **local color** can be assigned (stored per event id in config)
-- a **recurrence** rule can be edited (written through to Feishu)
+功能：
+- 查看模式：Markdown 描述渲染、子任务清单（描述中的 ``- [ ]``）可勾选并
+  直接写回飞书、组织者 / 参会状态 / 忙闲 / 可见性、视频会议入口、本地颜色
+- 编辑模式：标题 / 起止时间 / 重复规则 / 描述
+
+v2.1：所有校验与保存错误改为对话框内联提示，保存成功不再弹 QMessageBox，
+由主窗口 Toast 统一反馈。
 """
 
 from datetime import datetime, timedelta
@@ -17,9 +18,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QHBoxLayout,
     QFrame,
+    QLineEdit,
     QTextEdit,
     QDateTimeEdit,
-    QMessageBox,
     QStackedWidget,
     QWidget,
     QGroupBox,
@@ -60,7 +61,7 @@ class EventDetailDialog(QDialog):
         self._pending_desc = None
         self.setWindowTitle("日程详情")
         self.setMinimumSize(440, 520)
-        self.resize(460, 560)
+        self.resize(460, 580)
         self._setup_ui()
 
         if self.lark_cli:
@@ -69,7 +70,7 @@ class EventDetailDialog(QDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(20, 18, 20, 16)
         layout.setSpacing(12)
 
         self.stack = QStackedWidget()
@@ -93,7 +94,7 @@ class EventDetailDialog(QDialog):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(31, 35, 41, 0.15); background-color: rgba(31, 35, 41, 0.15); max-height: 1px;")
+        sep.setStyleSheet("color: rgba(31, 35, 41, 0.12); background-color: rgba(31, 35, 41, 0.12); max-height: 1px;")
         layout.addWidget(sep)
 
         form = QFormLayout()
@@ -126,6 +127,10 @@ class EventDetailDialog(QDialog):
                 dur_str += f"{minutes}分钟"
             if dur_str:
                 form.addRow(self._label("时长"), self._value(dur_str))
+
+        location = self.event_data.get("location", {})
+        if isinstance(location, dict) and location.get("name"):
+            form.addRow(self._label("地点"), self._value(str(location["name"])))
 
         organizer = self.event_data.get("event_organizer", {})
         if isinstance(organizer, dict) and organizer.get("display_name"):
@@ -213,6 +218,12 @@ class EventDetailDialog(QDialog):
             open_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(app_link)))
             layout.addWidget(open_btn)
 
+        self.view_message = QLabel("")
+        self.view_message.setObjectName("formError")
+        self.view_message.setWordWrap(True)
+        self.view_message.setVisible(False)
+        layout.addWidget(self.view_message)
+
         layout.addStretch()
 
         btn_row = QHBoxLayout()
@@ -232,6 +243,7 @@ class EventDetailDialog(QDialog):
 
         close_btn = QPushButton("关闭")
         close_btn.setObjectName("secondaryBtn")
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(close_btn)
         layout.addLayout(btn_row)
@@ -258,7 +270,7 @@ class EventDetailDialog(QDialog):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(31, 35, 41, 0.15); background-color: rgba(31, 35, 41, 0.15); max-height: 1px;")
+        sep.setStyleSheet("color: rgba(31, 35, 41, 0.12); background-color: rgba(31, 35, 41, 0.12); max-height: 1px;")
         layout.addWidget(sep)
 
         form = QFormLayout()
@@ -285,6 +297,7 @@ class EventDetailDialog(QDialog):
         self.edit_end.setDateTime(end)
         form.addRow("结束  ", self.edit_end)
 
+        recurring = has_recurrence(self.event_data)
         # Recurrence selector (defaults to current rule if present)
         self.edit_recurrence = QComboBox()
         for label, rule in RECURRENCE_OPTIONS:
@@ -302,6 +315,20 @@ class EventDetailDialog(QDialog):
         form.addRow("描述  ", self.edit_desc)
 
         layout.addLayout(form)
+
+        if recurring:
+            hint = QLabel("提示：该日程为重复日程，修改时间可能影响整个重复序列。")
+            hint.setObjectName("formError")
+            hint.setStyleSheet("color: #FF8800; font-size: 12px;")
+            hint.setWordWrap(True)
+            layout.addWidget(hint)
+
+        self.edit_message = QLabel("")
+        self.edit_message.setObjectName("formError")
+        self.edit_message.setWordWrap(True)
+        self.edit_message.setVisible(False)
+        layout.addWidget(self.edit_message)
+
         layout.addStretch()
 
         btn_row = QHBoxLayout()
@@ -309,6 +336,7 @@ class EventDetailDialog(QDialog):
 
         cancel_btn = QPushButton("取消")
         cancel_btn.setObjectName("secondaryBtn")
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self._exit_edit_mode)
         btn_row.addWidget(cancel_btn)
 
@@ -345,6 +373,12 @@ class EventDetailDialog(QDialog):
         set_event_color(self._config, self.event_data.get("event_id", ""), hex_value or None)
         self._rebuild_view()
 
+    def _show_view_message(self, text: str, kind: str = "error"):
+        color = "#F54A45" if kind == "error" else "#2EA121"
+        self.view_message.setStyleSheet(f"color: {color}; font-size: 12px;")
+        self.view_message.setText(text)
+        self.view_message.setVisible(True)
+
     def _on_subtask_toggled(self, index: int, checked: bool):
         desc = self.event_data.get("description", "") or ""
         tasks = parse_task_list(desc)
@@ -372,27 +406,32 @@ class EventDetailDialog(QDialog):
 
     # ─── Save / Update ───
 
+    def _show_edit_message(self, text: str):
+        self.edit_message.setText(text)
+        self.edit_message.setVisible(True)
+
     def _on_save(self):
         summary = self.edit_summary.text().strip()
         if not summary:
-            QMessageBox.warning(self, "提示", "请输入日程标题")
+            self._show_edit_message("请输入日程标题")
+            self.edit_summary.setFocus()
             return
 
         start = self.edit_start.dateTime().toPython()
         end = self.edit_end.dateTime().toPython()
-
         if end <= start:
-            QMessageBox.warning(self, "提示", "结束时间必须晚于开始时间")
+            self._show_edit_message("结束时间必须晚于开始时间")
             return
 
         description = self.edit_desc.toPlainText().strip()
         rrule = RECURRENCE_OPTIONS[self.edit_recurrence.currentIndex()][1]
 
         if not self.lark_cli:
-            QMessageBox.warning(self, "提示", "无法连接到飞书API")
+            self._show_edit_message("无法连接到飞书，请稍后重试")
             return
 
-        self.save_btn.setText("保存中...")
+        self.edit_message.setVisible(False)
+        self.save_btn.setText("保存中…")
         self.save_btn.setEnabled(False)
         for w in self.findChildren(QPushButton):
             w.setEnabled(False)
@@ -419,18 +458,24 @@ class EventDetailDialog(QDialog):
                 self.event_data["description"] = self._pending_desc
                 self._pending_desc = None
             self._rebuild_view()
+            self._show_view_message("子任务已更新", kind="success")
             return
         if isinstance(data, dict) and data:
             self.event_data.update(data)
         self.event_updated.emit(self.event_data)
-        QMessageBox.information(self, "成功", "日程已更新")
+        # 不再弹「日程已更新」模态框，主窗口会用 Toast 反馈
         self.accept()
 
     def _on_update_error(self, error_msg: str):
         self.save_btn.setText("保存修改")
         for w in self.findChildren(QPushButton):
             w.setEnabled(True)
-        QMessageBox.critical(self, "更新失败", error_msg)
+        if self._subtask_edit:
+            self._subtask_edit = False
+            self._rebuild_view()
+            self._show_view_message(f"子任务更新失败：{error_msg[:120]}")
+        else:
+            self._show_edit_message(f"保存失败：{error_msg[:150]}")
 
     # ─── Delete ───
 

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QFileDialog,
-    QMessageBox,
     QRadioButton,
     QButtonGroup,
     QFrame,
@@ -46,7 +45,7 @@ def export_events_to_excel(events: list, file_path: str) -> bool:
     # Title row (8 columns: 序号…会议链接)
     ws.merge_cells("A1:H1")
     ws["A1"] = "飞书日程导出"
-    ws["A1"].font = Font(size=14, bold=True, color="4B3FE3")
+    ws["A1"].font = Font(size=14, bold=True, color="3370FF")
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 30
 
@@ -54,7 +53,7 @@ def export_events_to_excel(events: list, file_path: str) -> bool:
     headers = ["序号", "日期", "开始时间", "结束时间", "时长", "标题", "组织者", "会议链接"]
 
     header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="4B3FE3", end_color="4B3FE3", fill_type="solid")
+    header_fill = PatternFill(start_color="3370FF", end_color="3370FF", fill_type="solid")
     header_align = Alignment(horizontal="center", vertical="center")
     thin_border = Border(
         left=Side(style="thin"),
@@ -176,12 +175,14 @@ def export_events_to_csv(events: list, file_path: str) -> bool:
 class ExportDialog(QDialog):
     """Dialog for exporting events to Excel."""
 
+    export_done = Signal(bool, str)  # success, 文件路径或错误信息
+
     def __init__(self, events: list, current_date: datetime, parent=None):
         super().__init__(parent)
         self._events = events
         self._current_date = current_date
         self.setWindowTitle("导出日程到 Excel")
-        self.setFixedSize(440, 420)
+        self.setFixedSize(440, 440)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -274,6 +275,12 @@ class ExportDialog(QDialog):
         self._on_range_changed()
         layout.addWidget(self.count_label)
 
+        self.form_message = QLabel("")
+        self.form_message.setObjectName("formError")
+        self.form_message.setWordWrap(True)
+        self.form_message.setVisible(False)
+        layout.addWidget(self.form_message)
+
         layout.addStretch()
 
         # Buttons
@@ -346,12 +353,16 @@ class ExportDialog(QDialog):
     def _on_export(self):
         events = self._get_filtered_events()
         if not events:
-            QMessageBox.information(self, "提示", "所选范围内没有日程可导出")
+            self.form_message.setText("所选范围内没有日程可导出")
+            self.form_message.setStyleSheet("color: #FF8800; font-size: 12px;")
+            self.form_message.setVisible(True)
             return
 
         file_path = self.path_input.text()
         if not file_path:
-            QMessageBox.warning(self, "提示", "请选择保存位置")
+            self.form_message.setText("请选择保存位置")
+            self.form_message.setStyleSheet("color: #F54A45; font-size: 12px;")
+            self.form_message.setVisible(True)
             return
 
         # Ensure .xlsx extension
@@ -360,13 +371,14 @@ class ExportDialog(QDialog):
 
         success = export_events_to_excel(events, file_path)
         if success:
-            QMessageBox.information(
-                self, "导出成功",
-                f"已导出 {len(events)} 条日程到：\n{file_path}",
-            )
+            # 若 openpyxl 缺失会回退为 CSV，路径扩展名可能已变化
+            if not os.path.exists(file_path):
+                file_path = file_path.rsplit(".", 1)[0] + ".csv"
+            self.export_done.emit(True, file_path)
             self.accept()
         else:
-            QMessageBox.critical(
-                self, "导出失败",
-                f"无法写入文件：{file_path}\n请检查文件是否被其他程序占用。",
-            )
+            msg = f"无法写入文件：{file_path}\n请检查文件是否被其他程序占用。"
+            self.form_message.setText(msg)
+            self.form_message.setStyleSheet("color: #F54A45; font-size: 12px;")
+            self.form_message.setVisible(True)
+            self.export_done.emit(False, msg)

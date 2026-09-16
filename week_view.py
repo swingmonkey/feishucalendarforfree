@@ -61,7 +61,7 @@ class DayColumn(QFrame):
         h = QHBoxLayout(header)
         h.setContentsMargins(6, 2, 6, 2)
         wd = WEEKDAY_NAMES[self.col_date.weekday()]
-        date_str = self.col_date.strftime("%m/%d")
+        date_str = self._day_caption(self.col_date)
         self._title = QLabel(f"{wd}\n{date_str}")
         self._title.setObjectName("weekColDate")
         h.addWidget(self._title)
@@ -87,12 +87,17 @@ class DayColumn(QFrame):
     def _apply_object_name(self):
         self.setObjectName("weekDayColToday" if self._is_today else "weekDayCol")
 
+    @staticmethod
+    def _day_caption(date: datetime) -> str:
+        # 周列里月份重复显示没有意义：默认只显示日号，每月 1 号显示「月/日」
+        return date.strftime("%m/%d") if date.day == 1 else str(date.day)
+
     def set_date(self, date: datetime):
         self.col_date = date
         self._is_today = date.date() == datetime.now().date()
         self._apply_object_name()
         wd = WEEKDAY_NAMES[date.weekday()]
-        self._title.setText(f"{wd}\n{date.strftime('%m/%d')}")
+        self._title.setText(f"{wd}\n{self._day_caption(date)}")
 
     def set_events(self, events: list[dict]):
         # Remove existing cards (keep the trailing stretch spacer).

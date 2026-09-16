@@ -32,8 +32,9 @@ class Config:
         "window_width": 440,
         "window_height": 640,
         "auto_refresh_interval": 300,
-        "theme": "dark",
-        "opacity": 0.95,
+        # 与飞书桌面端一致，默认浅色主题
+        "theme": "light",
+        "opacity": 1.0,
         "pin_to_top": True,
         "calendar_id": "primary",
         "auto_start": False,
@@ -41,6 +42,11 @@ class Config:
         "event_colors": {},
         "desktop_shortcut_created": False,
         "check_update_on_start": True,
+        # 登录态：曾经成功登录/成功拉取过日程即置 True。
+        # lark-cli 的授权凭据由其自身全局持久化，应用重启无需重新登录，
+        # 该标记仅用于区分「首次使用」与「登录过期」两种引导文案。
+        "auth_completed": False,
+        "auth_user": "",
     }
 
     _POSITIVE_INT_KEYS = {"window_width", "window_height", "auto_refresh_interval"}
@@ -74,11 +80,11 @@ class Config:
             elif key == "event_colors":
                 if not isinstance(value, dict):
                     value = {}
-            elif key in {"pin_to_top", "auto_start", "desktop_shortcut_created", "check_update_on_start"}:
+            elif key in {"pin_to_top", "auto_start", "desktop_shortcut_created", "check_update_on_start", "auth_completed"}:
                 if not isinstance(value, bool):
                     value = default
-            elif key == "calendar_id":
-                if not isinstance(value, str) or not value.strip():
+            elif key in {"calendar_id", "auth_user"}:
+                if not isinstance(value, str) or (key == "calendar_id" and not value.strip()):
                     value = default
             clean[key] = value
         return clean
