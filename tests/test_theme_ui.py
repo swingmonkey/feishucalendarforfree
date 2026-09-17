@@ -152,6 +152,7 @@ def test_packaged_ico_uses_enlarged_artwork():
 
 def test_settings_pin_checkbox_updates_config(monkeypatch):
     from PySide6.QtCore import QObject, QTimer, Signal
+
     import settings_dialog
 
     class _FakeStatusWorker(QObject):
