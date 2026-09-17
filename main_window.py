@@ -667,6 +667,7 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self.config, self)
         dialog.settings_changed.connect(self._on_settings_changed)
         dialog.login_succeeded.connect(self._on_settings_login)
+        dialog.pin_changed.connect(self._on_pin_setting_changed)
         dialog.exec()
 
     def _on_settings_login(self):
@@ -680,6 +681,9 @@ class MainWindow(QMainWindow):
         self.setWindowOpacity(float(self.config.get("opacity", 1.0)))
         self._apply_theme()
         self.refresh_timer.setInterval(self.config.get("auto_refresh_interval", 300) * 1000)
+
+    def _on_pin_setting_changed(self, pinned: bool):
+        self._set_pinned(pinned)
 
     def _setup_timer(self):
         self.refresh_timer = QTimer(self)

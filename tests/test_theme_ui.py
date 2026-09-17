@@ -148,3 +148,46 @@ def test_packaged_ico_uses_enlarged_artwork():
 
     assert right - left + 1 >= image.width() * 0.80
     assert bottom - top + 1 >= image.height() * 0.60
+
+
+def test_settings_pin_checkbox_updates_config(monkeypatch):
+    from PySide6.QtCore import QObject, QTimer, Signal
+    import settings_dialog
+
+    class _FakeStatusWorker(QObject):
+        checked = Signal(bool, bool)
+
+        def __init__(self, parent=None):
+            super().__init__(parent)
+
+        def start(self):
+            QTimer.singleShot(0, lambda: self.checked.emit(True, True))
+
+    class _FakeStatsWorker(QObject):
+        result = Signal(object)
+
+        def __init__(self, parent=None):
+            super().__init__(parent)
+
+        def start(self):
+            QTimer.singleShot(0, lambda: self.result.emit(None))
+
+    QApplication.instance() or QApplication([])
+    monkeypatch.setattr(
+        settings_dialog,
+        "AuthStatusWorker",
+        lambda parent: _FakeStatusWorker(parent),
+    )
+    monkeypatch.setattr(
+        settings_dialog.usage_stats,
+        "StatsWorker",
+        lambda parent=None: _FakeStatsWorker(parent),
+    )
+    config = _MemoryConfig({"pin_to_top": True})
+    dialog = settings_dialog.SettingsDialog(config)
+    received = []
+    dialog.pin_changed.connect(received.append)
+    dialog.pin_check.setChecked(False)
+    assert config.get("pin_to_top") is False
+    assert received == [False]
+    dialog.close()

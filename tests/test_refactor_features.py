@@ -203,6 +203,17 @@ class _FakeStatusWorker(QObject):
         QTimer.singleShot(0, lambda: self.checked.emit(*self._result))
 
 
+class _FakeStatsWorker(QObject):
+    result = Signal(object)
+
+    def __init__(self, result=None, parent=None):
+        super().__init__(parent)
+        self._result = result
+
+    def start(self):
+        QTimer.singleShot(0, lambda: self.result.emit(self._result))
+
+
 def test_settings_dialog_shows_logged_in_state(monkeypatch, cfg):
     monkeypatch.setattr(settings_dialog, "AuthStatusWorker", lambda parent: _FakeStatusWorker((True, True), parent))
     dlg = settings_dialog.SettingsDialog(cfg)
@@ -237,6 +248,44 @@ def test_settings_about_links_open_valid_urls(monkeypatch, cfg):
         "https://github.com/swingmonkey/feishucalendarforfree",
         "https://github.com/swingmonkey/feishucalendarforfree/releases/latest",
     ]
+    dlg.close()
+
+
+def test_settings_about_shows_usage_stats(monkeypatch, cfg):
+    monkeypatch.setattr(
+        settings_dialog,
+        "AuthStatusWorker",
+        lambda parent: _FakeStatusWorker((True, True), parent),
+    )
+    monkeypatch.setattr(
+        settings_dialog.usage_stats,
+        "StatsWorker",
+        lambda parent=None: _FakeStatsWorker(
+            {"cumulative_users": 12, "active_users_30d": 5},
+            parent,
+        ),
+    )
+    dlg = settings_dialog.SettingsDialog(cfg)
+    app.processEvents()
+    assert "12" in dlg.usage_total_label.text()
+    assert "5" in dlg.usage_active_label.text()
+    dlg.close()
+
+
+def test_settings_about_handles_stats_unavailable(monkeypatch, cfg):
+    monkeypatch.setattr(
+        settings_dialog,
+        "AuthStatusWorker",
+        lambda parent: _FakeStatusWorker((True, True), parent),
+    )
+    monkeypatch.setattr(
+        settings_dialog.usage_stats,
+        "StatsWorker",
+        lambda parent=None: _FakeStatsWorker(None, parent),
+    )
+    dlg = settings_dialog.SettingsDialog(cfg)
+    app.processEvents()
+    assert "暂不可用" in dlg.usage_status_label.text()
     dlg.close()
 
 # ---------------------------------------------------------------------------

@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 import updater
+import usage_stats
 from config import Config
 from login_dialog import AuthStatusWorker, LoginDialog
 
@@ -39,6 +40,7 @@ class SettingsDialog(QDialog):
 
     settings_changed = Signal()
     login_succeeded = Signal()
+    pin_changed = Signal(bool)
 
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
@@ -47,8 +49,10 @@ class SettingsDialog(QDialog):
         self.setFixedSize(520, 560)
         self._status_worker = None
         self._check_worker = None
+        self._stats_worker = None
         self._setup_ui()
         self._start_auth_check()
+        self._start_stats_load()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -223,6 +227,14 @@ class SettingsDialog(QDialog):
         theme_layout.addWidget(self.dark_radio)
         layout.addWidget(theme_group)
 
+        behavior_group = QGroupBox("窗口行为")
+        behavior_layout = QVBoxLayout(behavior_group)
+        self.pin_check = QCheckBox("窗口置顶显示")
+        self.pin_check.setChecked(self.config.get("pin_to_top", True))
+        self.pin_check.stateChanged.connect(self._on_pin_changed)
+        behavior_layout.addWidget(self.pin_check)
+        layout.addWidget(behavior_group)
+
         opacity_group = QGroupBox("窗口透明度")
         opacity_layout = QVBoxLayout(opacity_group)
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
@@ -279,6 +291,22 @@ class SettingsDialog(QDialog):
         link_row.addWidget(self.download_btn)
         link_row.addStretch()
         layout.addLayout(link_row)
+
+        usage_group = QGroupBox("使用情况")
+        usage_layout = QVBoxLayout(usage_group)
+        self.usage_total_label = QLabel("正在获取使用数据…")
+        self.usage_total_label.setObjectName("detailValue")
+        self.usage_active_label = QLabel("")
+        self.usage_active_label.setObjectName("detailValue")
+        self.usage_status_label = QLabel(
+            "匿名统计，不包含飞书账号、日程内容和设备标识。"
+        )
+        self.usage_status_label.setObjectName("detailLabel")
+        self.usage_status_label.setWordWrap(True)
+        usage_layout.addWidget(self.usage_total_label)
+        usage_layout.addWidget(self.usage_active_label)
+        usage_layout.addWidget(self.usage_status_label)
+        layout.addWidget(usage_group)
 
         layout.addStretch()
         return tab
@@ -392,6 +420,41 @@ class SettingsDialog(QDialog):
             self.config.set("theme", "dark")
         self.settings_changed.emit()
 
+    def _start_stats_load(self):
+        self.usage_status_label.setText("正在获取使用数据…")
+        self._stats_worker = usage_stats.StatsWorker(self)
+        self._stats_worker.result.connect(self._on_stats_result)
+        self._stats_worker.start()
+
+    def _on_stats_result(self, stats):
+        if not isinstance(stats, dict):
+            self.usage_total_label.setText("")
+            self.usage_active_label.setText("")
+            self.usage_status_label.setText("统计暂不可用")
+            return
+
+        def count(key):
+            try:
+                return max(0, int(stats.get(key, 0)))
+            except (TypeError, ValueError):
+                return 0
+
+        self.usage_total_label.setText(
+            f"累计使用人数：{count('cumulative_users')} 人"
+        )
+        self.usage_active_label.setText(
+            f"近 30 天活跃：{count('active_users_30d')} 人"
+        )
+        self.usage_status_label.setText(
+            "匿名统计，不包含飞书账号、日程内容和设备标识。"
+        )
+
+    def _on_pin_changed(self, state):
+        pinned = state == Qt.CheckState.Checked.value
+        self.config.set("pin_to_top", pinned)
+        self.pin_changed.emit(pinned)
+        self.settings_changed.emit()
+
     def _on_interval_changed(self, value: int):
         self.config.set("auto_refresh_interval", value)
         self.settings_changed.emit()
@@ -405,7 +468,7 @@ class SettingsDialog(QDialog):
 
     def closeEvent(self, ev):
         # 等待后台检测线程退出，避免对话框销毁后线程仍在运行
-        for worker in (self._status_worker, self._check_worker):
+        for worker in (self._status_worker, self._check_worker, self._stats_worker):
             if worker is not None and hasattr(worker, "isRunning") and worker.isRunning():
                 worker.requestInterruption()
                 worker.quit()
