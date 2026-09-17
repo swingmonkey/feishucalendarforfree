@@ -79,6 +79,7 @@ $pyiArgs = @(
     "--add-data", "assets;assets",
     "--paths", ".",
     "--hidden-import", "openpyxl",
+    "--hidden-import", "app_icon",
     "--hidden-import", "config",
     "--hidden-import", "styles",
     "--hidden-import", "ui_common",

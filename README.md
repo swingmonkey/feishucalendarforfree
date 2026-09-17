@@ -83,6 +83,7 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
   --add-data "assets;assets" \
   --paths "." \
   --hidden-import openpyxl \
+  --hidden-import app_icon \
   --hidden-import config \
   --hidden-import styles \
   --hidden-import ui_common \
