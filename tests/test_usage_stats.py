@@ -1,5 +1,8 @@
 import json
 import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -74,3 +77,38 @@ def test_stats_worker_emits_result():
         worker.run()
         app.processEvents()
     assert received == [response]
+
+
+def test_stats_worker_does_not_abort_process_while_request_is_running():
+    """A slow request must not leave a QThread that aborts interpreter exit."""
+    root = Path(__file__).resolve().parents[1]
+    script = """
+import os
+import time
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtCore import QCoreApplication
+
+import usage_stats
+
+app = QCoreApplication([])
+usage_stats.fetch_stats = lambda: time.sleep(30)
+worker = usage_stats.StatsWorker()
+worker.start()
+time.sleep(0.2)
+print("exiting")
+"""
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "exiting" in completed.stdout

@@ -3,11 +3,12 @@
 import json
 import logging
 import sys
+import threading
 import uuid
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QObject, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,63 @@ def fetch_stats(timeout: int = 6):
     return _request_json(STATS_URL, timeout=timeout)
 
 
-class HeartbeatWorker(QThread):
+class _DaemonResultWorker(QObject):
+    """Run one request without letting QThread outlive application shutdown."""
+
     result = Signal(object)
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._thread = None
+        self._finished = threading.Event()
+        self._interrupted = threading.Event()
+
+    def start(self):
+        if self.isRunning():
+            return
+        self._finished.clear()
+        self._interrupted.clear()
+        self._thread = threading.Thread(
+            target=self._execute,
+            name=type(self).__name__,
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _execute(self):
+        try:
+            self.run()
+        except Exception:
+            logger.exception("Background usage statistics worker failed")
+        finally:
+            self._finished.set()
+
+    def _emit_result(self, value):
+        if self._interrupted.is_set():
+            return
+        try:
+            self.result.emit(value)
+        except RuntimeError:
+            # The dialog may have been closed after wait() timed out.
+            pass
+
+    def run(self):
+        raise NotImplementedError
+
+    def isRunning(self):
+        return self._thread is not None and self._thread.is_alive()
+
+    def requestInterruption(self):
+        self._interrupted.set()
+
+    def quit(self):
+        self._interrupted.set()
+
+    def wait(self, timeout_ms=30000):
+        return self._finished.wait(max(0, timeout_ms) / 1000)
+
+
+class HeartbeatWorker(_DaemonResultWorker):
     def __init__(
         self,
         install_id: str,
@@ -86,16 +141,14 @@ class HeartbeatWorker(QThread):
         self.platform = platform
 
     def run(self):
-        self.result.emit(
+        self._emit_result(
             heartbeat(self.install_id, self.version, self.platform)
         )
 
 
-class StatsWorker(QThread):
-    result = Signal(object)
-
+class StatsWorker(_DaemonResultWorker):
     def __init__(self, parent=None):
         super().__init__(parent)
 
     def run(self):
-        self.result.emit(fetch_stats())
+        self._emit_result(fetch_stats())
