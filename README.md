@@ -18,9 +18,11 @@
 - **鼠标悬停高亮** - 鼠标移到日期格上自动变色强调
 - **添加/删除日程** - 通过表单创建或一键删除日程
 - **可调节窗口** - 拖拽右下角调整窗口大小，尺寸自动保存
-- **置顶切换** - 📌置顶 / 📍不置顶，图标一目了然
+- **置顶切换** - 弹出菜单、托盘菜单和「设置 → 外观」三处均可切换窗口置顶，状态实时同步
 - **今天高亮** - 当天日期用蓝色圆圈标记
-- **最小化** - 标题栏「—」一键最小化窗口，托盘点击恢复
+- **最小化** - 标题栏「—」一键最小化，任务栏保留完整「飞书日程」名称和应用图标，托盘点击恢复
+- **后台静默更新** - Windows 冻结版发现新版本后会在后台下载并校验 EXE，下次启动自动替换；校验或下载失败时仍保留手动更新提示
+- **匿名使用统计** - 「关于」页展示累计独立安装数和近 30 天活跃安装数；仅使用随机安装 ID，不采集账号、日程或设备信息
 - **设置面板** - 4 个分页（通用 / 账号 / 外观 / 关于），配置登录、开机启动、透明度、刷新间隔、主题
 - **桌面快捷方式** - 首次运行自动在桌面创建快捷方式（Windows .lnk / macOS symlink），仅创建一次
 - **扫码登录一次即可** - 应用内扫码 / 网页授权（device flow），授权成功后登录窗口自动关闭；凭据由 lark-cli 全局持久化，重启应用无需重复登录
@@ -59,6 +61,9 @@ lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:cal
 
 > **注意：** `dist/` 是本地构建产物目录，已列入 `.gitignore`，**不在仓库源码里**。
 > 请从 Releases 下载，或按下方「打包 EXE」自行构建。
+>
+> v2.1.3 起，Windows 冻结版可在后台暂存并校验更新，下次启动时自动安装。
+> macOS 暂不支持自动替换 `.app`，会继续显示手动下载提示。
 
 #### 方式二：从源码运行
 
@@ -102,6 +107,7 @@ python -m PyInstaller --onefile --windowed --name "飞书日程" \
   --hidden-import settings_dialog \
   --hidden-import export_dialog \
   --hidden-import updater \
+  --hidden-import usage_stats \
   --hidden-import update_dialog \
   --hidden-import __version__ \
   main.py
@@ -179,8 +185,8 @@ bash build_macos.sh
 
 - **通用** - 开机启动（Windows 写注册表，macOS 写 LaunchAgent）、自动刷新间隔（60-3600 秒）、窗口透明度（50%-100%）
 - **账号** - 异步检测 lark-cli 安装与登录状态；打开应用内登录窗口（扫码 / 网页授权，device flow），登录成功自动刷新状态
-- **外观** - 浅色 / 深色主题（默认浅色）
-- **关于** - 版本信息、检查更新（结果内联展示，发现新版本才弹更新确认框）
+- **外观** - 浅色 / 深色主题（默认浅色）、窗口置顶显示
+- **关于** - 版本信息、检查更新、累计独立安装数、近 30 天活跃安装数
 
 ## 项目结构
 
@@ -193,6 +199,7 @@ FeishuCalendarDesktop/
 ├── week_view.py           # 周计划视图组件（weektodo 风格 7 列）
 ├── widgets.py             # 共享小组件：日期徽标、可点击标签、紧凑日程标签（拖拽源）、日格（放置目标）
 ├── models_event.py        # 事件模型：时间解析、重复展开、Markdown→HTML、颜色/子任务工具
+├── usage_stats.py         # 匿名安装 ID、启动心跳、统计查询后台 Worker
 ├── event_card.py          # 日程卡片组件（颜色条 / ♻ 徽标 / 拖拽源）
 ├── day_detail_dialog.py   # 当日详情对话框
 ├── search_dialog.py       # 搜索对话框
@@ -214,6 +221,7 @@ FeishuCalendarDesktop/
 ├── build_windows.ps1      # Windows PyInstaller 打包实体脚本
 ├── build_macos.sh         # macOS PyInstaller 打包脚本
 ├── tools/make_ico.py      # 从 PNG 生成 assets/icon.ico（已提交生成结果，无需重复执行）
+├── stats_server/           # 标准库 HTTP + SQLite 匿名统计服务与部署文件
 └── .github/workflows/release.yml  # 推送 v* 标签自动打包并上传 Release
 ```
 
@@ -262,6 +270,20 @@ FeishuCalendarDesktop/
 - 本项目不存储任何飞书账号凭据
 - lark-cli 授权信息由 lark-cli 独立管理
 - 所有日程数据通过 API 实时获取，不在本地持久化
+- 匿名统计只发送随机安装 ID、应用版本和操作系统平台
+- 统计服务只保存安装 ID 的加盐 SHA-256，不保存原始安装 ID、IP 地址、飞书账号或日程内容
+- 统计请求失败不会阻塞应用启动或影响日历功能
+
+## 匿名使用统计服务
+
+统计接口为 `https://www.airtraffic.site/feishu-calendar-stats`：
+
+- `POST /v1/heartbeat` 记录一次安装心跳
+- `GET /v1/stats` 返回累计独立安装数和近 30 天活跃安装数
+- `GET /health` 用于服务健康检查
+
+部署文件、Nginx 反向代理配置、systemd 服务和备份/回滚步骤见
+[`stats_server/README.md`](stats_server/README.md)。
 
 ## 技术栈
 

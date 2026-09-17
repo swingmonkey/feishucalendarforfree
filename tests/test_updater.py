@@ -87,7 +87,10 @@ def test_find_sha256_sums_asset_missing():
 def test_download_sha256_sums_parses():
     exe_hash = "a" * 64
     zip_hash = "b" * 64
-    sums_text = f"{exe_hash}  FeishuCalendar.exe\n{zip_hash}  FeishuCalendar.app.zip\n"
+    sums_text = (
+        f"{exe_hash}  feishu-calendar-windows/FeishuCalendar.exe\n"
+        f"{zip_hash}  feishu-calendar-macos/FeishuCalendar.app.zip\n"
+    )
     with mock.patch.object(updater, "find_sha256_sums_asset", return_value={"browser_download_url": "http://x/SHA256SUMS"}):
         with mock.patch.object(updater, "urlopen") as m_urlopen:
             m_urlopen.return_value.__enter__.return_value.read.return_value = sums_text.encode()
@@ -233,6 +236,7 @@ def test_prepare_pending_update_writes_verified_file(tmp_path, monkeypatch):
     exe.write_bytes(b"old")
     new_file = tmp_path / "new.exe"
     new_file.write_bytes(b"new")
+    monkeypatch.setattr(updater, "APP_VERSION", "2.1.2")
     monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
     monkeypatch.setattr(updater.sys, "platform", "win32")
     monkeypatch.setattr(updater.sys, "executable", str(exe))

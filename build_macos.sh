@@ -50,6 +50,7 @@ fi
     --hidden-import settings_dialog \
     --hidden-import export_dialog \
     --hidden-import updater \
+    --hidden-import usage_stats \
     --hidden-import update_dialog \
     --hidden-import __version__ \
     "$ENTRY"

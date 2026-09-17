@@ -1,0 +1,18 @@
+[Unit]
+Description=Feishu Calendar anonymous usage statistics
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/feishu-calendar-stats
+ExecStart=/usr/bin/python3 /home/ubuntu/feishu-calendar-stats/app.py --host 127.0.0.1 --port 8010 --db /home/ubuntu/feishu-calendar-stats/stats.db --pepper-file /home/ubuntu/feishu-calendar-stats/pepper
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

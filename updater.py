@@ -130,7 +130,11 @@ def download_sha256_sums(release, timeout: int = 15) -> dict[str, str]:
         parts = line.split(None, 1)
         if len(parts) == 2 and len(parts[0]) == 64:
             fname = parts[1].lstrip("*").strip()
-            sums[fname] = parts[0].lower()
+            digest = parts[0].lower()
+            sums[fname] = digest
+            basename = fname.replace("\\", "/").rsplit("/", 1)[-1]
+            if basename != fname:
+                sums[basename] = digest
     return sums
 
 

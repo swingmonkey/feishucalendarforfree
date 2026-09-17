@@ -95,9 +95,11 @@ jobs:
           path: artifacts
       - name: Generate SHA256SUMS
         run: |
-          cd artifacts
-          find . -type f \( -name '*.exe' -o -name '*.zip' \) -exec sha256sum {} \; | sed 's|\./||' > ../SHA256SUMS
-          cat ../SHA256SUMS
+          find artifacts -type f \( -name '*.exe' -o -name '*.zip' \) \
+            -exec sha256sum {} \; \
+            | awk '{ name=$2; sub(/^.*\//, "", name); print $1 "  " name }' \
+            > SHA256SUMS
+          cat SHA256SUMS
       - name: Attach SHA256SUMS to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
