@@ -45,6 +45,7 @@ class Config:
         "event_colors": {},
         "desktop_shortcut_created": False,
         "check_update_on_start": True,
+        "install_id": "",
         # 登录态：曾经成功登录/成功拉取过日程即置 True。
         # lark-cli 的授权凭据由其自身全局持久化，应用重启无需重新登录，
         # 该标记仅用于区分「首次使用」与「登录过期」两种引导文案。
@@ -83,6 +84,16 @@ class Config:
             elif key == "event_colors":
                 if not isinstance(value, dict):
                     value = {}
+            elif key == "install_id":
+                if not isinstance(value, str):
+                    value = ""
+                else:
+                    value = value.strip().lower()
+                    if (
+                        not 32 <= len(value) <= 64
+                        or any(ch not in "0123456789abcdef" for ch in value)
+                    ):
+                        value = ""
             elif key in {"pin_to_top", "auto_start", "desktop_shortcut_created", "check_update_on_start", "auth_completed"}:
                 if not isinstance(value, bool):
                     value = default

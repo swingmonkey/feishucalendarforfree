@@ -50,3 +50,24 @@ def test_save_replaces_file_atomically(tmp_path, monkeypatch):
     data = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
     assert data["theme"] == "light"
     assert not (tmp_path / "config.json.tmp").exists()
+
+
+def test_install_id_valid_value_is_preserved(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "get_app_dir", lambda: tmp_path)
+    install_id = "0123456789abcdef0123456789abcdef"
+    (tmp_path / "config.json").write_text(
+        json.dumps({"install_id": install_id}),
+        encoding="utf-8",
+    )
+    cfg = config_module.Config()
+    assert cfg.get("install_id") == install_id
+
+
+def test_install_id_invalid_value_is_cleared(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "get_app_dir", lambda: tmp_path)
+    (tmp_path / "config.json").write_text(
+        json.dumps({"install_id": "not-an-id"}),
+        encoding="utf-8",
+    )
+    cfg = config_module.Config()
+    assert cfg.get("install_id") == ""
