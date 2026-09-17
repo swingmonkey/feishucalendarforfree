@@ -9,6 +9,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path
 from unittest import mock
 
+from PySide6.QtCore import Qt
+
 import updater
 
 
@@ -155,33 +157,50 @@ def test_update_dialog_construct():
     release = {"tag": "v2.0.1", "body": "# 更新\n- 修复样式", "zipball_url": "http://x/z.zip"}
     dlg = UpdateDialog(release, "2.0.0")
     assert dlg.windowTitle() == "发现新版本"
+    assert dlg.isModal() is False
+    assert dlg.windowModality() == Qt.WindowModality.NonModal
+    assert dlg.windowFlags() & Qt.WindowType.WindowMinimizeButtonHint
     dlg.close()
 
 
-def test_settings_check_update_opens_dialog():
+def test_update_dialog_minimizes_while_downloading():
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance() or QApplication([])
+    from update_dialog import UpdateDialog
+
+    dlg = UpdateDialog(
+        {"tag": "v2.0.1", "body": "x", "zipball_url": "http://x/z.zip"},
+        "2.0.0",
+    )
+    dlg._worker = mock.Mock()
+    dlg._worker.isRunning.return_value = True
+    dlg.show()
+    dlg.close()
+
+    assert dlg.isVisible()
+    assert dlg.isMinimized()
+    dlg._worker.isRunning.return_value = False
+    dlg.close()
+    QApplication.processEvents()
+
+
+def test_settings_check_update_emits_non_modal_request():
     from PySide6.QtWidgets import QApplication
     QApplication.instance() or QApplication([])
     from config import Config
     from settings_dialog import SettingsDialog
 
     release = {"tag": "v9.9.9", "body": "x", "zipball_url": "http://x/z.zip"}
-    with mock.patch.object(updater, "get_latest_release", return_value=release), \
-            mock.patch("update_dialog.UpdateDialog") as m_dlg:
-        m_dlg.return_value.exec.return_value = None
-        dlg = SettingsDialog(Config())
-        dlg._on_check_update()
-        # v2.1 起检查更新在后台线程进行，需驱动事件循环等待结果
-        import time
+    dlg = SettingsDialog(Config())
+    received = []
+    dlg.update_available.connect(received.append)
+    with mock.patch.object(dlg, "accept") as m_accept:
+        dlg._on_check_result(release)
 
-        from PySide6.QtWidgets import QApplication as _QApp
-        deadline = time.monotonic() + 5
-        while not m_dlg.called and time.monotonic() < deadline:
-            _QApp.processEvents()
-            time.sleep(0.02)
-        assert m_dlg.called
-        dlg.close()
-        from PySide6.QtWidgets import QApplication as _QApp
-        _QApp.processEvents()
+    assert received == [release]
+    m_accept.assert_called_once()
+    dlg.close()
+    QApplication.processEvents()
 
 
 def test_get_latest_release_returns_none_without_release():

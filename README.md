@@ -63,6 +63,8 @@ lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:cal
 > 请从 Releases 下载，或按下方「打包 EXE」自行构建。
 >
 > v2.1.3 起，Windows 冻结版可在后台暂存并校验更新，下次启动时自动安装。
+> v2.1.4 起，手动更新窗口支持最小化，不会阻塞日程操作；同时修复首次登录二维码
+> 输出路径问题和更多菜单样式。
 > macOS 暂不支持自动替换 `.app`，会继续显示手动下载提示。
 
 #### 方式二：从源码运行

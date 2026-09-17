@@ -78,12 +78,12 @@ def _resolve_lark_cmd():
     return None
 
 
-def _lark_cli(args, timeout=60):
+def _lark_cli(args, timeout=60, cwd=None):
     """运行 lark-cli，返回 (exit_code, stdout, stderr)。"""
     prefix = _resolve_lark_cmd()
     if not prefix:
         return -1, "", "未找到 lark-cli，请先执行 npm install -g @larksuite/cli"
-    kwargs = {}
+    kwargs = {"cwd": cwd}
     if sys.platform == "win32":
         # 避免每次调用都弹出黑色控制台窗口
         kwargs["creationflags"] = 0x08000000
@@ -339,26 +339,27 @@ class LoginDialog(QDialog):
 
     def _generate_qrcode(self, url: str):
         try:
-            tmp_dir = Path(tempfile.gettempdir())
-            out_name = "feishu-login-qr.png"
-            rc, _, _ = _lark_cli(
-                ["auth", "qrcode", url, "--output", out_name, "--size", "256"],
-                timeout=30,
-            )
-            if rc == 0:
-                img_path = tmp_dir / out_name
-                if img_path.exists():
-                    pixmap = QPixmap(str(img_path))
-                    if not pixmap.isNull():
-                        self.qr_label.setPixmap(
-                            pixmap.scaled(
-                                224,
-                                224,
-                                Qt.AspectRatioMode.KeepAspectRatio,
-                                Qt.TransformationMode.SmoothTransformation,
+            with tempfile.TemporaryDirectory(prefix="feishu-login-") as tmp_dir:
+                out_name = "qr.png"
+                rc, _, _ = _lark_cli(
+                    ["auth", "qrcode", url, "--output", out_name, "--size", "256"],
+                    timeout=30,
+                    cwd=tmp_dir,
+                )
+                if rc == 0:
+                    img_path = Path(tmp_dir) / out_name
+                    if img_path.exists():
+                        pixmap = QPixmap(str(img_path))
+                        if not pixmap.isNull():
+                            self.qr_label.setPixmap(
+                                pixmap.scaled(
+                                    224,
+                                    224,
+                                    Qt.AspectRatioMode.KeepAspectRatio,
+                                    Qt.TransformationMode.SmoothTransformation,
+                                )
                             )
-                        )
-                        return
+                            return
             self.qr_label.setText("二维码生成失败\n请使用下方链接授权")
         except Exception as e:  # noqa: BLE001
             self.qr_label.setText(f"二维码生成失败：{e}")

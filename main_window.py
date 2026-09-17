@@ -19,8 +19,8 @@ It does **not** touch the Feishu read/write layer
 import shutil
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtGui import QAction, QMouseEvent
+from PySide6.QtCore import QPoint, QPointF, QSize, Qt, QTimer
+from PySide6.QtGui import QAction, QColor, QIcon, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -62,6 +62,34 @@ _AUTH_KEYWORDS = (
 )
 
 
+def _create_more_icon(theme: str) -> QIcon:
+    """Draw a crisp overflow icon so it is independent of system fonts."""
+    if theme == "dark":
+        normal, hover, pressed = "#BBBFC4", "#F5F6F7", "#FFFFFF"
+    else:
+        normal, hover, pressed = "#646A73", "#1F2329", "#245BDB"
+
+    def pixmap(color: str) -> QPixmap:
+        size = 36
+        result = QPixmap(size, size)
+        result.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(result)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(color))
+        for x in (10.0, 18.0, 26.0):
+            painter.drawEllipse(QPointF(x, 18.0), 2.6, 2.6)
+        painter.end()
+        result.setDevicePixelRatio(2.0)
+        return result
+
+    icon = QIcon()
+    icon.addPixmap(pixmap(normal), QIcon.Mode.Normal, QIcon.State.Off)
+    icon.addPixmap(pixmap(hover), QIcon.Mode.Active, QIcon.State.Off)
+    icon.addPixmap(pixmap(pressed), QIcon.Mode.Selected, QIcon.State.Off)
+    return icon
+
+
 def _is_auth_error(error_msg: str) -> bool:
     text = (error_msg or "").lower()
     return any(k in text for k in _AUTH_KEYWORDS)
@@ -90,6 +118,7 @@ class MainWindow(QMainWindow):
         self._cli_available = shutil.which("lark-cli") is not None
         self._first_load_done = False
         self._auth_mode = "welcome"
+        self._update_dialog = None
 
         self._geometry_save_timer = QTimer(self)
         self._geometry_save_timer.setSingleShot(True)
@@ -267,8 +296,9 @@ class MainWindow(QMainWindow):
     def _build_more_menu(self) -> QToolButton:
         """溢出菜单：搜索 / 导出 / 置顶 / 主题 / 设置。"""
         self.more_btn = QToolButton()
-        self.more_btn.setObjectName("iconBtn")
-        self.more_btn.setText("⋯")
+        self.more_btn.setObjectName("moreBtn")
+        self.more_btn.setIconSize(QSize(18, 18))
+        self.more_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.more_btn.setToolTip("更多操作")
         self.more_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -635,12 +665,15 @@ class MainWindow(QMainWindow):
 
     def _apply_theme(self):
         # 应用到 application 级别：登录框等独立顶层窗口即便没有父窗口也能统一风格
-        qss = get_theme(self.config.get("theme", "light"))
+        theme = self.config.get("theme", "light")
+        qss = get_theme(theme)
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(qss)
         else:
             self.setStyleSheet(qss)
+        if hasattr(self, "more_btn"):
+            self.more_btn.setIcon(_create_more_icon(theme))
 
     def _toggle_theme(self):
         cur = self.config.get("theme", "light")
@@ -668,6 +701,7 @@ class MainWindow(QMainWindow):
         dialog.settings_changed.connect(self._on_settings_changed)
         dialog.login_succeeded.connect(self._on_settings_login)
         dialog.pin_changed.connect(self._on_pin_setting_changed)
+        dialog.update_available.connect(self._show_update_dialog)
         dialog.exec()
 
     def _on_settings_login(self):
@@ -873,6 +907,23 @@ class MainWindow(QMainWindow):
 
     # ── Update notification ──
 
+    def _show_update_dialog(self, release: dict):
+        """Open the update flow without blocking the calendar window."""
+        import updater
+        from update_dialog import UpdateDialog
+
+        if self._update_dialog is not None:
+            self._update_dialog.show()
+            self._update_dialog.raise_()
+            self._update_dialog.activateWindow()
+            return
+
+        dialog = UpdateDialog(release, updater.APP_VERSION, self)
+        self._update_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
     def notify_update(self, release: dict):
         """启动后台检查发现新版本时，以 Toast 轻提示代替模态弹窗。"""
         tag = (release.get("tag") or "").lstrip("vV")
@@ -880,10 +931,7 @@ class MainWindow(QMainWindow):
             return
 
         def open_dialog():
-            import updater
-            from update_dialog import UpdateDialog
-            dlg = UpdateDialog(release, updater.APP_VERSION, self)
-            dlg.exec()
+            self._show_update_dialog(release)
 
         self.toast.show_message(
             f"发现新版本 v{tag}",

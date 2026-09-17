@@ -14,7 +14,7 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
 import login_dialog
@@ -72,6 +72,15 @@ def test_header_actions_collapsed_into_overflow_menu(w):
     assert any("窗口置顶" in t for t in texts)
     assert any("深色主题" in t for t in texts)
     assert "设置" in texts
+
+
+def test_more_button_uses_consistent_icon(w):
+    assert w.more_btn.objectName() == "moreBtn"
+    assert w.more_btn.text() == ""
+    assert w.more_btn.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+    assert not w.more_btn.icon().isNull()
+    assert w.more_btn.iconSize().width() == 18
+    assert w.more_btn.iconSize().height() == 18
 
 
 def test_month_bar_has_no_login_button(w):

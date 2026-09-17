@@ -3,7 +3,7 @@
 import os
 import sys
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -27,6 +27,10 @@ class UpdateDialog(QDialog):
         self.current_version = current_version
         self.setWindowTitle("发现新版本")
         self.setMinimumWidth(460)
+        self.setModal(False)
+        self.setWindowModality(Qt.WindowModality.NonModal)
+        self.setWindowFlag(Qt.WindowType.WindowMinimizeButtonHint, True)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self._worker = None
         self._setup_ui()
 
@@ -140,6 +144,14 @@ class UpdateDialog(QDialog):
     def _open_releases_page(self):
         QDesktopServices.openUrl(QUrl(updater.RELEASES_LATEST))
 
+    def closeEvent(self, event):
+        """Keep an in-flight download alive when the user clicks X."""
+        if self._worker is not None and self._worker.isRunning():
+            self.showMinimized()
+            event.ignore()
+            return
+        super().closeEvent(event)
+
     def _on_progress(self, done, total):
         if total and total > 0:
             self.progress.setValue(int(done * 100 / total))
@@ -147,9 +159,11 @@ class UpdateDialog(QDialog):
     def _on_finished(self, ok, msg):
         self.status_label.setText(msg)
         if ok:
-            self.update_btn.setText("重启中…")
-            # Let the label paint before we relaunch
-            QTimer.singleShot(800, updater.restart_application)
+            self.progress.setValue(100)
+            self.update_btn.setText("更新已准备")
+            self.later_btn.setText("关闭")
+            self.later_btn.setEnabled(True)
+            self.status_label.setText(f"{msg}\n下次启动时自动完成更新。")
         else:
             self.update_btn.setEnabled(True)
             self.later_btn.setEnabled(True)

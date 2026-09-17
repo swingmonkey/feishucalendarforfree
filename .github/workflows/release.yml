@@ -61,6 +61,7 @@ jobs:
         with:
           files: dist/*.exe
           fail_on_unmatched_files: true
+          generate_release_notes: true
 
   build-macos:
     needs: test
@@ -84,6 +85,7 @@ jobs:
         with:
           files: dist/*.zip
           fail_on_unmatched_files: true
+          generate_release_notes: true
 
   generate-checksums:
     needs: [build-windows, build-macos]

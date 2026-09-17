@@ -1057,6 +1057,9 @@ def _menu_dialog_rules(name: str) -> str:
         hover = "rgba(245, 246, 247, 0.08)"
         pressed = "rgba(245, 246, 247, 0.14)"
         separator = "rgba(245, 246, 247, 0.12)"
+        menu_selected_bg = "rgba(51, 112, 255, 0.24)"
+        menu_selected_text = "#FFFFFF"
+        menu_pressed_bg = "rgba(51, 112, 255, 0.34)"
         tab_selected_bg = "#2B2F36"
         tab_selected_text = "#FFFFFF"
         logo_bg = "rgba(255, 255, 255, 0.08)"
@@ -1073,6 +1076,9 @@ def _menu_dialog_rules(name: str) -> str:
         hover = "rgba(31, 35, 41, 0.06)"
         pressed = "rgba(31, 35, 41, 0.12)"
         separator = "rgba(31, 35, 41, 0.10)"
+        menu_selected_bg = "#EAF0FF"
+        menu_selected_text = "#245BDB"
+        menu_pressed_bg = "#D9E5FF"
         tab_selected_bg = "#FFFFFF"
         tab_selected_text = "#245BDB"
         logo_bg = "#F2F3F5"
@@ -1092,23 +1098,23 @@ QMenu {{
     background-color: {surface};
     color: {text};
     border: 1px solid {border_strong};
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 6px;
 }}
 QMenu::item {{
     background-color: transparent;
     color: {text};
     border-radius: 6px;
-    padding: 8px 28px 8px 14px;
-    min-width: 168px;
+    padding: 8px 28px 8px 12px;
+    min-width: 172px;
 }}
 QMenu::item:selected {{
-    background-color: #3370FF;
-    color: #FFFFFF;
+    background-color: {menu_selected_bg};
+    color: {menu_selected_text};
 }}
 QMenu::item:pressed {{
-    background-color: #245BDB;
-    color: #FFFFFF;
+    background-color: {menu_pressed_bg};
+    color: {menu_selected_text};
 }}
 QMenu::item:disabled {{
     color: {disabled};
@@ -1116,12 +1122,35 @@ QMenu::item:disabled {{
 QMenu::separator {{
     height: 1px;
     background-color: {separator};
-    margin: 6px 10px;
+    margin: 5px 8px;
 }}
 QMenu::indicator {{
     width: 16px;
     height: 16px;
     margin-left: 4px;
+}}
+
+/* === Header overflow button === */
+QToolButton#moreBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0px;
+    min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+}}
+QToolButton#moreBtn:hover {{
+    background-color: {hover};
+}}
+QToolButton#moreBtn:pressed, QToolButton#moreBtn:checked {{
+    background-color: {pressed};
+}}
+QToolButton#moreBtn::menu-indicator {{
+    image: none;
+    width: 0px;
+    height: 0px;
 }}
 
 /* === Dialogs and message boxes === */

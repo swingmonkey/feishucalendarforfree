@@ -41,6 +41,7 @@ class SettingsDialog(QDialog):
     settings_changed = Signal()
     login_succeeded = Signal()
     pin_changed = Signal(bool)
+    update_available = Signal(object)
 
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
@@ -406,9 +407,8 @@ class SettingsDialog(QDialog):
         if updater.is_newer(tag, updater.APP_VERSION):
             self.update_result_label.setText(f"发现新版本 {tag}")
             self.update_result_label.setStyleSheet("color: #3370FF;")
-            from update_dialog import UpdateDialog
-            dlg = UpdateDialog(release, updater.APP_VERSION, self)
-            dlg.exec()
+            self.update_available.emit(release)
+            self.accept()
         else:
             self.update_result_label.setText(f"已是最新版本（v{updater.APP_VERSION}）")
             self.update_result_label.setStyleSheet("color: #2EA121;")
