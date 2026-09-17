@@ -64,8 +64,8 @@ class DayDetailDialog(QDialog):
         layout.addWidget(count_lbl)
 
         sep = QFrame()
+        sep.setObjectName("dialogSeparator")
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(115, 115, 115, 0.18); background-color: rgba(115, 115, 115, 0.18); max-height: 1px;")
         layout.addWidget(sep)
 
         if not self._events:

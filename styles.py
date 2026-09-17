@@ -1042,6 +1042,241 @@ QPushButton#toastClose:hover {{ color: #F5F6F7; }}
 """
 
 
+def _menu_dialog_rules(name: str) -> str:
+    """Theme rules shared by menus, dialogs and popup controls."""
+    dark = name != "light"
+    if dark:
+        dialog_bg = "#1F2329"
+        surface = "#2B2F36"
+        surface_alt = "#262A31"
+        text = "#F5F6F7"
+        muted = "#B8C0CC"
+        disabled = "#646A73"
+        border = "rgba(245, 246, 247, 0.16)"
+        border_strong = "rgba(245, 246, 247, 0.24)"
+        hover = "rgba(245, 246, 247, 0.08)"
+        pressed = "rgba(245, 246, 247, 0.14)"
+        separator = "rgba(245, 246, 247, 0.12)"
+        tab_selected_bg = "#2B2F36"
+        tab_selected_text = "#FFFFFF"
+        logo_bg = "rgba(255, 255, 255, 0.08)"
+        logo_border = "rgba(255, 255, 255, 0.14)"
+    else:
+        dialog_bg = "#FFFFFF"
+        surface = "#FFFFFF"
+        surface_alt = "#F5F6F7"
+        text = "#1F2329"
+        muted = "#646A73"
+        disabled = "#BBBFC4"
+        border = "rgba(31, 35, 41, 0.14)"
+        border_strong = "rgba(31, 35, 41, 0.22)"
+        hover = "rgba(31, 35, 41, 0.06)"
+        pressed = "rgba(31, 35, 41, 0.12)"
+        separator = "rgba(31, 35, 41, 0.10)"
+        tab_selected_bg = "#FFFFFF"
+        tab_selected_text = "#245BDB"
+        logo_bg = "#F2F3F5"
+        logo_border = "#DEE0E3"
+
+    return f"""
+/* === Window logo === */
+QLabel#headerLogo {{
+    background-color: {logo_bg};
+    border: 1px solid {logo_border};
+    border-radius: 12px;
+    padding: 0px;
+}}
+
+/* === Menus (main overflow + tray) === */
+QMenu {{
+    background-color: {surface};
+    color: {text};
+    border: 1px solid {border_strong};
+    border-radius: 10px;
+    padding: 6px;
+}}
+QMenu::item {{
+    background-color: transparent;
+    color: {text};
+    border-radius: 6px;
+    padding: 8px 28px 8px 14px;
+    min-width: 168px;
+}}
+QMenu::item:selected {{
+    background-color: #3370FF;
+    color: #FFFFFF;
+}}
+QMenu::item:pressed {{
+    background-color: #245BDB;
+    color: #FFFFFF;
+}}
+QMenu::item:disabled {{
+    color: {disabled};
+}}
+QMenu::separator {{
+    height: 1px;
+    background-color: {separator};
+    margin: 6px 10px;
+}}
+QMenu::indicator {{
+    width: 16px;
+    height: 16px;
+    margin-left: 4px;
+}}
+
+/* === Dialogs and message boxes === */
+QDialog, QMessageBox {{
+    background-color: {dialog_bg};
+    color: {text};
+}}
+QDialog QLabel, QMessageBox QLabel {{
+    background-color: transparent;
+    color: {text};
+}}
+QMessageBox QLabel#qt_msgbox_label {{
+    min-width: 260px;
+}}
+QFrame#dialogSeparator {{
+    color: {separator};
+    background-color: {separator};
+    border: none;
+    max-height: 1px;
+}}
+
+QDialogButtonBox QPushButton, QMessageBox QPushButton {{
+    background-color: {surface};
+    color: {text};
+    border: 1px solid {border};
+    border-radius: 7px;
+    padding: 6px 18px;
+    min-width: 66px;
+}}
+QDialogButtonBox QPushButton:hover, QMessageBox QPushButton:hover {{
+    background-color: {hover};
+    border-color: {border_strong};
+}}
+QDialogButtonBox QPushButton:pressed, QMessageBox QPushButton:pressed {{
+    background-color: {pressed};
+}}
+QDialogButtonBox QPushButton:default, QMessageBox QPushButton:default {{
+    background-color: #3370FF;
+    border-color: #3370FF;
+    color: #FFFFFF;
+    font-weight: 600;
+}}
+QDialogButtonBox QPushButton:default:hover, QMessageBox QPushButton:default:hover {{
+    background-color: #4A86FF;
+    border-color: #4A86FF;
+}}
+QDialogButtonBox QPushButton:disabled, QMessageBox QPushButton:disabled {{
+    background-color: {surface_alt};
+    border-color: {separator};
+    color: {disabled};
+}}
+
+/* === Tabs === */
+QTabWidget::pane {{
+    background-color: {surface};
+    border: 1px solid {border};
+    border-radius: 8px;
+    top: -1px;
+}}
+QTabBar::tab {{
+    background-color: {surface_alt};
+    color: {muted};
+    border: 1px solid {border};
+    border-bottom: none;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    padding: 8px 16px;
+    margin-right: 3px;
+    min-width: 72px;
+}}
+QTabBar::tab:hover {{
+    background-color: {hover};
+    color: {text};
+}}
+QTabBar::tab:selected {{
+    background-color: {tab_selected_bg};
+    color: {tab_selected_text};
+    border-bottom: 2px solid #3370FF;
+    font-weight: 600;
+}}
+QTabBar::tab:disabled {{
+    color: {disabled};
+}}
+
+/* === Combo and calendar popups === */
+QComboBox QAbstractItemView {{
+    background-color: {surface};
+    color: {text};
+    border: 1px solid {border_strong};
+    border-radius: 8px;
+    padding: 4px;
+    selection-background-color: #3370FF;
+    selection-color: #FFFFFF;
+    outline: none;
+}}
+QComboBox QAbstractItemView::item {{
+    min-height: 26px;
+    padding: 4px 10px;
+    border-radius: 5px;
+}}
+QComboBox QAbstractItemView::item:hover {{
+    background-color: {hover};
+}}
+QComboBox QAbstractItemView::item:selected {{
+    background-color: #3370FF;
+    color: #FFFFFF;
+}}
+
+QCalendarWidget QWidget#qt_calendar_navigationbar {{
+    background-color: {surface_alt};
+    border-bottom: 1px solid {border};
+}}
+QCalendarWidget QToolButton {{
+    background-color: transparent;
+    color: {text};
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+}}
+QCalendarWidget QToolButton:hover {{
+    background-color: {hover};
+}}
+QCalendarWidget QSpinBox {{
+    background-color: {surface};
+    color: {text};
+    border: 1px solid {border};
+    border-radius: 6px;
+    padding: 3px 6px;
+}}
+QCalendarWidget QAbstractItemView {{
+    background-color: {surface};
+    color: {text};
+    selection-background-color: #3370FF;
+    selection-color: #FFFFFF;
+    outline: none;
+}}
+QCalendarWidget QAbstractItemView:disabled {{
+    color: {disabled};
+}}
+
+QProgressBar {{
+    background-color: {surface_alt};
+    color: {text};
+    border: 1px solid {border};
+    border-radius: 6px;
+    min-height: 14px;
+    text-align: center;
+}}
+QProgressBar::chunk {{
+    background-color: #3370FF;
+    border-radius: 5px;
+}}
+"""
+
+
 def _extra_rules(name: str) -> str:
     """Additional QSS for the week planner (columns, drag highlight)."""
     dark = name != "light"
@@ -1106,4 +1341,4 @@ QLabel#weekRangeLabel {{
 def get_theme(name: str) -> str:
     """Get QSS stylesheet by theme name."""
     base = LIGHT_THEME if name == "light" else DARK_THEME
-    return base + _extra_rules(name)
+    return base + _menu_dialog_rules(name) + _extra_rules(name)

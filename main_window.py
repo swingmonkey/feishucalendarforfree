@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from add_event_dialog import AddEventDialog
+from app_icon import create_app_logo_pixmap
 from config import Config
 from day_detail_dialog import DayDetailDialog
 from event_detail_dialog import EventDetailDialog
@@ -52,6 +53,7 @@ from ui_common import ConfirmDialog, Toast
 from week_view import WeekView
 
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
+HEADER_TITLE_MIN_WIDTH = 480
 
 # 错误信息中出现这些关键词时，判定为授权问题，引导重新登录
 _AUTH_KEYWORDS = (
@@ -121,9 +123,9 @@ class MainWindow(QMainWindow):
             flags |= Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        w = self.config.get("window_width", 440)
+        w = max(self.config.get("window_width", 480), 440)
         h = self.config.get("window_height", 640)
-        self.setMinimumSize(360, 480)
+        self.setMinimumSize(440, 480)
         self.resize(w, h)
         self.move(self.config.get("window_x", 100), self.config.get("window_y", 100))
         self.setWindowOpacity(float(self.config.get("opacity", 1.0)))
@@ -176,18 +178,27 @@ class MainWindow(QMainWindow):
         self.toast = Toast(self)
 
         self._apply_view_mode()
+        self._update_compact_header()
 
     def _build_header(self) -> QWidget:
         header = QFrame()
         header.setObjectName("headerBar")
-        header.setFixedHeight(44)
+        header.setFixedHeight(56)
         h = QHBoxLayout(header)
-        h.setContentsMargins(12, 4, 8, 4)
-        h.setSpacing(6)
+        h.setContentsMargins(10, 6, 8, 6)
+        h.setSpacing(3)
 
-        title = QLabel("飞书日程")
-        title.setObjectName("headerTitle")
-        h.addWidget(title)
+        self.header_logo = QLabel()
+        self.header_logo.setObjectName("headerLogo")
+        self.header_logo.setFixedSize(44, 44)
+        self.header_logo.setPixmap(create_app_logo_pixmap(40))
+        self.header_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.header_logo.setToolTip("飞书日程")
+        h.addWidget(self.header_logo)
+
+        self.header_title = QLabel("飞书日程")
+        self.header_title.setObjectName("headerTitle")
+        h.addWidget(self.header_title)
         h.addStretch()
 
         # Month / Week segmented control
@@ -246,6 +257,11 @@ class MainWindow(QMainWindow):
         h.addWidget(close_btn)
         return header
 
+    def _update_compact_header(self):
+        """Hide the text title first when the window is at its narrowest."""
+        if hasattr(self, "header_title"):
+            self.header_title.setVisible(self.width() >= HEADER_TITLE_MIN_WIDTH)
+
     def _build_more_menu(self) -> QToolButton:
         """溢出菜单：搜索 / 导出 / 置顶 / 主题 / 设置。"""
         self.more_btn = QToolButton()
@@ -256,6 +272,7 @@ class MainWindow(QMainWindow):
         self.more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
 
         menu = QMenu(self)
+        menu.setObjectName("appMenu")
         search_action = menu.addAction("搜索日程")
         search_action.triggered.connect(self._on_search)
         export_action = menu.addAction("导出到 Excel")
@@ -918,6 +935,7 @@ class MainWindow(QMainWindow):
             ev.accept()
 
     def resizeEvent(self, ev):
+        self._update_compact_header()
         self._save_window_size()
         super().resizeEvent(ev)
 

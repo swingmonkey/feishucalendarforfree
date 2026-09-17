@@ -7,8 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QMenu,
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 import updater
+from app_icon import create_app_icon
 from config import Config
 from main_window import MainWindow
 
@@ -48,55 +48,6 @@ def _extend_path_for_app_bundle():
     os.environ["PATH"] = os.pathsep.join(parts)
 
 
-def _resolve_assets_dir() -> Path:
-    """Resolve the directory containing bundled assets (icon.png etc).
-
-    Works for both source runs (project root/assets/) and PyInstaller bundles.
-    PyInstaller --add-data "assets:assets" places files under:
-      - macOS onedir .app: <App>.app/Contents/Resources/assets/
-      - Windows/Linux onedir/onefile: <exe_dir>/assets/ (or _MEIPASS/assets/)
-    """
-    if getattr(sys, "frozen", False):
-        if sys.platform == "darwin":
-            base = Path(sys.executable).resolve().parent.parent / "Resources"
-        else:
-            base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
-        candidate = base / "assets"
-        if candidate.is_dir():
-            return candidate
-        return base
-    return Path(__file__).resolve().parent / "assets"
-
-
-def create_app_icon() -> QIcon:
-    """Load the tray/app icon from assets, falling back to a drawn icon."""
-    assets_dir = _resolve_assets_dir()
-    # Prefer tray.png (small, transparent-background, good for menu bar)
-    for candidate in ("tray.png", "icon_1024.png"):
-        p = assets_dir / candidate
-        if p.is_file():
-            icon = QIcon(str(p))
-            if not icon.isNull():
-                return icon
-    # Fallback: programmatic Feishu-blue badge
-    pixmap = QPixmap(64, 64)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor("#3370FF"))
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.drawRoundedRect(4, 4, 56, 56, 14, 14)
-    painter.setPen(QColor("#FFFFFF"))
-    font = QFont()
-    font.setFamilies(["PingFang SC", "SF Pro Text", "Microsoft YaHei UI", "Segoe UI"])
-    font.setPixelSize(28)
-    font.setWeight(QFont.Weight.Bold)
-    painter.setFont(font)
-    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "日")
-    painter.end()
-    return QIcon(pixmap)
-
-
 class TrayApp(QApplication):
     """Main application with system tray."""
 
@@ -107,7 +58,9 @@ class TrayApp(QApplication):
 
         self.config = Config()
         self.icon = create_app_icon()
+        self.setWindowIcon(self.icon)
         self.widget = MainWindow(self.config)
+        self.widget.setWindowIcon(self.icon)
         self._setup_tray()
         self.widget.show()
         self._setup_update_check()
@@ -117,6 +70,7 @@ class TrayApp(QApplication):
         self.tray.setToolTip("飞书日程 - 点击显示")
 
         menu = QMenu()
+        menu.setObjectName("trayMenu")
         show_action = QAction("显示日程", self)
         show_action.triggered.connect(self._show_widget)
         menu.addAction(show_action)
