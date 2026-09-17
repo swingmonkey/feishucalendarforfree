@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -275,6 +276,133 @@ def restart_application():
         sys.exit(0)
     except SystemExit:
         pass
+
+
+def pending_update_path() -> str:
+    return os.path.abspath(sys.executable) + ".pending"
+
+
+def pending_metadata_path() -> str:
+    return pending_update_path() + ".json"
+
+
+def _write_json_atomic(path: str, payload: dict):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
+
+
+def _valid_sha256(value) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    return all(ch in "0123456789abcdef" for ch in value.lower())
+
+
+def prepare_pending_update(release: dict, progress_cb=None):
+    if not getattr(sys, "frozen", False) or sys.platform != "win32":
+        return False, "当前平台不支持静默更新"
+
+    tag = release.get("tag", "")
+    if not is_newer(tag, APP_VERSION):
+        return False, "版本无需更新"
+
+    asset = find_exe_asset(release)
+    if not asset:
+        return False, "未找到 EXE 更新资产"
+
+    expected_hash = download_sha256_sums(release).get(asset.get("name", ""), "")
+    if not _valid_sha256(expected_hash):
+        return False, "更新缺少有效的 SHA-256 校验"
+
+    pending = pending_update_path()
+    downloading = pending + ".download"
+    metadata = pending_metadata_path()
+    staged = False
+    try:
+        download(
+            asset["browser_download_url"],
+            downloading,
+            progress_cb=progress_cb,
+        )
+        if compute_sha256(downloading).lower() != expected_hash.lower():
+            raise ValueError("SHA-256 校验失败")
+        os.replace(downloading, pending)
+        staged = True
+        _write_json_atomic(
+            metadata,
+            {
+                "tag": tag,
+                "asset_name": asset.get("name", ""),
+                "sha256": expected_hash.lower(),
+                "staged_at": int(time.time()),
+            },
+        )
+        return True, f"新版本 {tag} 已准备好"
+    except Exception as exc:
+        try:
+            os.unlink(downloading)
+        except OSError:
+            pass
+        if staged:
+            for path in (pending, metadata, metadata + ".tmp"):
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        return False, str(exc)
+
+
+def apply_pending_update(current_version: str = APP_VERSION) -> bool:
+    if not getattr(sys, "frozen", False) or sys.platform != "win32":
+        return False
+
+    pending = pending_update_path()
+    metadata_path = pending_metadata_path()
+    if not os.path.isfile(pending) or not os.path.isfile(metadata_path):
+        return False
+
+    try:
+        with open(metadata_path, encoding="utf-8") as handle:
+            metadata = json.load(handle)
+        if not isinstance(metadata, dict):
+            return False
+        tag = metadata.get("tag", "")
+        expected_hash = metadata.get("sha256", "")
+        if not is_newer(tag, current_version) or not _valid_sha256(expected_hash):
+            return False
+        if compute_sha256(pending).lower() != expected_hash.lower():
+            return False
+
+        exe = os.path.abspath(sys.executable)
+        old = exe + ".old"
+        os.replace(exe, old)
+        try:
+            os.replace(pending, exe)
+        except OSError:
+            os.replace(old, exe)
+            raise
+        try:
+            os.unlink(metadata_path)
+        except OSError:
+            pass
+        return True
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return False
+
+
+class SilentUpdateWorker(QThread):
+    finished = Signal(bool, str)
+
+    def __init__(self, release: dict, parent=None):
+        super().__init__(parent)
+        self.release = release
+
+    def run(self):
+        ok, message = prepare_pending_update(self.release)
+        self.finished.emit(ok, message)
 
 
 class UpdateWorker(QThread):

@@ -224,3 +224,82 @@ def test_update_worker_accepts_exe_url():
     assert w2.exe_url == "http://x/app.exe"
     w3 = updater.UpdateWorker(None, "", exe_url="http://x/app.exe", expected_hash="abc123")
     assert w3.expected_hash == "abc123"
+
+
+# ── 静默暂存更新 ──
+
+def test_prepare_pending_update_writes_verified_file(tmp_path, monkeypatch):
+    exe = tmp_path / "app.exe"
+    exe.write_bytes(b"old")
+    new_file = tmp_path / "new.exe"
+    new_file.write_bytes(b"new")
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    monkeypatch.setattr(updater.sys, "executable", str(exe))
+    monkeypatch.setattr(
+        updater,
+        "download_sha256_sums",
+        lambda release: {
+            "FeishuCalendar.exe": updater.compute_sha256(str(new_file))
+        },
+    )
+    release = {
+        "tag": "v2.1.3",
+        "assets": [{"name": "FeishuCalendar.exe", "browser_download_url": "u"}],
+    }
+
+    def fake_download(url, dest, progress_cb=None, timeout=60):
+        with open(dest, "wb") as handle:
+            handle.write(new_file.read_bytes())
+
+    monkeypatch.setattr(updater, "download", fake_download)
+    ok, message = updater.prepare_pending_update(release)
+    assert ok is True
+    assert "2.1.3" in message
+    assert Path(updater.pending_update_path()).read_bytes() == b"new"
+    metadata = json.loads(
+        Path(updater.pending_metadata_path()).read_text(encoding="utf-8")
+    )
+    assert metadata["tag"] == "v2.1.3"
+
+
+def test_apply_pending_update_replaces_executable(tmp_path, monkeypatch):
+    exe = tmp_path / "app.exe"
+    pending = tmp_path / "app.exe.pending"
+    meta = tmp_path / "app.exe.pending.json"
+    exe.write_bytes(b"old")
+    pending.write_bytes(b"new")
+    meta.write_text(
+        json.dumps(
+            {
+                "tag": "v2.1.3",
+                "asset_name": "FeishuCalendar.exe",
+                "sha256": updater.compute_sha256(str(pending)),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    monkeypatch.setattr(updater.sys, "executable", str(exe))
+    assert updater.apply_pending_update("2.1.2") is True
+    assert exe.read_bytes() == b"new"
+    assert not pending.exists()
+    assert not meta.exists()
+
+
+def test_apply_pending_update_rejects_bad_hash(tmp_path, monkeypatch):
+    exe = tmp_path / "app.exe"
+    pending = tmp_path / "app.exe.pending"
+    meta = tmp_path / "app.exe.pending.json"
+    exe.write_bytes(b"old")
+    pending.write_bytes(b"new")
+    meta.write_text(
+        json.dumps({"tag": "v2.1.3", "sha256": "0" * 64}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    monkeypatch.setattr(updater.sys, "executable", str(exe))
+    assert updater.apply_pending_update("2.1.2") is False
+    assert exe.read_bytes() == b"old"
