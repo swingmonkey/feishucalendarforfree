@@ -4,9 +4,11 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QRect
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QFrame, QWidget
 
+from app_icon import create_app_icon
 from config import Config
 from lark_cli_async import LarkCliAsync
 from main_window import MainWindow
@@ -76,3 +78,73 @@ def test_header_logo_and_compact_layout():
             window.close()
     finally:
         LarkCliAsync.fetch_agenda = original_fetch
+
+
+def test_window_identity_is_ready_for_taskbar(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(
+        LarkCliAsync,
+        "fetch_agenda",
+        lambda self, current_date, monthly=True: self.agenda_fetched.emit([]),
+    )
+    config = _MemoryConfig(
+        {
+            "window_width": 480,
+            "window_height": 640,
+            "window_x": 0,
+            "window_y": 0,
+            "opacity": 1.0,
+            "pin_to_top": False,
+            "view_mode": "month",
+            "theme": "light",
+            "auto_refresh_interval": 999999,
+        }
+    )
+    window = MainWindow(config)
+    try:
+        assert window.windowTitle() == "飞书日程"
+        assert not window.windowIcon().isNull()
+        assert window.windowType() == Qt.WindowType.Window
+
+        window.show()
+        window.showMinimized()
+        app.processEvents()
+        assert window.isMinimized()
+    finally:
+        window.close()
+
+
+def test_app_icon_uses_trimmed_artwork():
+    QApplication.instance() or QApplication([])
+    image = create_app_icon().pixmap(64, 64).toImage()
+    left, top = image.width(), image.height()
+    right = bottom = -1
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixelColor(x, y).alpha() > 32:
+                left = min(left, x)
+                top = min(top, y)
+                right = max(right, x)
+                bottom = max(bottom, y)
+
+    width = right - left + 1
+    height = bottom - top + 1
+    assert width >= image.width() * 0.80
+    assert height >= image.height() * 0.60
+
+
+def test_packaged_ico_uses_enlarged_artwork():
+    QApplication.instance() or QApplication([])
+    image = QIcon("assets/icon.ico").pixmap(256, 256).toImage()
+    left, top = image.width(), image.height()
+    right = bottom = -1
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixelColor(x, y).alpha() > 64:
+                left = min(left, x)
+                top = min(top, y)
+                right = max(right, x)
+                bottom = max(bottom, y)
+
+    assert right - left + 1 >= image.width() * 0.80
+    assert bottom - top + 1 >= image.height() * 0.60

@@ -15,9 +15,26 @@ from PySide6.QtWidgets import (
 )
 
 import updater
+from __version__ import APP_VERSION
 from app_icon import create_app_icon
 from config import Config
 from main_window import MainWindow
+
+APP_USER_MODEL_ID = "com.swingmonkey.feishucalendar"
+
+
+def _set_windows_app_user_model_id():
+    """Keep the taskbar label, icon and process grouping stable on Windows."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            APP_USER_MODEL_ID
+        )
+    except Exception:
+        pass
 
 
 def _extend_path_for_app_bundle():
@@ -54,6 +71,8 @@ class TrayApp(QApplication):
     def __init__(self, argv):
         super().__init__(argv)
         self.setApplicationName("飞书日程")
+        self.setApplicationDisplayName("飞书日程")
+        self.setApplicationVersion(APP_VERSION)
         self.setQuitOnLastWindowClosed(False)
 
         self.config = Config()
@@ -239,6 +258,7 @@ def main():
     # Make sure npm/brew/nvm-installed CLIs (lark-cli, node) are reachable
     # even when launched from a .app bundle with a minimal PATH.
     _extend_path_for_app_bundle()
+    _set_windows_app_user_model_id()
 
     # Remove the '.old' EXE left behind by a previous frozen self-update
     # (no-op when running from source).

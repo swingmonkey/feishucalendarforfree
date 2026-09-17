@@ -219,6 +219,26 @@ def test_settings_dialog_shows_missing_cli_state(monkeypatch, cfg):
     assert "lark-cli" in dlg.auth_status_label.text()
     dlg.close()
 
+
+def test_settings_about_links_open_valid_urls(monkeypatch, cfg):
+    monkeypatch.setattr(settings_dialog, "AuthStatusWorker", lambda parent: _FakeStatusWorker((True, True), parent))
+    opened = []
+
+    class _FakeDesktopServices:
+        @staticmethod
+        def openUrl(url):
+            opened.append(url.toString())
+
+    monkeypatch.setattr(settings_dialog, "QDesktopServices", _FakeDesktopServices)
+    dlg = settings_dialog.SettingsDialog(cfg)
+    dlg.repo_btn.click()
+    dlg.download_btn.click()
+    assert opened == [
+        "https://github.com/swingmonkey/feishucalendarforfree",
+        "https://github.com/swingmonkey/feishucalendarforfree/releases/latest",
+    ]
+    dlg.close()
+
 # ---------------------------------------------------------------------------
 # 拖拽改期接线 & 桌面快捷方式（继承自重构回归套件，PR #7）
 # ---------------------------------------------------------------------------

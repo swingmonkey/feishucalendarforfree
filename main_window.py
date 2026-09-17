@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from add_event_dialog import AddEventDialog
-from app_icon import create_app_logo_pixmap
+from app_icon import create_app_icon, create_app_logo_pixmap
 from config import Config
 from day_detail_dialog import DayDetailDialog
 from event_detail_dialog import EventDetailDialog
@@ -118,7 +118,9 @@ class MainWindow(QMainWindow):
     # ── Window setup ──
 
     def _setup_window(self):
-        flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
+        self.setWindowTitle("飞书日程")
+        self.setWindowIcon(create_app_icon())
+        flags = Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
         if self._pinned:
             flags |= Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)

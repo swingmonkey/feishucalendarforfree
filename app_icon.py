@@ -11,6 +11,16 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication
 
+_ICON_SOURCE_CANDIDATES = (
+    Path("icon.iconset") / "icon_128x128.png",
+    Path("tray.png"),
+    Path("icon_1024.png"),
+)
+_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+_ALPHA_THRESHOLD = 64
+_CONTENT_SCALE = 0.92
+_trimmed_source: QPixmap | None = None
+
 
 def resolve_assets_dir() -> Path:
     """Resolve the directory containing bundled assets.
@@ -51,60 +61,91 @@ def _fallback_pixmap(size: int = 64) -> QPixmap:
 
 
 def create_app_icon() -> QIcon:
-    """Load the tray/app icon from assets, with a drawn fallback."""
-    assets_dir = resolve_assets_dir()
-    # tray.png is transparent-background and reads well in the system tray.
-    for candidate in ("tray.png", "icon_1024.png"):
-        path = assets_dir / candidate
-        if path.is_file():
-            icon = QIcon(str(path))
-            if not icon.isNull():
-                return icon
+    """Build the tray/app icon from the same trimmed artwork as the window."""
+    source = _load_trimmed_source()
+    if source is not None:
+        icon = QIcon()
+        for size in _ICON_SIZES:
+            icon.addPixmap(_fit_pixmap(source, size))
+        return icon
     return QIcon(_fallback_pixmap(64))
 
 
-def create_app_logo_pixmap(size: int = 32) -> QPixmap:
-    """Return the app artwork scaled to fill an in-window logo label.
+def _load_trimmed_source() -> QPixmap | None:
+    """Load the highest-quality app artwork and remove transparent padding."""
+    global _trimmed_source
+    if _trimmed_source is not None:
+        return _trimmed_source
 
-    The source PNG has transparent padding around the artwork. Scaling it
-    directly makes the visible logo look much smaller than its label, so trim
-    the transparent bounds before fitting it into a square canvas.
-    """
-    app = QApplication.instance()
-    dpr = float(app.devicePixelRatio()) if app is not None else 1.0
-    pixel_size = max(1, int(round(size * dpr)))
-    source_size = max(128, pixel_size * 4)
-    source = create_app_icon().pixmap(source_size, source_size)
+    assets_dir = resolve_assets_dir()
+    source = None
+    for relative_path in _ICON_SOURCE_CANDIDATES:
+        path = assets_dir / relative_path
+        if not path.is_file():
+            continue
+        candidate = QPixmap(str(path))
+        if not candidate.isNull():
+            source = candidate
+            break
+    if source is None:
+        return None
+
     image = source.toImage()
-
     left, top = image.width(), image.height()
     right = bottom = -1
     for y in range(image.height()):
         for x in range(image.width()):
-            if image.pixelColor(x, y).alpha() > 8:
+            if image.pixelColor(x, y).alpha() > _ALPHA_THRESHOLD:
                 left = min(left, x)
                 top = min(top, y)
                 right = max(right, x)
                 bottom = max(bottom, y)
-
-    canvas = QPixmap(pixel_size, pixel_size)
-    canvas.fill(Qt.GlobalColor.transparent)
     if right >= left and bottom >= top:
-        trimmed = source.copy(left, top, right - left + 1, bottom - top + 1)
-        scaled = trimmed.scaled(
-            pixel_size,
-            pixel_size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        painter = QPainter(canvas)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.drawPixmap(
-            (pixel_size - scaled.width()) // 2,
-            (pixel_size - scaled.height()) // 2,
-            scaled,
-        )
-        painter.end()
+        source = source.copy(left, top, right - left + 1, bottom - top + 1)
 
+    _trimmed_source = source
+    return source
+
+
+def _fit_pixmap(source: QPixmap, size: int) -> QPixmap:
+    """Fit app artwork into a transparent square with a small safe margin."""
+    size = max(1, size)
+    inner = max(1, int(round(size * _CONTENT_SCALE)))
+    scaled = source.scaled(
+        inner,
+        inner,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    canvas = QPixmap(size, size)
+    canvas.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(canvas)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    painter.drawPixmap(
+        (size - scaled.width()) // 2,
+        (size - scaled.height()) // 2,
+        scaled,
+    )
+    painter.end()
+    return canvas
+
+
+def create_app_logo_pixmap(size: int = 32) -> QPixmap:
+    """Return the same trimmed app artwork used by the window and tray icons.
+
+    The source PNGs contain faint low-alpha pixels around the artwork. Using a
+    low threshold makes the crop span almost the whole image, leaving the logo
+    visibly small. A meaningful alpha threshold removes that padding so the
+    in-window logo, taskbar icon and tray icon all present the same artwork at
+    the same visual size.
+    """
+    source = _load_trimmed_source()
+    if source is None:
+        source = _fallback_pixmap(max(64, size * 4))
+
+    app = QApplication.instance()
+    dpr = float(app.devicePixelRatio()) if app is not None else 1.0
+    pixel_size = max(1, int(round(size * dpr)))
+    canvas = _fit_pixmap(source, pixel_size)
     canvas.setDevicePixelRatio(dpr)
     return canvas

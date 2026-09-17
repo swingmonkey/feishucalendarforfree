@@ -138,7 +138,7 @@ class UpdateDialog(QDialog):
         self._worker.start()
 
     def _open_releases_page(self):
-        QDesktopServices.openUrl(QUrl(updater.REPO_WEB + "/releases/latest"))
+        QDesktopServices.openUrl(QUrl(updater.RELEASES_LATEST))
 
     def _on_progress(self, done, total):
         if total and total > 0:

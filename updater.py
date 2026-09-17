@@ -21,6 +21,7 @@ except Exception:  # pragma: no cover
 REPO = "swingmonkey/feishucalendarforfree"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 REPO_WEB = f"https://github.com/{REPO}"
+RELEASES_LATEST = f"{REPO_WEB}/releases/latest"
 _EXCLUDE = {"config.json", ".git", "__pycache__", ".workbuddy", ".idea", ".vscode"}
 
 

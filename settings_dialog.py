@@ -266,19 +266,25 @@ class SettingsDialog(QDialog):
         layout.addWidget(desc)
 
         link_row = QHBoxLayout()
-        repo_btn = QPushButton("项目主页 / 下载最新版")
-        repo_btn.setObjectName("linkBtn")
-        repo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        repo_btn.clicked.connect(self._open_repo)
-        link_row.addWidget(repo_btn)
+        self.repo_btn = QPushButton("项目主页")
+        self.repo_btn.setObjectName("linkBtn")
+        self.repo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.repo_btn.clicked.connect(lambda: self._open_url(updater.REPO_WEB))
+        link_row.addWidget(self.repo_btn)
+
+        self.download_btn = QPushButton("下载最新版")
+        self.download_btn.setObjectName("linkBtn")
+        self.download_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.download_btn.clicked.connect(lambda: self._open_url(updater.RELEASES_LATEST))
+        link_row.addWidget(self.download_btn)
         link_row.addStretch()
         layout.addLayout(link_row)
 
         layout.addStretch()
         return tab
 
-    def _open_repo(self):
-        QDesktopServices.openUrl(QUrl(updater.REPO_URL))
+    def _open_url(self, url: str):
+        QDesktopServices.openUrl(QUrl(url))
 
     # ── Handlers ──
 
