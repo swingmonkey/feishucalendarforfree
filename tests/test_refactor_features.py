@@ -162,6 +162,13 @@ def test_toast_action_button_shown_on_request(w):
     assert not w.toast.action_btn.isHidden()
 
 
+def test_update_ready_toast_is_non_modal(w):
+    w.notify_update_ready("2.1.3")
+    assert not w.toast.isHidden()
+    assert "2.1.3" in w.toast.msg_label.text()
+    assert "下次启动" in w.toast.msg_label.text()
+
+
 def test_confirm_dialog_danger_button():
     dlg = ConfirmDialog("删除日程", "确定删除吗？", ok_text="删除", danger=True, parent=None)
     # 危险确认按钮使用 dangerBtn 样式
@@ -342,3 +349,124 @@ def test_desktop_shortcut_creates_on_windows(cfg, tmp_path):
         main._ensure_desktop_shortcut(cfg)
         create_shortcut.assert_called_once_with(fake_home / "Desktop")
     assert cfg.get("desktop_shortcut_created") is True
+
+
+# ---------------------------------------------------------------------------
+# 静默更新与匿名心跳接线
+# ---------------------------------------------------------------------------
+
+def test_background_update_uses_silent_worker_on_frozen_windows(monkeypatch):
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QObject, Signal
+
+    import main
+    import updater
+
+    class _FakeSilentWorker(QObject):
+        finished = Signal(bool, str)
+
+        def __init__(self, release, parent=None):
+            super().__init__(parent)
+            self.release = release
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+    class _FakeWidget:
+        def __init__(self):
+            self.ready = []
+            self.notified = []
+
+        def notify_update_ready(self, tag):
+            self.ready.append(tag)
+
+        def notify_update(self, release):
+            self.notified.append(release)
+
+    widget = _FakeWidget()
+    fake_app = SimpleNamespace(
+        widget=widget,
+        _last_checked_release=None,
+        _silent_update_worker=None,
+        _on_silent_update_finished=lambda ok, message: None,
+    )
+    monkeypatch.setattr(main.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(main.sys, "platform", "win32")
+    monkeypatch.setattr(updater, "SilentUpdateWorker", _FakeSilentWorker)
+
+    release = {"tag": "9.9.9", "assets": []}
+    main.TrayApp._on_update_checked(fake_app, release)
+
+    assert fake_app._last_checked_release is release
+    assert fake_app._silent_update_worker.release is release
+    assert fake_app._silent_update_worker.started is True
+    assert widget.notified == []
+
+
+def test_silent_update_failure_falls_back_to_update_toast(monkeypatch):
+    from types import SimpleNamespace
+
+    import main
+
+    class _FakeWidget:
+        def __init__(self):
+            self.notified = []
+
+        def notify_update(self, release):
+            self.notified.append(release)
+
+    release = {"tag": "9.9.9"}
+    widget = _FakeWidget()
+    fake_app = SimpleNamespace(widget=widget, _last_checked_release=release)
+
+    main.TrayApp._on_silent_update_finished(fake_app, False, "network error")
+
+    assert widget.notified == [release]
+
+
+def test_usage_heartbeat_uses_persisted_install_id(monkeypatch):
+    from types import SimpleNamespace
+
+    import main
+    import usage_stats
+
+    class _FakeHeartbeatWorker:
+        def __init__(self, install_id, version, platform):
+            self.install_id = install_id
+            self.version = version
+            self.platform = platform
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+    config = object()
+    fake_app = SimpleNamespace(config=config, _usage_worker=None)
+    monkeypatch.setattr(
+        usage_stats,
+        "ensure_install_id",
+        lambda value: "a" * 32 if value is config else "",
+    )
+    monkeypatch.setattr(usage_stats, "HeartbeatWorker", _FakeHeartbeatWorker)
+
+    main.TrayApp._send_usage_heartbeat(fake_app)
+
+    assert fake_app._usage_worker.install_id == "a" * 32
+    assert fake_app._usage_worker.version == main.APP_VERSION
+    assert fake_app._usage_worker.started is True
+
+
+def test_main_restarts_after_pending_update(monkeypatch):
+    import main
+    import updater
+
+    calls = []
+    monkeypatch.setattr(updater, "cleanup_old_executable", lambda: calls.append("cleanup"))
+    monkeypatch.setattr(updater, "apply_pending_update", lambda: True)
+    monkeypatch.setattr(updater, "restart_application", lambda: calls.append("restart"))
+
+    main.main()
+
+    assert calls == ["cleanup", "restart"]

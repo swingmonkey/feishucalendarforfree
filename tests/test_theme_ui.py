@@ -191,3 +191,49 @@ def test_settings_pin_checkbox_updates_config(monkeypatch):
     assert config.get("pin_to_top") is False
     assert received == [False]
     dialog.close()
+
+
+def test_tray_menu_pin_action_tracks_window_state():
+    from main import _build_tray_menu
+
+    class _FakeWidget:
+        def __init__(self):
+            self._pinned = True
+
+        def _set_pinned(self, pinned):
+            self._pinned = pinned
+
+        def _show_widget(self):
+            pass
+
+        def hide(self):
+            pass
+
+        def refresh_events(self):
+            pass
+
+        def _on_add_event(self):
+            pass
+
+        def open_login(self):
+            pass
+
+        def _on_settings(self):
+            pass
+
+    QApplication.instance() or QApplication([])
+    widget = _FakeWidget()
+    menu, pin_action = _build_tray_menu(
+        widget,
+        lambda: None,
+        lambda: None,
+        None,
+    )
+
+    assert pin_action.isCheckable()
+    assert pin_action.isChecked()
+    assert any("窗口置顶" in action.text() for action in menu.actions())
+
+    widget._pinned = False
+    menu.aboutToShow.emit()
+    assert not pin_action.isChecked()

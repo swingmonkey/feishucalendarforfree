@@ -15,12 +15,62 @@ from PySide6.QtWidgets import (
 )
 
 import updater
+import usage_stats
 from __version__ import APP_VERSION
 from app_icon import create_app_icon
 from config import Config
 from main_window import MainWindow
 
 APP_USER_MODEL_ID = "com.swingmonkey.feishucalendar"
+
+
+def _build_tray_menu(widget, show_callback, quit_callback, parent=None):
+    """Build the tray menu and keep its pin check state in sync."""
+    menu = QMenu(parent)
+    menu.setObjectName("trayMenu")
+
+    show_action = QAction("显示日程", menu)
+    show_action.triggered.connect(show_callback)
+    menu.addAction(show_action)
+
+    hide_action = QAction("隐藏窗口", menu)
+    hide_action.triggered.connect(widget.hide)
+    menu.addAction(hide_action)
+
+    menu.addSeparator()
+
+    refresh_action = QAction("刷新日程", menu)
+    refresh_action.triggered.connect(widget.refresh_events)
+    menu.addAction(refresh_action)
+
+    add_action = QAction("添加日程", menu)
+    add_action.triggered.connect(widget._on_add_event)
+    menu.addAction(add_action)
+
+    login_action = QAction("登录 / 重新登录", menu)
+    login_action.triggered.connect(widget.open_login)
+    menu.addAction(login_action)
+
+    pin_action = QAction("窗口置顶", menu)
+    pin_action.setCheckable(True)
+    pin_action.setChecked(bool(widget._pinned))
+    pin_action.triggered.connect(widget._set_pinned)
+    menu.addAction(pin_action)
+
+    menu.addSeparator()
+
+    settings_action = QAction("设置", menu)
+    settings_action.triggered.connect(widget._on_settings)
+    menu.addAction(settings_action)
+
+    exit_action = QAction("退出", menu)
+    exit_action.triggered.connect(quit_callback)
+    menu.addAction(exit_action)
+
+    menu.aboutToShow.connect(
+        lambda: pin_action.setChecked(bool(widget._pinned))
+    )
+    return menu, pin_action
 
 
 def _set_windows_app_user_model_id():
@@ -76,6 +126,9 @@ class TrayApp(QApplication):
         self.setQuitOnLastWindowClosed(False)
 
         self.config = Config()
+        self._last_checked_release = None
+        self._silent_update_worker = None
+        self._usage_worker = None
         self.icon = create_app_icon()
         self.setWindowIcon(self.icon)
         self.widget = MainWindow(self.config)
@@ -83,44 +136,18 @@ class TrayApp(QApplication):
         self._setup_tray()
         self.widget.show()
         self._setup_update_check()
+        self._setup_usage_stats()
 
     def _setup_tray(self):
         self.tray = QSystemTrayIcon(self.icon, self)
         self.tray.setToolTip("飞书日程 - 点击显示")
 
-        menu = QMenu()
-        menu.setObjectName("trayMenu")
-        show_action = QAction("显示日程", self)
-        show_action.triggered.connect(self._show_widget)
-        menu.addAction(show_action)
-
-        hide_action = QAction("隐藏窗口", self)
-        hide_action.triggered.connect(self.widget.hide)
-        menu.addAction(hide_action)
-
-        menu.addSeparator()
-
-        refresh_action = QAction("刷新日程", self)
-        refresh_action.triggered.connect(self.widget.refresh_events)
-        menu.addAction(refresh_action)
-
-        add_action = QAction("添加日程", self)
-        add_action.triggered.connect(self.widget._on_add_event)
-        menu.addAction(add_action)
-
-        login_action = QAction("登录 / 重新登录", self)
-        login_action.triggered.connect(self.widget.open_login)
-        menu.addAction(login_action)
-
-        menu.addSeparator()
-
-        settings_action = QAction("设置", self)
-        settings_action.triggered.connect(self.widget._on_settings)
-        menu.addAction(settings_action)
-
-        exit_action = QAction("退出", self)
-        exit_action.triggered.connect(self._quit)
-        menu.addAction(exit_action)
+        menu, self.pin_action = _build_tray_menu(
+            self.widget,
+            self._show_widget,
+            self._quit,
+            self.widget,
+        )
 
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._on_tray_activated)
@@ -154,9 +181,40 @@ class TrayApp(QApplication):
     def _on_update_checked(self, release):
         if not release:
             return
-        if updater.is_newer(release.get("tag", ""), updater.APP_VERSION):
-            # 不再弹窗打断，仅在主窗口底部给一条可点击的轻提示
-            self.widget.notify_update(release)
+        if not updater.is_newer(release.get("tag", ""), updater.APP_VERSION):
+            return
+        self._last_checked_release = release
+        if getattr(sys, "frozen", False) and sys.platform == "win32":
+            self._silent_update_worker = updater.SilentUpdateWorker(release)
+            self._silent_update_worker.finished.connect(
+                self._on_silent_update_finished
+            )
+            self._silent_update_worker.start()
+            return
+        # 非 Windows 冻结包保留原有的可点击轻提示。
+        self.widget.notify_update(release)
+
+    def _on_silent_update_finished(self, ok, message):
+        if ok:
+            tag = (self._last_checked_release or {}).get("tag", "")
+            self.widget.notify_update_ready(tag)
+        elif self._last_checked_release:
+            self.widget.notify_update(self._last_checked_release)
+
+    def _setup_usage_stats(self):
+        """Send one delayed, non-blocking heartbeat after startup."""
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(6000, self._send_usage_heartbeat)
+
+    def _send_usage_heartbeat(self):
+        install_id = usage_stats.ensure_install_id(self.config)
+        self._usage_worker = usage_stats.HeartbeatWorker(
+            install_id,
+            APP_VERSION,
+            sys.platform,
+        )
+        self._usage_worker.start()
 
     def _quit(self):
         pos = self.widget.pos()
@@ -263,6 +321,12 @@ def main():
     # Remove the '.old' EXE left behind by a previous frozen self-update
     # (no-op when running from source).
     updater.cleanup_old_executable()
+
+    # Windows frozen builds stage updates in the background. Apply the staged
+    # file before any UI or config code touches the old executable.
+    if updater.apply_pending_update():
+        updater.restart_application()
+        return
 
     config = Config()
 

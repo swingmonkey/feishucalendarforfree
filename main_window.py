@@ -893,6 +893,17 @@ class MainWindow(QMainWindow):
             duration=8000,
         )
 
+    def notify_update_ready(self, tag: str):
+        """后台已下载并校验更新，提示将在下次启动时完成替换。"""
+        normalized = (tag or "").lstrip("vV")
+        if not normalized:
+            return
+        self.toast.show_message(
+            f"新版本 v{normalized} 已准备好，将在下次启动时安装",
+            kind="success",
+            duration=6000,
+        )
+
     # ── Window dragging & resizing ──
 
     def _is_in_resize_grip(self, pos) -> bool:
