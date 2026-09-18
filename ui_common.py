@@ -151,39 +151,54 @@ class ConfirmDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setFixedWidth(380)
+        self.setFixedWidth(400)
         self._setup_ui(title, message, ok_text, cancel_text, danger)
 
     def _setup_ui(self, title, message, ok_text, cancel_text, danger):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(22, 20, 22, 18)
+        layout.setSpacing(12)
+
+        header = QHBoxLayout()
+        header.setSpacing(10)
+
+        icon_lbl = QLabel("!" if danger else "i")
+        icon_lbl.setObjectName("confirmIconDanger" if danger else "confirmIcon")
+        icon_lbl.setFixedSize(28, 28)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.addWidget(icon_lbl)
 
         title_lbl = QLabel(title)
-        title_lbl.setObjectName("detailTitle")
-        title_lbl.setStyleSheet("font-size: 15px;")
-        layout.addWidget(title_lbl)
+        title_lbl.setObjectName("confirmTitle")
+        header.addWidget(title_lbl, 1)
+        layout.addLayout(header)
 
         msg_lbl = QLabel(message)
-        msg_lbl.setObjectName("detailLabel")
-        msg_lbl.setStyleSheet("font-size: 13px; color: #646A73;")
+        msg_lbl.setObjectName("confirmMessage")
         msg_lbl.setWordWrap(True)
         layout.addWidget(msg_lbl)
 
-        layout.addSpacing(6)
+        separator = QFrame()
+        separator.setObjectName("dialogSeparator")
+        separator.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(separator)
 
         row = QHBoxLayout()
+        row.setSpacing(8)
         row.addStretch()
 
         cancel_btn = QPushButton(cancel_text)
         cancel_btn.setObjectName("secondaryBtn")
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setAutoDefault(False)
         cancel_btn.clicked.connect(self.reject)
         row.addWidget(cancel_btn)
 
         ok_btn = QPushButton(ok_text)
         ok_btn.setObjectName("dangerBtn" if danger else "primaryBtn")
         ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ok_btn.setDefault(True)
+        ok_btn.setAutoDefault(True)
         ok_btn.clicked.connect(self.accept)
         row.addWidget(ok_btn)
 

@@ -19,7 +19,7 @@ It does **not** touch the Feishu read/write layer
 import shutil
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QPoint, QPointF, QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRect, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -101,6 +101,39 @@ def _short_error(error_msg: str, limit: int = 120) -> str:
     return line if len(line) <= limit else line[:limit] + "…"
 
 
+class _CornerResizeHandle(QWidget):
+    """透明角部命中层，避免标题栏按钮吞掉缩放拖动。"""
+
+    def __init__(self, owner: "MainWindow", edge: str, cursor: Qt.CursorShape):
+        super().__init__(owner)
+        self._owner = owner
+        self._edge = edge
+        self.setObjectName("resizeHandle")
+        self.setCursor(cursor)
+        self.setMouseTracking(True)
+
+    def mousePressEvent(self, ev: QMouseEvent):
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._owner._begin_resize(self._edge, ev.globalPosition().toPoint())
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev: QMouseEvent):
+        if ev.buttons() & Qt.MouseButton.LeftButton:
+            self._owner._update_resize(ev.globalPosition().toPoint())
+            ev.accept()
+            return
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev: QMouseEvent):
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._owner._finish_resize()
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
+
+
 class MainWindow(QMainWindow):
     """Borderless, always-on-top desktop calendar with month/week views."""
 
@@ -119,6 +152,10 @@ class MainWindow(QMainWindow):
         self._first_load_done = False
         self._auth_mode = "welcome"
         self._update_dialog = None
+        self._resize_handles: dict[str, _CornerResizeHandle] = {}
+        self._resize_edges: str | None = None
+        self._resize_start: QPoint | None = None
+        self._resize_start_geometry: QRect | None = None
 
         self._geometry_save_timer = QTimer(self)
         self._geometry_save_timer.setSingleShot(True)
@@ -140,6 +177,7 @@ class MainWindow(QMainWindow):
         self._apply_theme()
         self._setup_timer()
         self._resize_grip_size = 16
+        self._setup_resize_handles()
         # 启动直接拉取日程；加载过程用内联面板反馈，不弹任何模态框
         self._show_loading()
         self.refresh_events()
@@ -954,6 +992,38 @@ class MainWindow(QMainWindow):
 
     # ── Window dragging & resizing ──
 
+    def _setup_resize_handles(self):
+        specs = (
+            ("top-left", Qt.CursorShape.SizeFDiagCursor),
+            ("top-right", Qt.CursorShape.SizeBDiagCursor),
+            ("bottom-left", Qt.CursorShape.SizeBDiagCursor),
+            ("bottom-right", Qt.CursorShape.SizeFDiagCursor),
+        )
+        handle_size = self._resize_grip_size
+        for edge, cursor in specs:
+            handle = _CornerResizeHandle(self, edge, cursor)
+            handle.setFixedSize(handle_size, handle_size)
+            handle.show()
+            self._resize_handles[edge] = handle
+        self._position_resize_handles()
+
+    def _position_resize_handles(self):
+        if not self._resize_handles:
+            return
+        size = self._resize_grip_size
+        width = self.width()
+        height = self.height()
+        positions = {
+            "top-left": QRect(0, 0, size, size),
+            "top-right": QRect(width - size, 0, size, size),
+            "bottom-left": QRect(0, height - size, size, size),
+            "bottom-right": QRect(width - size, height - size, size, size),
+        }
+        for edge, rect in positions.items():
+            handle = self._resize_handles[edge]
+            handle.setGeometry(rect)
+            handle.raise_()
+
     def _is_in_resize_grip(self, pos) -> bool:
         rect = self.rect()
         return (
@@ -961,13 +1031,66 @@ class MainWindow(QMainWindow):
             and pos.y() >= rect.height() - self._resize_grip_size
         )
 
+    def _begin_resize(self, edge: str, global_pos: QPoint):
+        self._resize_edges = edge
+        self._resize_start = QPoint(global_pos)
+        self._resize_start_geometry = QRect(self.geometry())
+
+    def _update_resize(self, global_pos: QPoint):
+        if self._resize_edges is None or self._resize_start is None or self._resize_start_geometry is None:
+            return
+
+        delta = global_pos - self._resize_start
+        geometry = QRect(self._resize_start_geometry)
+        minimum_width = self.minimumWidth()
+        minimum_height = self.minimumHeight()
+
+        if "left" in self._resize_edges:
+            geometry.setLeft(
+                min(
+                    self._resize_start_geometry.left() + delta.x(),
+                    self._resize_start_geometry.right() - minimum_width + 1,
+                )
+            )
+        if "right" in self._resize_edges:
+            geometry.setRight(
+                max(
+                    self._resize_start_geometry.right() + delta.x(),
+                    self._resize_start_geometry.left() + minimum_width - 1,
+                )
+            )
+        if "top" in self._resize_edges:
+            geometry.setTop(
+                min(
+                    self._resize_start_geometry.top() + delta.y(),
+                    self._resize_start_geometry.bottom() - minimum_height + 1,
+                )
+            )
+        if "bottom" in self._resize_edges:
+            geometry.setBottom(
+                max(
+                    self._resize_start_geometry.bottom() + delta.y(),
+                    self._resize_start_geometry.top() + minimum_height - 1,
+                )
+            )
+
+        if geometry != self.geometry():
+            self.setGeometry(geometry)
+
+    def _finish_resize(self):
+        if self._resize_edges is None:
+            return False
+        self._resize_edges = None
+        self._resize_start = None
+        self._resize_start_geometry = None
+        self._persist_geometry()
+        return True
+
     def mousePressEvent(self, ev: QMouseEvent):
         if ev.button() == Qt.MouseButton.LeftButton:
             pos = ev.position()
             if self._is_in_resize_grip(pos):
-                self._resize_start = ev.globalPosition().toPoint()
-                self._resize_start_size = self.size()
-                self._resizing = True
+                self._begin_resize("bottom-right", ev.globalPosition().toPoint())
                 ev.accept()
                 return
             if pos.y() <= 78:
@@ -975,11 +1098,8 @@ class MainWindow(QMainWindow):
                 ev.accept()
 
     def mouseMoveEvent(self, ev: QMouseEvent):
-        if getattr(self, "_resizing", False) and ev.buttons() & Qt.MouseButton.LeftButton:
-            delta = ev.globalPosition().toPoint() - self._resize_start
-            new_w = max(self.minimumWidth(), self._resize_start_size.width() + delta.x())
-            new_h = max(self.minimumHeight(), self._resize_start_size.height() + delta.y())
-            self.resize(new_w, new_h)
+        if self._resize_edges is not None and ev.buttons() & Qt.MouseButton.LeftButton:
+            self._update_resize(ev.globalPosition().toPoint())
             ev.accept()
             return
         if self._drag_offset is not None and ev.buttons() & Qt.MouseButton.LeftButton:
@@ -987,9 +1107,7 @@ class MainWindow(QMainWindow):
             ev.accept()
 
     def mouseReleaseEvent(self, ev: QMouseEvent):
-        if getattr(self, "_resizing", False):
-            self._resizing = False
-            self._save_window_size()
+        if self._finish_resize():
             ev.accept()
             return
         if self._drag_offset is not None:
@@ -1001,6 +1119,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, ev):
         self._update_compact_header()
+        self._position_resize_handles()
         self._save_window_size()
         super().resizeEvent(ev)
 
@@ -1008,8 +1127,11 @@ class MainWindow(QMainWindow):
         self._geometry_save_timer.start()
 
     def _persist_geometry(self):
+        pos = self.pos()
         self.config.set("window_width", self.width())
         self.config.set("window_height", self.height())
+        self.config.set("window_x", pos.x())
+        self.config.set("window_y", pos.y())
 
     def closeEvent(self, ev):
         pos = self.pos()

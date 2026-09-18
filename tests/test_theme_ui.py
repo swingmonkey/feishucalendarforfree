@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QIcon
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFrame, QWidget
 
 from app_icon import create_app_icon
@@ -110,6 +111,80 @@ def test_window_identity_is_ready_for_taskbar(monkeypatch):
         window.showMinimized()
         app.processEvents()
         assert window.isMinimized()
+    finally:
+        window.close()
+
+
+def test_window_supports_resizing_from_all_four_corners(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(
+        LarkCliAsync,
+        "fetch_agenda",
+        lambda self, current_date, monthly=True: self.agenda_fetched.emit([]),
+    )
+    config = _MemoryConfig(
+        {
+            "window_width": 600,
+            "window_height": 600,
+            "window_x": 200,
+            "window_y": 200,
+            "opacity": 1.0,
+            "pin_to_top": False,
+            "view_mode": "month",
+            "theme": "light",
+            "auto_refresh_interval": 999999,
+        }
+    )
+    window = MainWindow(config)
+    try:
+        assert set(window._resize_handles) == {
+            "top-left",
+            "top-right",
+            "bottom-left",
+            "bottom-right",
+        }
+
+        window.setGeometry(0, 0, 600, 600)
+        window.show()
+        app.processEvents()
+        for handle in window._resize_handles.values():
+            hit = QApplication.widgetAt(handle.mapToGlobal(QPoint(8, 8)))
+            assert hit is handle
+        window.hide()
+
+        window.setGeometry(200, 200, 600, 600)
+        app.processEvents()
+        assert window._resize_handles["top-left"].geometry() == QRect(0, 0, 16, 16)
+        assert window._resize_handles["top-right"].geometry() == QRect(584, 0, 16, 16)
+        assert window._resize_handles["bottom-left"].geometry() == QRect(0, 584, 16, 16)
+        assert window._resize_handles["bottom-right"].geometry() == QRect(584, 584, 16, 16)
+
+        for edge, handle in window._resize_handles.items():
+            QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=QPoint(8, 8))
+            assert window._resize_edges == edge
+            QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=QPoint(8, 8))
+            assert window._resize_edges is None
+
+        cases = (
+            ("top-left", (-100, -50), QRect(100, 150, 700, 650)),
+            ("top-right", (100, -50), QRect(200, 150, 700, 650)),
+            ("bottom-left", (-100, 50), QRect(100, 200, 700, 650)),
+            ("bottom-right", (100, 50), QRect(200, 200, 700, 650)),
+        )
+        for edge, delta, expected in cases:
+            window.setGeometry(200, 200, 600, 600)
+            start = QPoint(500, 500)
+            window._begin_resize(edge, start)
+            window._update_resize(start + QPoint(*delta))
+            assert window.geometry() == expected
+            assert window._finish_resize()
+
+        window.setGeometry(200, 200, 600, 600)
+        start = QPoint(500, 500)
+        window._begin_resize("top-left", start)
+        window._update_resize(start + QPoint(900, 900))
+        assert window.geometry() == QRect(360, 320, 440, 480)
+        assert window._finish_resize()
     finally:
         window.close()
 

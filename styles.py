@@ -1060,8 +1060,8 @@ def _menu_dialog_rules(name: str) -> str:
         menu_selected_bg = "rgba(51, 112, 255, 0.24)"
         menu_selected_text = "#FFFFFF"
         menu_pressed_bg = "rgba(51, 112, 255, 0.34)"
-        tab_selected_bg = "#2B2F36"
-        tab_selected_text = "#FFFFFF"
+        input_bg = "#2B2F36"
+        input_disabled_bg = "#262A31"
         logo_bg = "rgba(255, 255, 255, 0.08)"
         logo_border = "rgba(255, 255, 255, 0.14)"
     else:
@@ -1079,8 +1079,8 @@ def _menu_dialog_rules(name: str) -> str:
         menu_selected_bg = "#EAF0FF"
         menu_selected_text = "#245BDB"
         menu_pressed_bg = "#D9E5FF"
-        tab_selected_bg = "#FFFFFF"
-        tab_selected_text = "#245BDB"
+        input_bg = "#FFFFFF"
+        input_disabled_bg = "#F7F8FA"
         logo_bg = "#F2F3F5"
         logo_border = "#DEE0E3"
 
@@ -1099,14 +1099,16 @@ QMenu {{
     color: {text};
     border: 1px solid {border_strong};
     border-radius: 8px;
-    padding: 6px;
+    padding: 7px;
 }}
 QMenu::item {{
     background-color: transparent;
     color: {text};
     border-radius: 6px;
-    padding: 8px 28px 8px 12px;
-    min-width: 172px;
+    padding: 9px 30px 9px 14px;
+    margin: 1px 2px;
+    min-width: 188px;
+    font-size: 13px;
 }}
 QMenu::item:selected {{
     background-color: {menu_selected_bg};
@@ -1122,12 +1124,12 @@ QMenu::item:disabled {{
 QMenu::separator {{
     height: 1px;
     background-color: {separator};
-    margin: 5px 8px;
+    margin: 6px 10px;
 }}
 QMenu::indicator {{
     width: 16px;
     height: 16px;
-    margin-left: 4px;
+    margin-left: 6px;
 }}
 
 /* === Header overflow button === */
@@ -1162,6 +1164,41 @@ QDialog QLabel, QMessageBox QLabel {{
     background-color: transparent;
     color: {text};
 }}
+QDialog QLabel#detailTitle {{
+    color: {text};
+    font-size: 16px;
+    font-weight: 600;
+}}
+QDialog QLabel#detailLabel {{
+    color: {muted};
+    font-size: 12px;
+}}
+QDialog QLabel#detailValue {{
+    color: {text};
+    font-size: 13px;
+}}
+QLabel#confirmIcon, QLabel#confirmIconDanger {{
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 700;
+}}
+QLabel#confirmIcon {{
+    background-color: rgba(51, 112, 255, 0.14);
+    color: #3370FF;
+}}
+QLabel#confirmIconDanger {{
+    background-color: rgba(245, 74, 69, 0.14);
+    color: #F54A45;
+}}
+QLabel#confirmTitle {{
+    color: {text};
+    font-size: 15px;
+    font-weight: 600;
+}}
+QLabel#confirmMessage {{
+    color: {muted};
+    font-size: 13px;
+}}
 QMessageBox QLabel#qt_msgbox_label {{
     min-width: 260px;
 }}
@@ -1172,13 +1209,40 @@ QFrame#dialogSeparator {{
     max-height: 1px;
 }}
 
+QDialog QLineEdit, QDialog QTextEdit, QDialog QPlainTextEdit, QDialog QComboBox,
+QDialog QDateTimeEdit, QDialog QDateEdit, QDialog QSpinBox {{
+    background-color: {input_bg};
+    color: {text};
+    border: 1px solid {border};
+    border-radius: 6px;
+    padding: 7px 10px;
+    selection-background-color: #3370FF;
+    selection-color: #FFFFFF;
+}}
+QDialog QLineEdit:focus, QDialog QTextEdit:focus, QDialog QPlainTextEdit:focus,
+QDialog QComboBox:focus, QDialog QDateTimeEdit:focus, QDialog QDateEdit:focus,
+QDialog QSpinBox:focus {{
+    border: 1px solid #3370FF;
+}}
+QDialog QLineEdit:disabled, QDialog QTextEdit:disabled, QDialog QPlainTextEdit:disabled,
+QDialog QComboBox:disabled, QDialog QDateTimeEdit:disabled, QDialog QDateEdit:disabled,
+QDialog QSpinBox:disabled {{
+    background-color: {input_disabled_bg};
+    color: {disabled};
+}}
+QDialog QPlainTextEdit#detailLabel {{
+    padding: 10px;
+    border-radius: 8px;
+}}
+
 QDialogButtonBox QPushButton, QMessageBox QPushButton {{
     background-color: {surface};
     color: {text};
     border: 1px solid {border};
     border-radius: 7px;
-    padding: 6px 18px;
+    padding: 7px 18px;
     min-width: 66px;
+    min-height: 18px;
 }}
 QDialogButtonBox QPushButton:hover, QMessageBox QPushButton:hover {{
     background-color: {hover};
@@ -1202,37 +1266,116 @@ QDialogButtonBox QPushButton:disabled, QMessageBox QPushButton:disabled {{
     border-color: {separator};
     color: {disabled};
 }}
+QDialog QPushButton#primaryBtn {{
+    background-color: #3370FF;
+    color: #FFFFFF;
+    border: 1px solid #3370FF;
+    border-radius: 6px;
+    padding: 7px 18px;
+    min-height: 18px;
+    font-weight: 500;
+}}
+QDialog QPushButton#primaryBtn:hover {{
+    background-color: #4E83FD;
+    border-color: #4E83FD;
+}}
+QDialog QPushButton#primaryBtn:pressed {{
+    background-color: #245BDB;
+    border-color: #245BDB;
+}}
+QDialog QPushButton#primaryBtn:disabled {{
+    background-color: rgba(51, 112, 255, 0.42);
+    border-color: transparent;
+    color: rgba(255, 255, 255, 0.74);
+}}
+QDialog QPushButton#secondaryBtn {{
+    background-color: transparent;
+    color: {text};
+    border: 1px solid {border_strong};
+    border-radius: 6px;
+    padding: 7px 18px;
+    min-height: 18px;
+}}
+QDialog QPushButton#secondaryBtn:hover {{
+    background-color: {hover};
+    border-color: {border_strong};
+}}
+QDialog QPushButton#secondaryBtn:pressed {{
+    background-color: {pressed};
+}}
+QDialog QPushButton#dangerBtn {{
+    background-color: rgba(245, 74, 69, 0.08);
+    color: #F54A45;
+    border: 1px solid rgba(245, 74, 69, 0.58);
+    border-radius: 6px;
+    padding: 7px 18px;
+    min-height: 18px;
+    font-weight: 500;
+}}
+QDialog QPushButton#dangerBtn:hover {{
+    background-color: #F54A45;
+    border-color: #F54A45;
+    color: #FFFFFF;
+}}
+QDialog QPushButton#dangerBtn:pressed {{
+    background-color: #D93F3A;
+    border-color: #D93F3A;
+}}
 
 /* === Tabs === */
-QTabWidget::pane {{
+QDialog QTabWidget::pane {{
     background-color: {surface};
     border: 1px solid {border};
     border-radius: 8px;
     top: -1px;
 }}
-QTabBar::tab {{
-    background-color: {surface_alt};
+QDialog QTabBar::tab {{
+    background-color: transparent;
     color: {muted};
-    border: 1px solid {border};
-    border-bottom: none;
-    border-top-left-radius: 7px;
-    border-top-right-radius: 7px;
-    padding: 8px 16px;
-    margin-right: 3px;
-    min-width: 72px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 9px 18px;
+    margin-right: 4px;
+    min-width: 68px;
+    font-size: 13px;
 }}
-QTabBar::tab:hover {{
+QDialog QTabBar::tab:hover:!selected {{
     background-color: {hover};
     color: {text};
 }}
-QTabBar::tab:selected {{
-    background-color: {tab_selected_bg};
-    color: {tab_selected_text};
+QDialog QTabBar::tab:selected {{
+    background-color: transparent;
+    color: #3370FF;
     border-bottom: 2px solid #3370FF;
     font-weight: 600;
 }}
-QTabBar::tab:disabled {{
+QDialog QTabBar::tab:disabled {{
     color: {disabled};
+}}
+
+QDialog QGroupBox {{
+    background-color: {surface};
+    border: 1px solid {border};
+    border-radius: 8px;
+    margin-top: 20px;
+    padding: 18px 12px 12px 12px;
+    color: {text};
+    font-weight: 600;
+}}
+QDialog QGroupBox::title {{
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 14px;
+    top: 2px;
+    padding: 0 6px;
+    color: {muted};
+    background-color: transparent;
+}}
+
+QDialog QCheckBox, QDialog QRadioButton {{
+    color: {text};
+    spacing: 8px;
+    padding: 2px 0;
 }}
 
 /* === Combo and calendar popups === */

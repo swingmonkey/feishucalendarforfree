@@ -181,10 +181,16 @@ def test_update_ready_toast_is_non_modal(w):
 def test_confirm_dialog_danger_button():
     dlg = ConfirmDialog("删除日程", "确定删除吗？", ok_text="删除", danger=True, parent=None)
     # 危险确认按钮使用 dangerBtn 样式
-    from PySide6.QtWidgets import QPushButton
+    from PySide6.QtWidgets import QLabel, QPushButton
+
     names = [b.objectName() for b in dlg.findChildren(QPushButton)]
     assert "dangerBtn" in names
     assert "secondaryBtn" in names
+    assert dlg.findChild(QLabel, "confirmIconDanger") is not None
+    assert dlg.findChild(QLabel, "confirmTitle") is not None
+    message = dlg.findChild(QLabel, "confirmMessage")
+    assert message is not None
+    assert message.styleSheet() == ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
