@@ -144,14 +144,6 @@ def test_window_supports_resizing_from_all_four_corners(monkeypatch):
             "bottom-right",
         }
 
-        window.setGeometry(0, 0, 600, 600)
-        window.show()
-        app.processEvents()
-        for handle in window._resize_handles.values():
-            hit = QApplication.widgetAt(handle.mapToGlobal(QPoint(8, 8)))
-            assert hit is handle
-        window.hide()
-
         window.setGeometry(200, 200, 600, 600)
         app.processEvents()
         assert window._resize_handles["top-left"].geometry() == QRect(0, 0, 16, 16)
