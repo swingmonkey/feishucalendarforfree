@@ -32,4 +32,23 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 已重构：拆分 calendar_widget.py 为 main_window + month_view + week_view + widgets + dialogs；新增月/周双视图、拖拽改期、颜色分类、重复日程、Markdown 子任务
 - v2.1 体验改造：启动零模态弹窗与登录态持久化（状态机面板替代登录框）；Toast/ConfirmDialog/内联红字替代全部 QMessageBox；头部按钮收敛为 月|周、＋、⟳、⋯、—、✕（搜索/导出/置顶/主题/登录/设置收入 ⋯ 菜单）；styles.py 按飞书设计令牌整体重写（默认浅色）；设置页改 4 Tab + 异步状态检测
 - 离线回归测试：`tests/test_refactor_features.py`（19 例，覆盖头部收敛、启动加载面板、登录状态机四种模式、auth 错误分类、Toast/ConfirmDialog、mark_authed、设置页异步状态），另有 test_config / test_updater 等；需 `QT_QPA_PLATFORM=offscreen` + PySide6（注意：offscreen 插件无字体库，截图验证 UI 需用 `QT_QPA_PLATFORM=windows` 且不 show 直接 grab）
-- 最近提交已推送 GitHub（origin/main）；v2.1 改造目前仅在本地工作区，尚未提交/推送/提 PR
+- v2.1.5 已提交并推送 origin/main（`1e513ba`），与 GitHub 最新 Release v2.1.5 一致
+
+## Git 仓库：状态判定铁律（接手必读）
+- **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.1.5`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag
+- ⚠️ 本机 `refs/remotes/origin/main` 显示**不可靠**（曾长期停在旧 commit `2a4f326`，`git status` 也看不出 ahead/behind）。**判断远程真实状态一律以 GitHub 网页 / API 为准**，不要相信本地 remote-tracking ref
+- ⚠️ **禁止在 `C:\Users\77427\feishucalendarforfree` 执行 `git pull` / `git reset --hard origin/main`**：远程曾有被 force push 成残缺版本的先例，pull 会删掉本地 30+ 源文件
+- 需要覆盖远程时用 `git push --force-with-lease=main:<期望的远程sha> origin main`，**先在本地给旧提交建备份分支**（如 `backup/orphan-4df042e`，仅本地不推送）
+- 环境：本机 git 直连需 `git -c http.sslVerify=false`（schannel 证书吊销检查失败）；WorkBuddy Bash 的 PATH 被裁，命令前置 `PATH="/usr/bin:/bin:$PATH";`
+
+### 事故记录：2026-09-19 远程被孤儿提交覆盖
+- 现象：远程 main 被 force push 为 `4df042e`（2026-09-19 23:24，commit message 带 `Closes: #1, #2, #3`，疑似 AI agent 产出）。该提交**无父提交**，整仓只剩 `main.py` + submodule `temp_feishu_repo`
+- 危害：那个 main.py import 了 `updater`/`config`/`main_window`/`app_icon`/`usage_stats`/`ui_common` 等本地并不存在的模块，代码残缺、无法运行；当时本地领先远程 53 个 commit
+- 处理：备份分支 `backup/orphan-4df042e` → `git push --force-with-lease=main:4df042e... origin main` → 远程恢复为 `1e513ba`，根目录 40+ 文件全部回来，Releases（v2.0.0~v2.1.5）未受影响
+- 教训：任何"仓库文件数骤减 / 提交无父 / 凭空出现 submodule"的情况，先停手核对，不要同步
+
+## OTA 自动更新（updater.py）
+- 查询 `https://api.github.com/repos/swingmonkey/feishucalendarforfree/releases/latest`，下载 `zipball_url` 后剥去 `repo-tag/` 顶层目录覆盖本地，**排除 `config.json` / `.git`**，最后重启进程；仅用标准库（urllib/zipfile/subprocess）
+- 触发：启动 4 秒后静默检查（`config.json` 的 `check_update_on_start` 可关）；手动入口在设置 → 检查更新
+- Windows 打包版：后台静默下载暂存到 pending 路径，下次启动或用户确认后 `apply_pending_update()` + `restart_application()`；非 Windows/源码运行保留可点击轻提示
+- 发新版只需打新的 GitHub Release，客户端会自动检测到；**前提是别再让 force push 把仓库清掉**
