@@ -247,8 +247,52 @@ class SettingsDialog(QDialog):
         opacity_layout.addWidget(self.opacity_label)
         layout.addWidget(opacity_group)
 
+        font_group = QGroupBox("日程字号")
+        font_layout = QVBoxLayout(font_group)
+        self.grid_font_slider, self.grid_font_label = self._build_font_row(
+            font_layout, "月视图日程", "grid_font_size", 10, self._on_grid_font_changed
+        )
+        self.list_font_slider, self.list_font_label = self._build_font_row(
+            font_layout, "周 / 列表视图日程", "list_font_size", 13, self._on_list_font_changed
+        )
+        layout.addWidget(font_group)
+
         layout.addStretch()
         return tab
+
+    def _build_font_row(self, parent_layout, title: str, key: str, default: int, callback):
+        """字号调节行：标题 + 滑块 + 实时数值（9-24px）。"""
+        row = QWidget()
+        row_layout = QVBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(4)
+
+        head = QHBoxLayout()
+        head.addWidget(QLabel(title))
+        head.addStretch()
+        value = int(self.config.get(key, default))
+        label = QLabel(f"{value}px")
+        head.addWidget(label)
+        row_layout.addLayout(head)
+
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(9, 24)
+        slider.setValue(value)
+        slider.valueChanged.connect(callback)
+        row_layout.addWidget(slider)
+
+        parent_layout.addWidget(row)
+        return slider, label
+
+    def _on_grid_font_changed(self, value: int):
+        self.config.set("grid_font_size", int(value))
+        self.grid_font_label.setText(f"{int(value)}px")
+        self.settings_changed.emit()
+
+    def _on_list_font_changed(self, value: int):
+        self.config.set("list_font_size", int(value))
+        self.list_font_label.setText(f"{int(value)}px")
+        self.settings_changed.emit()
 
     # ── About tab ──
 

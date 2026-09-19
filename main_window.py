@@ -48,7 +48,7 @@ from login_dialog import LoginDialog, mark_authed
 from month_view import MonthView
 from search_dialog import SearchDialog
 from settings_dialog import SettingsDialog
-from styles import get_theme
+from styles import DEFAULT_GRID_FONT, DEFAULT_LIST_FONT, get_theme
 from ui_common import ConfirmDialog, Toast
 from week_view import WeekView
 
@@ -704,7 +704,11 @@ class MainWindow(QMainWindow):
     def _apply_theme(self):
         # 应用到 application 级别：登录框等独立顶层窗口即便没有父窗口也能统一风格
         theme = self.config.get("theme", "light")
-        qss = get_theme(theme)
+        grid_font = self.config.get("grid_font_size", DEFAULT_GRID_FONT)
+        list_font = self.config.get("list_font_size", DEFAULT_LIST_FONT)
+        self._applied_grid_font = grid_font
+        self._applied_list_font = list_font
+        qss = get_theme(theme, grid_font, list_font)
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(qss)
@@ -751,8 +755,16 @@ class MainWindow(QMainWindow):
     def _on_settings_changed(self):
         # 外观 / 定时器等设置变化：即时生效，无需重新拉取数据
         self.setWindowOpacity(float(self.config.get("opacity", 1.0)))
+        # 先比对再应用：_apply_theme 会把 _applied_* 刷新成新值
+        fonts_changed = (
+            self.config.get("grid_font_size", DEFAULT_GRID_FONT) != getattr(self, "_applied_grid_font", DEFAULT_GRID_FONT)
+            or self.config.get("list_font_size", DEFAULT_LIST_FONT) != getattr(self, "_applied_list_font", DEFAULT_LIST_FONT)
+        )
         self._apply_theme()
         self.refresh_timer.setInterval(self.config.get("auto_refresh_interval", 300) * 1000)
+        if fonts_changed:
+            # 日格行高随字号变化，可容纳的日程条数需重算 → 重建当前视图
+            self._render_active_view()
 
     def _on_pin_setting_changed(self, pinned: bool):
         self._set_pinned(pinned)

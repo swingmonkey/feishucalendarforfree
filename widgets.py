@@ -26,7 +26,23 @@ from models_event import get_event_color, has_recurrence, is_all_day_event, pars
 EVENT_MIME = "application/x-feishu-event"
 
 # Max events shown per day cell before the "+N more" affordance.
+# 默认字号（10px → 行高 18px）下的上限；字号调大后按预算动态收缩。
 MAX_VISIBLE_EVENTS = 3
+_GRID_VISIBLE_BUDGET = 54  # 3 × 18px
+
+
+def visible_event_count(grid_font: int = 10) -> int:
+    """按日程字号推算日格内可容纳的日程条数（至少 1 条，至多 MAX_VISIBLE_EVENTS）。
+
+    行高 = 字号 + 8（与 styles._event_font_rules 的 max-height 一致），
+    字号调大时自动少显示几条，避免挤爆日格。
+    """
+    try:
+        grid_font = int(grid_font)
+    except (TypeError, ValueError):
+        grid_font = 10
+    row_h = max(12, grid_font + 8)
+    return max(1, min(MAX_VISIBLE_EVENTS, _GRID_VISIBLE_BUDGET // row_h))
 
 
 def build_event_mime(event: dict) -> QMimeData:
@@ -246,8 +262,10 @@ class DayCell(QFrame):
         date_lbl.setFixedHeight(18)
         layout.addWidget(date_lbl)
 
-        visible = self._events[:MAX_VISIBLE_EVENTS]
-        remaining = len(self._events) - MAX_VISIBLE_EVENTS
+        grid_font = self._config.get("grid_font_size", 10) if self._config else 10
+        limit = visible_event_count(grid_font)
+        visible = self._events[:limit]
+        remaining = len(self._events) - limit
 
         for item in visible:
             if isinstance(item, tuple):

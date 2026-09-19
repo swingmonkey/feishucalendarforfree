@@ -1510,7 +1510,94 @@ QLabel#weekRangeLabel {{
 """
 
 
-def get_theme(name: str) -> str:
-    """Get QSS stylesheet by theme name."""
+# ── 日程字号（用户可调）──────────────────────────────────────
+# 默认值与两套主题内置值保持一致：月视图 10px、周·列表视图 13px。
+DEFAULT_GRID_FONT = 10
+DEFAULT_LIST_FONT = 13
+_FONT_RANGE = (9, 24)
+
+_EVENT_FONT_COLORS = {
+    "dark": {
+        "grid_time": "#B8C0CC",
+        "grid_title": "#F0F1F2",
+        "more": "#8F959E",
+        "list_time": "#A9B0B8",
+        "list_time_past": "#646A73",
+        "list_time_current": "#4FD963",
+        "list_title": "#F0F1F2",
+        "list_title_past": "#646A73",
+        "list_meta": "#8F959E",
+    },
+    "light": {
+        "grid_time": "#646A73",
+        "grid_title": "#1F2329",
+        "more": "#8F959E",
+        "list_time": "#51565D",
+        "list_time_past": "#BBBFC4",
+        "list_time_current": "#2EA121",
+        "list_title": "#1F2329",
+        "list_title_past": "#BBBFC4",
+        "list_meta": "#8F959E",
+    },
+}
+
+
+def _clamp_font(value, fallback: int) -> int:
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(_FONT_RANGE[0], min(_FONT_RANGE[1], value))
+
+
+def _event_font_rules(
+    name: str,
+    grid_font: int = DEFAULT_GRID_FONT,
+    list_font: int = DEFAULT_LIST_FONT,
+) -> str:
+    """日程字号覆盖规则，追加在主题末尾（同名选择器后定义者生效）。
+
+    月视图日格内的日程是单行布局（时间 + 标题），行高必须随字号一起放开，
+    否则字号调大会被写死的 min/max-height 裁掉。
+    """
+    grid_font = _clamp_font(grid_font, DEFAULT_GRID_FONT)
+    list_font = _clamp_font(list_font, DEFAULT_LIST_FONT)
+    grid_sub = max(8, grid_font - 1)   # 月视图：时间 / "更多"
+    list_sub = max(9, list_font - 2)   # 周·列表视图：时间 / 次要信息
+    row_min = grid_font + 6            # 默认 10px → 16/18px，与历史一致
+    row_max = grid_font + 8
+    c = _EVENT_FONT_COLORS["light" if name == "light" else "dark"]
+    return f"""
+/* ── 日程字号（用户可调）── */
+QFrame#gridEvent, QFrame#gridEventMultiDay {{
+    min-height: {row_min}px;
+    max-height: {row_max}px;
+}}
+QLabel#gridEventTime {{ font-size: {grid_sub}px; color: {c["grid_time"]}; }}
+QLabel#gridEventTitle {{ font-size: {grid_font}px; color: {c["grid_title"]}; }}
+QLabel#moreLabel {{ font-size: {grid_sub}px; color: {c["more"]}; padding: 0px 2px; }}
+QLabel#eventTime {{ font-size: {list_sub}px; color: {c["list_time"]}; font-weight: 600; }}
+QLabel#eventTimePast {{ font-size: {list_sub}px; color: {c["list_time_past"]}; font-weight: 600; }}
+QLabel#eventTimeCurrent {{ font-size: {list_sub}px; color: {c["list_time_current"]}; font-weight: 600; }}
+QLabel#eventTitle {{ font-size: {list_font}px; color: {c["list_title"]}; font-weight: 500; }}
+QLabel#eventTitlePast {{ font-size: {list_font}px; color: {c["list_title_past"]}; font-weight: 500; }}
+QLabel#eventMeta {{ font-size: {list_sub}px; color: {c["list_meta"]}; }}
+"""
+
+
+def get_theme(
+    name: str,
+    grid_font: int = DEFAULT_GRID_FONT,
+    list_font: int = DEFAULT_LIST_FONT,
+) -> str:
+    """Get QSS stylesheet by theme name.
+
+    grid_font / list_font 为用户可调的日程字号（px），默认与主题内置值一致。
+    """
     base = LIGHT_THEME if name == "light" else DARK_THEME
-    return base + _menu_dialog_rules(name) + _extra_rules(name)
+    return (
+        base
+        + _menu_dialog_rules(name)
+        + _extra_rules(name)
+        + _event_font_rules(name, grid_font, list_font)
+    )

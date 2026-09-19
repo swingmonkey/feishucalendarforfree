@@ -25,7 +25,8 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 月历 7 列等宽约定：GridEventLabel/DayCell 水平 sizePolicy=Ignored，表头用 QGridLayout，勿让内容撑宽列
 - 飞书读写能力集中在 `lark_cli.py`/`lark_cli_async.py`，**重构只动 UI 层**：拖拽改期复用 `update_event`，重复写入复用 `+create --rrule`/`patch recurrence`，颜色仅存本地 `config.json.event_colors`，子任务即描述里的 Markdown 勾选清单 `- [ ]`
 - `config.json` 存窗口/主题（默认 light、opacity 1.0）/刷新间隔/视图模式/颜色/`auth_completed`/`auth_user`（`.gitignore` 排除，不含任何凭据）
-- UI 统一飞书设计语言：品牌蓝 #3370FF（hover #4E83FD、pressed #245BDB），成功 #34C724、警告 #FF8800、危险 #F54A45，中性色 N 系列；QSS 集中在 `styles.py`（get_theme(name)），新控件先加 objectName 再在两套主题补样式，勿在代码里散落硬编码色值
+- UI 统一飞书设计语言：品牌蓝 #3370FF（hover #4E83FD、pressed #245BDB），成功 #34C724、警告 #FF8800、危险 #F54A45，中性色 N 系列；QSS 集中在 `styles.py`（`get_theme(name, grid_font, list_font)`），新控件先加 objectName 再在两套主题补样式，勿在代码里散落硬编码色值
+- **日程字号可调（v2.1.6）**：`config.grid_font_size`（月视图，默认 10）/ `config.list_font_size`（周·列表视图，默认 13），范围 9-24px，设置页「外观」Tab 两个滑块；实现方式是 `styles._event_font_rules()` 生成覆盖规则**追加在主题 QSS 末尾**（同名选择器后定义者生效），不改两套大模板；时间与次要信息由主字号派生（月视图 -1、列表 -2）。改字号必须同步放开 `QFrame#gridEvent` 的 min/max-height（行高 = 字号 +6/+8），否则大字号会被裁；日格可容纳条数由 `widgets.visible_event_count()` 按行高收缩（默认 3 条，字号 ≥12 降为 2，≥20 降为 1），字号变化后 `MainWindow._on_settings_changed` 会 `_render_active_view()` 重建视图
 
 ## 当前状态
 - 认证仅 lark-cli 用户授权（App ID/Secret 模式已移除，feishu_api.py 已删除）
@@ -33,6 +34,7 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - v2.1 体验改造：启动零模态弹窗与登录态持久化（状态机面板替代登录框）；Toast/ConfirmDialog/内联红字替代全部 QMessageBox；头部按钮收敛为 月|周、＋、⟳、⋯、—、✕（搜索/导出/置顶/主题/登录/设置收入 ⋯ 菜单）；styles.py 按飞书设计令牌整体重写（默认浅色）；设置页改 4 Tab + 异步状态检测
 - 离线回归测试：`tests/test_refactor_features.py`（19 例，覆盖头部收敛、启动加载面板、登录状态机四种模式、auth 错误分类、Toast/ConfirmDialog、mark_authed、设置页异步状态），另有 test_config / test_updater 等；需 `QT_QPA_PLATFORM=offscreen` + PySide6（注意：offscreen 插件无字体库，截图验证 UI 需用 `QT_QPA_PLATFORM=windows` 且不 show 直接 grab）
 - v2.1.5 已提交并推送 origin/main（`1e513ba`），与 GitHub 最新 Release v2.1.5 一致
+- v2.1.6：日程字号可调（月视图 10px / 周·列表 13px，9-24px 两档滑块），测试 `tests/test_font_size.py`（12 项）
 
 ## Git 仓库：状态判定铁律（接手必读）
 - **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.1.5`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag

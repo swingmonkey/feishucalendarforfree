@@ -46,6 +46,10 @@ class Config:
         "desktop_shortcut_created": False,
         "check_update_on_start": True,
         "install_id": "",
+        # 日程字号（px）：月视图格子内日程标题 / 周·列表视图日程标题。
+        # 时间、次要信息等按此值派生，见 styles._event_font_rules。
+        "grid_font_size": 10,
+        "list_font_size": 13,
         # 登录态：曾经成功登录/成功拉取过日程即置 True。
         # lark-cli 的授权凭据由其自身全局持久化，应用重启无需重新登录，
         # 该标记仅用于区分「首次使用」与「登录过期」两种引导文案。
@@ -54,6 +58,11 @@ class Config:
     }
 
     _POSITIVE_INT_KEYS = {"window_width", "window_height", "auto_refresh_interval"}
+    # 日程字号允许区间（px）：下限保证可读，上限避免撑爆月视图日格
+    _FONT_SIZE_KEYS = {
+        "grid_font_size": (9, 24),
+        "list_font_size": (9, 24),
+    }
     _ENUMS = {
         "theme": {"dark", "light"},
         "view_mode": {"month", "week"},
@@ -73,6 +82,12 @@ class Config:
             if key in cls._POSITIVE_INT_KEYS:
                 if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                     value = default
+            elif key in cls._FONT_SIZE_KEYS:
+                low, high = cls._FONT_SIZE_KEYS[key]
+                if isinstance(value, bool) or not isinstance(value, int):
+                    value = default
+                else:
+                    value = max(low, min(high, value))
             elif key in cls._ENUMS:
                 if value not in cls._ENUMS[key]:
                     value = default
