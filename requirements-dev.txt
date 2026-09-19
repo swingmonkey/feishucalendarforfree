@@ -1,5 +1,5 @@
 # Development dependencies for feishucalendarforfree
 # Install with: pip install -r requirements-dev.txt
 
-pytest>=7.0
+pytest>=9.1.1
 ruff>=0.4.0
