@@ -1,0 +1,383 @@
+"""FeishuCalendarDesktop - Main entry point with system tray."""
+
+import json
+import logging
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (
+    QApplication,
+    QMenu,
+    QSystemTrayIcon,
+)
+
+import updater
+import usage_stats
+from __version__ import APP_VERSION
+from app_icon import create_app_icon
+from config import Config
+from main_window import MainWindow
+
+APP_USER_MODEL_ID = "com.swingmonkey.feishucalendar"
+
+
+def _build_tray_menu(widget, show_callback, quit_callback, parent=None):
+    """Build the tray menu and keep its pin check state in sync."""
+    menu = QMenu(parent)
+    menu.setObjectName("trayMenu")
+
+    show_action = QAction("显示日程", menu)
+    show_action.triggered.connect(show_callback)
+    menu.addAction(show_action)
+
+    hide_action = QAction("隐藏窗口", menu)
+    hide_action.triggered.connect(widget.hide)
+    menu.addAction(hide_action)
+
+    menu.addSeparator()
+
+    refresh_action = QAction("刷新日程", menu)
+    refresh_action.triggered.connect(widget.refresh_events)
+    menu.addAction(refresh_action)
+
+    add_action = QAction("添加日程", menu)
+    add_action.triggered.connect(widget._on_add_event)
+    menu.addAction(add_action)
+
+    login_action = QAction("登录 / 重新登录", menu)
+    login_action.triggered.connect(widget.open_login)
+    menu.addAction(login_action)
+
+    pin_action = QAction("窗口置顶", menu)
+    pin_action.setCheckable(True)
+    pin_action.setChecked(bool(widget._pinned))
+    pin_action.triggered.connect(widget._set_pinned)
+    menu.addAction(pin_action)
+
+    menu.addSeparator()
+
+    settings_action = QAction("设置", menu)
+    settings_action.triggered.connect(widget._on_settings)
+    menu.addAction(settings_action)
+
+    exit_action = QAction("退出", menu)
+    exit_action.triggered.connect(quit_callback)
+    menu.addAction(exit_action)
+
+    menu.aboutToShow.connect(
+        lambda: pin_action.setChecked(bool(widget._pinned))
+    )
+    return menu, pin_action
+
+
+def _set_windows_app_user_model_id():
+    """Keep the taskbar label, icon and process grouping stable on Windows."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            APP_USER_MODEL_ID
+        )
+    except Exception:
+        pass
+
+
+def _extend_path_for_app_bundle():
+    """Extend PATH so macOS .app bundles can find npm/brew-installed CLIs.
+
+    When launched from Finder/Spotlight, a .app inherits only a minimal
+    PATH (/usr/bin:/bin:...) and cannot find lark-cli / node installed via
+    npm global, homebrew, or nvm. We manually prepend those locations.
+    """
+    home = Path.home()
+    extra = [
+        str(home / ".npm-global" / "bin"),
+        str(home / ".local" / "bin"),
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+    ]
+    # nvm-installed node binaries
+    nvm_dir = home / ".nvm" / "versions" / "node"
+    if nvm_dir.exists():
+        for d in nvm_dir.iterdir():
+            if d.is_dir():
+                extra.append(str(d / "bin"))
+    current = os.environ.get("PATH", "")
+    parts = [p for p in current.split(os.pathsep) if p]
+    for d in extra:
+        if d not in parts and Path(d).is_dir():
+            parts.append(d)
+    os.environ["PATH"] = os.pathsep.join(parts)
+
+
+class TrayApp(QApplication):
+    """Main application with system tray."""
+
+    def __init__(self, argv):
+        super().__init__(argv)
+        self.setApplicationName("飞书日程")
+        self.setApplicationDisplayName("飞书日程")
+        self.setApplicationVersion(APP_VERSION)
+        self.setQuitOnLastWindowClosed(False)
+
+        self.config = Config()
+        self._last_checked_release = None
+        self._silent_update_worker = None
+        self._usage_worker = None
+        self.icon = create_app_icon()
+        self.setWindowIcon(self.icon)
+        self.widget = MainWindow(self.config)
+        self.widget.setWindowIcon(self.icon)
+        self._setup_tray()
+        self.widget.show()
+        self._setup_update_check()
+        self._setup_usage_stats()
+
+    def _setup_tray(self):
+        self.tray = QSystemTrayIcon(self.icon, self)
+        self.tray.setToolTip("飞书日程 - 点击显示")
+
+        menu, self.pin_action = _build_tray_menu(
+            self.widget,
+            self._show_widget,
+            self._quit,
+            self.widget,
+        )
+
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._on_tray_activated)
+        self.tray.show()
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            if self.widget.isVisible():
+                self.widget.hide()
+            else:
+                self._show_widget()
+
+    def _show_widget(self):
+        self.widget.show()
+        self.widget.raise_()
+        self.widget.activateWindow()
+
+    def _setup_update_check(self):
+        """Silently check for a newer release shortly after launch."""
+        if not self.config.get("check_update_on_start", True):
+            return
+        QTimer.singleShot(4000, self._background_check)
+
+    def _background_check(self):
+        self._check_worker = updater.CheckWorker()
+        self._check_worker.result.connect(self._on_update_checked)
+        self._check_worker.start()
+
+    def _on_update_checked(self, release):
+        if not release:
+            return
+        if not updater.is_newer(release.get("tag", ""), updater.APP_VERSION):
+            return
+        self._last_checked_release = release
+        if getattr(sys, "frozen", False) and sys.platform == "win32":
+            self._silent_update_worker = updater.SilentUpdateWorker(release)
+            self._silent_update_worker.finished.connect(
+                self._on_silent_update_finished
+            )
+            self._silent_update_worker.start()
+            return
+        # 非 Windows 冻结包保留原有的可点击轻提示。
+        self.widget.notify_update(release)
+
+    def _on_silent_update_finished(self, ok, message):
+        if ok:
+            tag = (self._last_checked_release or {}).get("tag", "")
+            self.widget.notify_update_ready(tag)
+        elif self._last_checked_release:
+            self.widget.notify_update(self._last_checked_release)
+
+    def _check_pending_update(self):
+        """检查是否有待应用的更新（适用于非首次启动场景）。"""
+        if not getattr(sys, "frozen", False) or sys.platform != "win32":
+            return
+            
+        # 检查是否有待处理的更新
+        pending = updater.pending_update_path()
+        metadata_path = updater.pending_metadata_path()
+        
+        if os.path.isfile(pending) and os.path.isfile(metadata_path):
+            # 显示提示，询问用户是否立即应用更新
+            from ui_common import ConfirmDialog
+            tag = ""
+            try:
+                with open(metadata_path, encoding="utf-8") as f:
+                    metadata = json.load(f)
+                    tag = metadata.get("tag", "")
+            except Exception:
+                pass
+            
+            if tag:
+                result = ConfirmDialog.ask(
+                    self.widget,
+                    "发现新版本",
+                    f"检测到新版本 v{tag} 已准备好安装。\n\n是否立即重启并应用更新？",
+                    ok_text="立即更新",
+                    cancel_text="稍后",
+                    danger=True,
+                )
+                if result:
+                    # 应用更新并重启
+                    if updater.apply_pending_update():
+                        updater.restart_application()
+                    else:
+                        self.widget.toast.show_message("更新失败，请重新启动程序", kind="error")
+
+    def _setup_usage_stats(self):
+        """Send one delayed, non-blocking heartbeat after startup."""
+        QTimer.singleShot(6000, self._send_usage_heartbeat)
+
+    def _send_usage_heartbeat(self):
+        install_id = usage_stats.ensure_install_id(self.config)
+        self._usage_worker = usage_stats.HeartbeatWorker(
+            install_id,
+            APP_VERSION,
+            sys.platform,
+        )
+        self._usage_worker.start()
+
+    def _quit(self):
+        pos = self.widget.pos()
+        self.config.set("window_x", pos.x())
+        self.config.set("window_y", pos.y())
+        self.config.set("window_width", self.widget.width())
+        self.config.set("window_height", self.widget.height())
+        self.tray.hide()
+        self.quit()
+
+
+def _ensure_desktop_shortcut(config):
+    """首次运行时自动在桌面创建快捷方式（Windows .lnk / macOS symlink）。
+
+    用 config 标记 desktop_shortcut_created，只创建一次；失败不阻塞启动。
+    快捷方式已存在（例如手动删除标记）时直接补标记，不重复创建。
+    """
+    if config.get("desktop_shortcut_created"):
+        return
+    desktop = Path.home() / "Desktop"
+    if not desktop.exists():
+        return
+    try:
+        # 快捷方式已存在则视为完成，避免重复创建
+        candidate = None
+        if sys.platform == "win32":
+            candidate = desktop / "飞书日程.lnk"
+        elif sys.platform == "darwin":
+            candidate = desktop / "飞书日程.app"
+            if not candidate.exists():
+                candidate = desktop / "启动飞书日程.command"
+        if candidate is not None and candidate.exists():
+            config.set("desktop_shortcut_created", True)
+            return
+        if sys.platform == "win32":
+            _create_windows_shortcut(desktop)
+        elif sys.platform == "darwin":
+            _create_macos_shortcut(desktop)
+        config.set("desktop_shortcut_created", True)
+    except Exception:
+        # 创建失败不阻塞启动，下次运行会重试
+        pass
+
+
+def _create_windows_shortcut(desktop: Path):
+    """用 PowerShell COM 创建 .lnk，指向 pythonw + main.py（无控制台窗口）。"""
+    script = Path(__file__).resolve()
+    target = Path(sys.executable).with_name("pythonw.exe")
+    if not target.exists():
+        target = Path(sys.executable)
+    lnk = desktop / "飞书日程.lnk"
+
+    ps = (
+        "$ws = New-Object -ComObject WScript.Shell" + "\n"
+        + f"$s = $ws.CreateShortcut('{lnk}')" + "\n"
+        + f"$s.TargetPath = '{target}'" + "\n"
+        + f"$s.Arguments = '\"{script}\"'" + "\n"
+        + f"$s.WorkingDirectory = '{script.parent}'" + "\n"
+        + "$s.Save()" + "\n"
+    )
+    # 写入临时 .ps1（UTF-8 with BOM），避免命令行中文编码问题
+    fd, tmp = tempfile.mkstemp(suffix=".ps1")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8-sig") as f:
+            f.write(ps)
+        subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tmp],
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
+    finally:
+        os.unlink(tmp)
+
+
+def _create_macos_shortcut(desktop: Path):
+    """macOS：优先软链 .app，否则软链启动脚本 .command。"""
+    app = Path(__file__).parent / "dist" / "飞书日程.app"
+    if app.exists():
+        link = desktop / "飞书日程.app"
+        if not link.exists():
+            link.symlink_to(app)
+        return
+    cmd = Path(__file__).parent / "启动飞书日程.command"
+    if cmd.exists():
+        link = desktop / "启动飞书日程.command"
+        if not link.exists():
+            link.symlink_to(cmd)
+
+
+def main():
+    # Configure logging so config.py and other modules can surface warnings
+    # (e.g. config save failures) without requiring external setup.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    # Make sure npm/brew/nvm-installed CLIs (lark-cli, node) are reachable
+    # even when launched from a .app bundle with a minimal PATH.
+    _extend_path_for_app_bundle()
+    _set_windows_app_user_model_id()
+
+    # Remove the '.old' EXE left behind by a previous frozen self-update
+    # (no-op when running from source).
+    updater.cleanup_old_executable()
+
+    # Windows frozen builds stage updates in the background. Apply the staged
+    # file before any UI or config code touches the old executable.
+    if updater.apply_pending_update():
+        updater.restart_application()
+        return
+
+    config = Config()
+
+    # Create a desktop shortcut on first run (before TrayApp loads its own
+    # Config instance, so the flag is persisted and not overwritten to False).
+    _ensure_desktop_shortcut(config)
+
+    # 启动不再做任何阻塞式授权检查、也不弹登录/提示框：
+    # 主窗口会直接加载，未安装 lark-cli / 未登录 / 加载失败均以内联
+    # 状态面板引导，登录成功后由 lark-cli 全局持久化，重启无需重登。
+    app = TrayApp(sys.argv)
+    
+    # 检查是否有待应用的更新（适用于非首次启动场景）
+    QTimer.singleShot(2000, app._check_pending_update)
+    
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
