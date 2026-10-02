@@ -457,7 +457,16 @@ def test_usage_heartbeat_uses_persisted_install_id(monkeypatch):
         def start(self):
             self.started = True
 
-    config = object()
+    class _Config:
+        """只提供心跳路径真正用到的读取接口。"""
+
+        def __init__(self, enabled=True):
+            self._enabled = enabled
+
+        def get(self, key, default=None):
+            return self._enabled if key == "usage_stats_enabled" else default
+
+    config = _Config()
     fake_app = SimpleNamespace(config=config, _usage_worker=None)
     monkeypatch.setattr(
         usage_stats,
@@ -471,6 +480,33 @@ def test_usage_heartbeat_uses_persisted_install_id(monkeypatch):
     assert fake_app._usage_worker.install_id == "a" * 32
     assert fake_app._usage_worker.version == main.APP_VERSION
     assert fake_app._usage_worker.started is True
+
+
+def test_usage_heartbeat_skipped_when_user_opted_out(monkeypatch):
+    """关闭匿名统计后不得上报，也不得生成 install_id。"""
+    from types import SimpleNamespace
+
+    import main
+    import usage_stats
+
+    class _Config:
+        def get(self, key, default=None):
+            return False if key == "usage_stats_enabled" else default
+
+    def _boom(value):
+        raise AssertionError("关闭统计时不应再生成 install_id")
+
+    monkeypatch.setattr(usage_stats, "ensure_install_id", _boom)
+    monkeypatch.setattr(
+        usage_stats,
+        "HeartbeatWorker",
+        lambda *a, **k: pytest.fail("关闭统计时不应发起心跳"),
+    )
+
+    fake_app = SimpleNamespace(config=_Config(), _usage_worker=None)
+    main.TrayApp._send_usage_heartbeat(fake_app)
+    assert fake_app._usage_worker is None
+
 
 
 def test_main_restarts_after_pending_update(monkeypatch):

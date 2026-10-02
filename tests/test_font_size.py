@@ -4,7 +4,6 @@ import config as config_module
 import styles
 from widgets import MAX_VISIBLE_EVENTS, visible_event_count
 
-
 # ── Config: defaults & clamping ──
 
 def test_font_size_defaults(tmp_path, monkeypatch):

@@ -46,6 +46,9 @@ class Config:
         "desktop_shortcut_created": False,
         "check_update_on_start": True,
         "install_id": "",
+        # 匿名使用统计（启动心跳）。用户可在「设置 → 通用」一键关闭；
+        # 关闭后不再上报，并清除已生成的 install_id。
+        "usage_stats_enabled": True,
         # 日程字号（px）：月视图格子内日程标题 / 周·列表视图日程标题。
         # 时间、次要信息等按此值派生，见 styles._event_font_rules。
         "grid_font_size": 10,
@@ -109,7 +112,7 @@ class Config:
                         or any(ch not in "0123456789abcdef" for ch in value)
                     ):
                         value = ""
-            elif key in {"pin_to_top", "auto_start", "desktop_shortcut_created", "check_update_on_start", "auth_completed"}:
+            elif key in {"pin_to_top", "auto_start", "desktop_shortcut_created", "check_update_on_start", "auth_completed", "usage_stats_enabled"}:
                 if not isinstance(value, bool):
                     value = default
             elif key in {"calendar_id", "auth_user"}:

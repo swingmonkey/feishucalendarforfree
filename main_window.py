@@ -20,7 +20,7 @@ import shutil
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QColor, QIcon, QMouseEvent, QPainter, QPixmap
+from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QMouseEvent, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -40,11 +40,13 @@ from PySide6.QtWidgets import (
 from add_event_dialog import AddEventDialog
 from app_icon import create_app_icon, create_app_logo_pixmap
 from config import Config
+from context_menu import build_background_menu, build_day_menu, build_event_menu
 from day_detail_dialog import DayDetailDialog
 from event_detail_dialog import EventDetailDialog
 from export_dialog import ExportDialog
 from lark_cli_async import LarkCliAsync
 from login_dialog import LoginDialog, mark_authed
+from models_event import parse_event_time, set_event_color
 from month_view import MonthView
 from search_dialog import SearchDialog
 from settings_dialog import SettingsDialog
@@ -156,6 +158,8 @@ class MainWindow(QMainWindow):
         self._resize_edges: str | None = None
         self._resize_start: QPoint | None = None
         self._resize_start_geometry: QRect | None = None
+        self._kb_cursor_date = self.current_date
+        self._duplicate_pending = False
 
         self._geometry_save_timer = QTimer(self)
         self._geometry_save_timer.setSingleShot(True)
@@ -169,11 +173,15 @@ class MainWindow(QMainWindow):
         self.lark_cli.delete_error.connect(self._on_delete_error)
         self.lark_cli.event_updated.connect(self._on_event_updated)
         self.lark_cli.update_error.connect(self._on_update_error)
+        # 右键「复制日程」没有对话框承接创建结果，由主窗口统一收尾
+        self.lark_cli.event_created.connect(self._on_programmatic_created)
+        self.lark_cli.create_error.connect(self._on_programmatic_create_error)
         # event_created / create_error 由新建对话框自行处理（含内联错误），
         # 对话框接受后会通过其 event_created 信号触发这里的刷新。
 
         self._setup_window()
         self._setup_ui()
+        self._setup_shortcuts()
         self._apply_theme()
         self._setup_timer()
         self._resize_grip_size = 16
@@ -216,8 +224,14 @@ class MainWindow(QMainWindow):
             view.event_clicked.connect(self._show_event_detail)
             view.add_event_for_date.connect(self._on_add_event_for_date)
             view.reschedule_requested.connect(self._on_reschedule)
+            view.event_context_menu.connect(self._show_event_context_menu)
         self.month_view.day_activated.connect(self._show_day_detail)
+        self.month_view.day_background_menu.connect(self._show_day_context_menu)
+        self.month_view.drag_blocked.connect(self._on_drag_blocked)
         self.week_view.event_delete_requested.connect(self._confirm_delete)
+        self.week_view.event_context_menu.connect(self._show_event_context_menu)
+        self.week_view.day_background_menu.connect(self._show_day_context_menu)
+        self.week_view.drag_blocked.connect(self._on_drag_blocked)
 
         self.stack = QStackedWidget()
         self.stack.addWidget(self.month_view)   # 0
@@ -279,14 +293,14 @@ class MainWindow(QMainWindow):
 
         self.month_toggle = QPushButton("月")
         self.month_toggle.setObjectName("toggleBtn")
-        self.month_toggle.setToolTip("月视图")
+        self.month_toggle.setToolTip("月视图  (M)")
         self.month_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self.month_toggle.clicked.connect(lambda: self._set_view_mode("month"))
         seg_layout.addWidget(self.month_toggle)
 
         self.week_toggle = QPushButton("周")
         self.week_toggle.setObjectName("toggleBtn")
-        self.week_toggle.setToolTip("周视图")
+        self.week_toggle.setToolTip("周视图  (W)")
         self.week_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self.week_toggle.clicked.connect(lambda: self._set_view_mode("week"))
         seg_layout.addWidget(self.week_toggle)
@@ -296,14 +310,14 @@ class MainWindow(QMainWindow):
 
         self.add_btn = QPushButton("+")
         self.add_btn.setObjectName("addBtn")
-        self.add_btn.setToolTip("添加日程")
+        self.add_btn.setToolTip("新建日程  (N)")
         self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_btn.clicked.connect(self._on_add_event)
         h.addWidget(self.add_btn)
 
         self.refresh_btn = QPushButton("⟳")
         self.refresh_btn.setObjectName("iconBtn")
-        self.refresh_btn.setToolTip("刷新日程")
+        self.refresh_btn.setToolTip("刷新日程  (R)")
         self.refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.refresh_btn.clicked.connect(self.refresh_events)
         h.addWidget(self.refresh_btn)
@@ -337,7 +351,7 @@ class MainWindow(QMainWindow):
         self.more_btn.setObjectName("moreBtn")
         self.more_btn.setIconSize(QSize(18, 18))
         self.more_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.more_btn.setToolTip("更多操作")
+        self.more_btn.setToolTip("更多操作（搜索 F / 导出 Ctrl+E / 设置）")
         self.more_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
 
@@ -389,7 +403,7 @@ class MainWindow(QMainWindow):
 
         prev_btn = QPushButton("‹")
         prev_btn.setObjectName("iconBtn")
-        prev_btn.setToolTip("上一个")
+        prev_btn.setToolTip("上一个  (←)")
         prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         prev_btn.clicked.connect(lambda: self._change_period(-1))
         h.addWidget(prev_btn)
@@ -401,14 +415,14 @@ class MainWindow(QMainWindow):
 
         next_btn = QPushButton("›")
         next_btn.setObjectName("iconBtn")
-        next_btn.setToolTip("下一个")
+        next_btn.setToolTip("下一个  (→)")
         next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         next_btn.clicked.connect(lambda: self._change_period(1))
         h.addWidget(next_btn)
 
         today_btn = QPushButton("今天")
         today_btn.setObjectName("todayBtn")
-        today_btn.setToolTip("回到今天")
+        today_btn.setToolTip("回到今天  (T)")
         today_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         today_btn.clicked.connect(self._go_today)
         h.addWidget(today_btn)
@@ -503,6 +517,19 @@ class MainWindow(QMainWindow):
         row2.addStretch()
         layout.addLayout(row2)
 
+        # 兜底出口：只要曾经加载成功过，就允许回到内存里已有的日程，
+        # 避免用户取消登录后被永久困在登录面板。
+        self.auth_back_btn = QPushButton("继续查看已加载日程")
+        self.auth_back_btn.setObjectName("linkBtn")
+        self.auth_back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.auth_back_btn.setVisible(False)
+        self.auth_back_btn.clicked.connect(self._show_calendar_view)
+        row3 = QHBoxLayout()
+        row3.addStretch()
+        row3.addWidget(self.auth_back_btn)
+        row3.addStretch()
+        layout.addLayout(row3)
+
         layout.addStretch(2)
         return panel
 
@@ -591,6 +618,8 @@ class MainWindow(QMainWindow):
         self._auth_mode = mode
         self.auth_detail.setVisible(False)
         self.auth_secondary_btn.setVisible(False)
+        # 只有真的还有日程可看时才给出「返回」出口
+        self.auth_back_btn.setVisible(bool(self._first_load_done and self.events))
         if mode == "no_cli":
             self.auth_title.setText("需要先安装 lark-cli")
             self.auth_message.setText(
@@ -662,7 +691,13 @@ class MainWindow(QMainWindow):
         return self.month_view if self._view_mode == "month" else self.week_view
 
     def _render_active_view(self):
+        # 标题与网格必须同源：任何改过 current_date 的路径都可能只渲染了网格，
+        # 这里统一兜底刷新一次标题，避免出现「标题写十月、网格画八月」。
+        self._update_period_label()
         self._active_view().set_events(self.events, self.current_date)
+        # 重建视图后把键盘游标落回当前日期
+        if self._view_mode == "month":
+            self.month_view.set_cursor_date(self._kb_cursor_date)
 
     # ── Period navigation ──
 
@@ -698,6 +733,130 @@ class MainWindow(QMainWindow):
             monday = self.current_date - timedelta(days=self.current_date.weekday())
             sunday = monday + timedelta(days=6)
             self.date_label.setText(f"{monday.strftime('%m/%d')} - {sunday.strftime('%m/%d')}")
+
+    # ── Keyboard shortcuts & navigation cursor ──
+
+    def _setup_shortcuts(self):
+        """窗口级快捷键。
+
+        单键快捷键在模态对话框打开时必须让位：对话框是主窗口的子窗口，
+        Qt 的 WindowShortcut 上下文在对话框获得焦点时同样会触发，
+        否则在「新建日程」标题框里敲 n 就会又弹一个新建框。
+        """
+
+        def guard(handler):
+            def wrapper(*_args):
+                if QApplication.activeModalWidget() is not None:
+                    return
+                handler()
+
+            return wrapper
+
+        def bind(sequence: str, handler):
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(guard(handler))
+            return shortcut
+
+        self._shortcuts = [
+            bind("T", self._go_today),
+            bind("1", self._go_today),
+            bind("R", self.refresh_events),
+            bind("F5", self.refresh_events),
+            bind("F", self._on_search),
+            bind("Ctrl+F", self._on_search),
+            bind("N", self._on_add_event),
+            bind("Ctrl+N", self._on_add_event),
+            bind("M", lambda: self._set_view_mode("month")),
+            bind("W", lambda: self._set_view_mode("week")),
+            bind("Left", lambda: self._change_period(-1)),
+            bind("Right", lambda: self._change_period(1)),
+            bind("Up", lambda: self._kb_cursor_step(-1)),
+            bind("Down", lambda: self._kb_cursor_step(1)),
+            bind("Home", self._go_today),
+            bind("Return", self._kb_cursor_activate),
+            bind("Enter", self._kb_cursor_activate),
+            bind("Ctrl+E", self._on_export),
+            bind("Esc", self.hide),
+        ]
+
+    def _kb_cursor_step(self, days: int):
+        """↑↓ 在日期间移动键盘游标（跨月/跨周时自动翻页）。"""
+        self._kb_cursor_date = self._kb_cursor_date + timedelta(days=days)
+        self._ensure_cursor_visible()
+
+    def _ensure_cursor_visible(self):
+        cursor = self._kb_cursor_date
+        if self._view_mode == "month":
+            same_month = (cursor.year, cursor.month) == (self.current_date.year, self.current_date.month)
+            if not same_month:
+                self.current_date = cursor.replace(day=1)
+                self._update_period_label()
+                self.refresh_events()
+                return
+            self.month_view.set_cursor_date(cursor)
+            return
+        monday = self.current_date - timedelta(days=self.current_date.weekday())
+        sunday = monday + timedelta(days=6)
+        if not (monday.date() <= cursor.date() <= sunday.date()):
+            self.current_date = cursor
+            self._update_period_label()
+            self.refresh_events()
+
+    def _kb_cursor_activate(self):
+        """回车：打开键盘游标所在日期的当日日程。"""
+        self._show_day_detail(self._kb_cursor_date)
+
+    def _on_drag_blocked(self):
+        self.toast.show_message(
+            "重复日程暂不支持拖拽改期，请在日程详情中编辑",
+            kind="warning",
+            duration=4000,
+        )
+
+    # ── Context menus ──
+
+    def _show_event_context_menu(self, event: dict, global_pos: QPoint):
+        menu = build_event_menu(
+            self,
+            event,
+            self.config,
+            on_open=lambda: self._show_event_detail(event),
+            on_duplicate=lambda: self._duplicate_event(event),
+            on_delete=lambda: self._confirm_delete(event),
+            on_set_color=lambda hex_value: self._set_event_color(event, hex_value),
+        )
+        menu.exec(global_pos)
+
+    def _show_day_context_menu(self, date: datetime, global_pos: QPoint):
+        view = self._active_view()
+        has_events = bool(view.events_for_date(date))
+        menu = build_day_menu(
+            self,
+            date,
+            has_events=has_events,
+            on_add=lambda: self._on_add_event_for_date(date),
+            on_open_day=lambda: self._show_day_detail(date),
+            on_today=self._go_today,
+        )
+        menu.exec(global_pos)
+
+    def contextMenuEvent(self, ev: QMouseEvent):
+        """主窗口空白处右键。"""
+        menu = build_background_menu(
+            self,
+            view_mode=self._view_mode,
+            pinned=self._pinned,
+            on_add=self._on_add_event,
+            on_refresh=self.refresh_events,
+            on_today=self._go_today,
+            on_set_view=self._set_view_mode,
+            on_toggle_pin=self._toggle_pin,
+            on_settings=self._on_settings,
+            on_search=self._on_search,
+        )
+        menu.exec(ev.globalPos())
+        ev.accept()
 
     # ── Theme / pin / settings ──
 
@@ -811,6 +970,17 @@ class MainWindow(QMainWindow):
     def _on_fetch_error(self, error_msg: str):
         self.refresh_btn.setEnabled(True)
         self.status_label.setText("获取失败")
+        # 已经成功加载过 → 任何失败（含授权类关键词）都只发 Toast，绝不抢占视图：
+        # 用户内存里的日程仍然可用，把它换成登录面板会让人无路可退。
+        if self._first_load_done:
+            self.toast.show_message(
+                f"日程刷新失败：{_short_error(error_msg)}",
+                kind="error",
+                action_text="重试",
+                on_action=self.refresh_events,
+                duration=5000,
+            )
+            return
         if not self._cli_available:
             self._show_auth("no_cli")
             return
@@ -818,12 +988,7 @@ class MainWindow(QMainWindow):
             mode = "welcome" if not self.config.get("auth_completed") else "expired"
             self._show_auth(mode)
             return
-        # 首次加载失败才用错误面板占位；后台自动刷新失败仅用 Toast 轻提示
-        if not self._first_load_done:
-            self._show_error(error_msg)
-        else:
-            self.toast.show_message(f"日程刷新失败：{_short_error(error_msg)}", kind="error",
-                                    action_text="重试", on_action=self.refresh_events, duration=5000)
+        self._show_error(error_msg)
 
     # ── Drag to reschedule ──
 
@@ -866,14 +1031,16 @@ class MainWindow(QMainWindow):
 
     def _show_event_detail(self, event: dict):
         dialog = EventDetailDialog(event, self.lark_cli, self, config=self.config)
-        dialog.event_delete_requested.connect(self._confirm_delete)
+        # 详情窗口内已自带删除确认，这里直接执行删除，不要再弹一次
+        dialog.event_delete_requested.connect(self._delete_event)
         # 保存成功由 lark_cli.event_updated 统一处理（Toast + 刷新）
         dialog.exec()
 
     def _show_day_detail(self, date: datetime):
         day_events = self.month_view.events_for_date(date)
         dialog = DayDetailDialog(date, day_events, self.lark_cli, self, config=self.config)
-        dialog.event_delete_requested.connect(self._confirm_delete)
+        # 当日窗口内已自带删除确认
+        dialog.event_delete_requested.connect(self._delete_event)
         dialog.exec()
 
     def _on_add_event(self):
@@ -945,6 +1112,51 @@ class MainWindow(QMainWindow):
         event_id = event.get("event_id", "")
         calendar_id = event.get("organizer_calendar_id", "primary")
         self.lark_cli.delete_event(calendar_id=calendar_id, event_id=event_id)
+
+    def _duplicate_event(self, event: dict):
+        """在原时间复制一份日程（不复制重复规则，只落地一次）。"""
+        summary = event.get("summary", "")
+        if not isinstance(summary, str):
+            summary = str(summary)
+        start = parse_event_time(event.get("start_time", {}))
+        end = parse_event_time(event.get("end_time", {}))
+        if end <= start:
+            end = start + timedelta(hours=1)
+        description = event.get("description", "")
+        # 全天日程在 lark-cli +create 上没有 date-only 形态，
+        # 只能按 00:00→次日 00:00 落地，与本应用其它创建入口保持一致。
+        self.status_label.setText("正在复制日程…")
+        self._duplicate_pending = True
+        self.lark_cli.create_event(
+            summary=f"{summary}（副本）" if summary else "（副本）",
+            start=start,
+            end=end,
+            description=description if isinstance(description, str) else "",
+        )
+
+    def _on_programmatic_created(self, _data: dict):
+        if not self._duplicate_pending:
+            return
+        self._duplicate_pending = False
+        self.status_label.setText("已复制日程")
+        self.toast.show_message("日程已复制", kind="success")
+        self.refresh_events()
+
+    def _on_programmatic_create_error(self, error_msg: str):
+        if not self._duplicate_pending:
+            return
+        self._duplicate_pending = False
+        self.status_label.setText("复制失败")
+        self.toast.show_message(f"复制失败：{_short_error(error_msg)}", kind="error", duration=5000)
+
+    def _set_event_color(self, event: dict, hex_value: str):
+        """本地颜色标记（仅本地显示，不写回飞书）。"""
+        event_id = event.get("event_id", "")
+        if not event_id:
+            return
+        set_event_color(self.config, event_id, hex_value or None)
+        self.toast.show_message("已更新本地颜色" if hex_value else "已清除本地颜色", kind="success", duration=2500)
+        self._render_active_view()
 
     def _on_deleted(self, event_id: str):
         self.status_label.setText("日程已删除")
@@ -1105,7 +1317,10 @@ class MainWindow(QMainWindow):
                 self._begin_resize("bottom-right", ev.globalPosition().toPoint())
                 ev.accept()
                 return
-            if pos.y() <= 78:
+            # 顶栏 0-56px 是标题区，56-90px 是「‹ 2026年08月 › 今天」这一条。
+            # 早先按 y<=78 一刀切，导致 ‹ / › / 今天 这三个按钮的上半部分会
+            # 拖动窗口、下半部分才正常点击。改为只认「没有子控件的空白处」。
+            if pos.y() <= 90 and self.childAt(pos.toPoint()) is None:
                 self._drag_offset = ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
                 ev.accept()
 

@@ -22,6 +22,7 @@ from add_event_dialog import AddEventDialog
 from config import Config
 from event_card import EventCard
 from event_detail_dialog import EventDetailDialog
+from ui_common import ConfirmDialog
 
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
 
@@ -121,5 +122,25 @@ class DayDetailDialog(QDialog):
         dialog.exec()
 
     def _on_card_delete(self, event: dict):
-        self.event_delete_requested.emit(event)
-        self.accept()
+        """卡片上的删除：先在本窗口内确认，取消时保留当日列表。
+
+        旧实现先发信号再无条件 ``accept()``，确认框是在窗口关闭之后才弹的，
+        用户点「取消」连当日列表一起没了。
+        """
+        if self._confirm_delete(event):
+            self.accept()
+
+    def _confirm_delete(self, event: dict) -> bool:
+        summary = event.get("summary", "")
+        if not isinstance(summary, str):
+            summary = str(summary)
+        ok = ConfirmDialog.ask(
+            self,
+            "删除日程",
+            f"确定要删除日程「{summary or '(无标题)'}」吗？\n删除后无法恢复。",
+            ok_text="删除",
+            danger=True,
+        )
+        if ok:
+            self.event_delete_requested.emit(event)
+        return ok

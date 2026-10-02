@@ -94,9 +94,9 @@ class SettingsDialog(QDialog):
         self.interval_spin.setSingleStep(60)
         self.interval_spin.setValue(self.config.get("auto_refresh_interval", 300))
         self.interval_spin.setSuffix(" 秒")
+        self.interval_spin.setToolTip("后台自动重新拉取日程的间隔，60-3600 秒。")
         self.interval_spin.valueChanged.connect(self._on_interval_changed)
         interval_row.addWidget(self.interval_spin)
-        interval_row.addWidget(QLabel("（1-60 分钟）"))
         interval_row.addStretch()
         refresh_layout.addRow("刷新间隔：", self._wrap_row(interval_row))
         layout.addWidget(refresh_group)
@@ -104,14 +104,21 @@ class SettingsDialog(QDialog):
         startup_group = QGroupBox("开机启动")
         startup_layout = QVBoxLayout(startup_group)
         self.auto_start_check = QCheckBox("开机时自动启动飞书日程")
+        self.auto_start_check.setToolTip("修改 Windows 启动项 / macOS LaunchAgent，失败时会自动回滚。")
         self.auto_start_check.setChecked(self.config.get("auto_start", False))
         self.auto_start_check.stateChanged.connect(self._on_auto_start_changed)
         startup_layout.addWidget(self.auto_start_check)
+        self.startup_message = QLabel("")
+        self.startup_message.setObjectName("formError")
+        self.startup_message.setWordWrap(True)
+        self.startup_message.setVisible(False)
+        startup_layout.addWidget(self.startup_message)
         layout.addWidget(startup_group)
 
         update_group = QGroupBox("版本更新")
         update_layout = QVBoxLayout(update_group)
         self.update_check = QCheckBox("启动时自动检查更新")
+        self.update_check.setToolTip("启动 4 秒后静默检查一次 GitHub Release。")
         self.update_check.setChecked(self.config.get("check_update_on_start", True))
         self.update_check.stateChanged.connect(self._on_update_check_changed)
         update_layout.addWidget(self.update_check)
@@ -127,6 +134,27 @@ class SettingsDialog(QDialog):
         check_row.addWidget(self.update_result_label, 1)
         update_layout.addLayout(check_row)
         layout.addWidget(update_group)
+
+        # 匿名统计：默认开启，但必须让用户能一键关掉
+        stats_group = QGroupBox("匿名统计")
+        stats_layout = QVBoxLayout(stats_group)
+        self.stats_check = QCheckBox("发送匿名使用统计")
+        self.stats_check.setToolTip(
+            "仅上报一个随机安装标识、版本号和操作系统，用于统计使用人数。\n"
+            "不包含飞书账号、日程内容或设备信息。关闭后会清除已生成的随机标识。"
+        )
+        self.stats_check.setChecked(self.config.get("usage_stats_enabled", True))
+        self.stats_check.stateChanged.connect(self._on_usage_stats_changed)
+        stats_layout.addWidget(self.stats_check)
+        stats_hint = QLabel(
+            "启动后约 6 秒发送一次心跳到开发者自建的统计服务"
+            f"（{usage_stats.STATS_BASE_URL}）。\n"
+            "日程数据始终通过飞书官方 lark-cli 直连读取，不经过该服务。"
+        )
+        stats_hint.setObjectName("detailLabel")
+        stats_hint.setWordWrap(True)
+        stats_layout.addWidget(stats_hint)
+        layout.addWidget(stats_group)
 
         layout.addStretch()
         return tab
@@ -188,15 +216,26 @@ class SettingsDialog(QDialog):
         if not cli_installed:
             self.auth_status_label.setText("● 未检测到 lark-cli，请先安装：npm install -g @larksuite/cli")
             self.auth_status_label.setStyleSheet("color: #FF8800;")
-            self.login_btn.setText("重新检测")
+            # 此前这里文案写「重新检测」却仍连着 _on_login，点了只会打开登录框。
+            # 按钮行为必须跟着文案走。
+            self._retarget_login_btn("重新检测", self._start_auth_check)
         elif authed:
             self.auth_status_label.setText("● 已登录（重启应用无需重新登录）")
             self.auth_status_label.setStyleSheet("color: #2EA121;")
-            self.login_btn.setText("重新登录")
+            self._retarget_login_btn("重新登录", self._on_login)
         else:
             self.auth_status_label.setText("○ 未登录")
             self.auth_status_label.setStyleSheet("color: #F54A45;")
-            self.login_btn.setText("登录飞书账号")
+            self._retarget_login_btn("登录飞书账号", self._on_login)
+
+    def _retarget_login_btn(self, text: str, handler):
+        """重设按钮文案与真正的行为（Qt 不会自动断开旧连接的语义）。"""
+        try:
+            self.login_btn.clicked.disconnect()
+        except RuntimeError:
+            pass
+        self.login_btn.setText(text)
+        self.login_btn.clicked.connect(handler)
 
     def _on_login(self):
         dialog = LoginDialog(self, config=self.config)
@@ -239,7 +278,10 @@ class SettingsDialog(QDialog):
         opacity_group = QGroupBox("窗口透明度")
         opacity_layout = QVBoxLayout(opacity_group)
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(50, 100)
+        # 下限与 config._validated 的 clamp（0.2）对齐，否则手改过 config.json 的
+        # 数值会被滑块夹到 50%，出现「界面 50% / 磁盘 0.33」长期不一致
+        self.opacity_slider.setRange(20, 100)
+        self.opacity_slider.setToolTip("窗口透明度 20%-100%。")
         self.opacity_slider.setValue(int(float(self.config.get("opacity", 1.0)) * 100))
         self.opacity_label = QLabel(f"{self.opacity_slider.value()}%")
         self.opacity_slider.valueChanged.connect(self._on_opacity_changed)
@@ -316,7 +358,8 @@ class SettingsDialog(QDialog):
         desc = QLabel(
             "飞书日历桌面小工具，支持月视图 / 周视图、拖拽改期、"
             "本地颜色标记、Excel 导出、全局搜索、开机自启。\n"
-            "数据通过飞书官方 lark-cli 读取，不经过任何第三方服务器。"
+            "日程数据通过飞书官方 lark-cli 直连读取；"
+            "唯一的数据外发是启动时的一次匿名统计心跳，可在「通用」页关闭。"
         )
         desc.setObjectName("detailLabel")
         desc.setWordWrap(True)
@@ -344,7 +387,8 @@ class SettingsDialog(QDialog):
         self.usage_active_label = QLabel("")
         self.usage_active_label.setObjectName("detailValue")
         self.usage_status_label = QLabel(
-            "匿名统计，不包含飞书账号、日程内容和设备标识。"
+            "匿名统计：只含随机安装标识、版本号与操作系统，不含飞书账号、"
+            "日程内容和设备标识。可在「通用」页关闭。"
         )
         self.usage_status_label.setObjectName("detailLabel")
         self.usage_status_label.setWordWrap(True)
@@ -363,9 +407,29 @@ class SettingsDialog(QDialog):
 
     def _on_auto_start_changed(self, state):
         enabled = state == Qt.CheckState.Checked.value
+        try:
+            self._set_auto_start(enabled)
+        except Exception as exc:  # noqa: BLE001 - 写注册表/LaunchAgent 失败要如实回滚
+            # 副作用失败时把勾选与配置一起还原，不能留下「显示已开启但系统里没有」
+            self._show_startup_message(f"设置开机启动失败：{exc}")
+            self.auto_start_check.blockSignals(True)
+            self.auto_start_check.setChecked(self.config.get("auto_start", False))
+            self.auto_start_check.blockSignals(False)
+            return
         self.config.set("auto_start", enabled)
-        self._set_auto_start(enabled)
+        self._show_startup_message("")
         self.settings_changed.emit()
+
+    def _show_startup_message(self, text: str):
+        self.startup_message.setText(text)
+        self.startup_message.setVisible(bool(text))
+
+    def _on_usage_stats_changed(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.config.set("usage_stats_enabled", enabled)
+        if not enabled:
+            # 一并清掉随机标识，避免关了统计还留着一个可关联的 ID
+            self.config.set("install_id", "")
 
     def _set_auto_start(self, enabled: bool):
         """Register / unregister auto-start (Windows registry / macOS LaunchAgent)."""
@@ -444,7 +508,7 @@ class SettingsDialog(QDialog):
     def _on_check_result(self, release):
         self.check_update_btn.setEnabled(True)
         if not release:
-            self.update_result_label.setText("检查失败，请稍后重试")
+            self.update_result_label.setText("检查失败：请检查网络后重试")
             self.update_result_label.setStyleSheet("color: #F54A45;")
             return
         tag = release.get("tag", "")
@@ -490,7 +554,8 @@ class SettingsDialog(QDialog):
             f"近 30 天活跃：{count('active_users_30d')} 人"
         )
         self.usage_status_label.setText(
-            "匿名统计，不包含飞书账号、日程内容和设备标识。"
+            "匿名统计：只含随机安装标识、版本号与操作系统，"
+            "不含飞书账号、日程内容和设备标识。可在「通用」页关闭。"
         )
 
     def _on_pin_changed(self, state):

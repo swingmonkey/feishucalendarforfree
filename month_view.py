@@ -11,7 +11,7 @@ and recurring-event expansion) and forwards user intent through signals:
 import calendar as cal_module
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -34,6 +34,9 @@ class MonthView(QWidget):
     day_activated = Signal(datetime)
     add_event_for_date = Signal(datetime)
     reschedule_requested = Signal(str, datetime, str, str, bool)
+    drag_blocked = Signal()
+    event_context_menu = Signal(dict, QPoint)
+    day_background_menu = Signal(datetime, QPoint)
 
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
@@ -41,6 +44,8 @@ class MonthView(QWidget):
         self.current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.events: list[dict] = []
         self._events_by_date: dict = {}
+        self._cursor_date: datetime | None = None
+        self._cells: dict = {}
         self._setup_ui()
 
     def _setup_ui(self):
@@ -137,6 +142,11 @@ class MonthView(QWidget):
                 cell.more_clicked.connect(self.day_activated)
                 cell.add_clicked.connect(self.add_event_for_date)
                 cell.reschedule_requested.connect(self.reschedule_requested)
+                cell.drag_blocked.connect(self.drag_blocked)
+                cell.event_context_menu.connect(self.event_context_menu)
+                cell.background_context_menu.connect(self.day_background_menu)
+                cell.set_cursor_active(False)
+                self._cells[date_key] = cell
                 self.grid_layout.addWidget(cell, row, col)
 
         for row in range(len(weeks)):
@@ -144,11 +154,33 @@ class MonthView(QWidget):
         for col in range(7):
             self.grid_layout.setColumnStretch(col, 1)
 
+        # 重建后把键盘游标重新落到对应日格上
+        self._apply_cursor()
+
     def _clear_grid(self):
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
             if item and item.widget():
                 item.widget().deleteLater()
+        self._cells = {}
+
+    # ── Keyboard cursor ──
+
+    def set_cursor_date(self, date: datetime | None):
+        """把键盘游标高亮到 ``date``（None 表示清除）。"""
+        date = date.date() if date else None
+        if date == self._cursor_date:
+            return
+        self._cursor_date = date
+        self._apply_cursor()
+
+    def cursor_date(self):
+        return self._cursor_date
+
+    def _apply_cursor(self):
+        for cell in self._cells.values():
+            cell_date = cell.cell_date.date()
+            cell.set_cursor_active(bool(self._cursor_date and cell_date == self._cursor_date))
 
     def events_for_date(self, date: datetime) -> list[dict]:
         """Return the original (non-expanded) events spanning ``date``."""

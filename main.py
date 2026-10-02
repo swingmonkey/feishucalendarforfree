@@ -208,6 +208,9 @@ class TrayApp(QApplication):
         QTimer.singleShot(6000, self._send_usage_heartbeat)
 
     def _send_usage_heartbeat(self):
+        # 用户在「设置 → 通用」关闭了匿名统计：不上报，也不生成 install_id
+        if not self.config.get("usage_stats_enabled", True):
+            return
         install_id = usage_stats.ensure_install_id(self.config)
         self._usage_worker = usage_stats.HeartbeatWorker(
             install_id,
@@ -215,6 +218,7 @@ class TrayApp(QApplication):
             sys.platform,
         )
         self._usage_worker.start()
+
 
     def _quit(self):
         pos = self.widget.pos()

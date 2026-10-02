@@ -41,13 +41,18 @@ class EventCard(QFrame):
 
     clicked = Signal(dict)
     delete_clicked = Signal(dict)
+    # 用户在卡片上右键
+    context_menu_requested = Signal(dict, QPoint)
+    # 想拖拽但被拒（重复日程）
+    drag_blocked = Signal()
 
-    def __init__(self, event: dict, config: Config = None, parent=None):
+    def __init__(self, event: dict, config: Config = None, is_continuation: bool = False, parent=None):
         super().__init__(parent)
         # IMPORTANT: use 'event_data' not 'event' — 'event' would shadow
         # QObject.event(), a core Qt virtual method, causing C++ segfaults.
         self.event_data = event
         self._config = config
+        self._is_continuation = is_continuation
         self._press_pos: QPoint | None = None
         self._dragging = False
         self._is_past = False
@@ -63,7 +68,7 @@ class EventCard(QFrame):
             self.setStyleSheet(f"border-left: 3px solid {color};")
 
     def _setup_ui(self):
-        self.setObjectName("eventCard")
+        self.setObjectName("eventCardCont" if self._is_continuation else "eventCard")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 8, 8, 8)
@@ -76,7 +81,14 @@ class EventCard(QFrame):
         start = parse_event_time(self.event_data.get("start_time", {}))
         end = parse_event_time(self.event_data.get("end_time", {}))
         recurring = bool(self.event_data.get("_is_recurring_instance") or has_recurrence(self.event_data))
-        if self._all_day:
+        summary = self.event_data.get("summary", "(无标题)")
+        if not isinstance(summary, str):
+            summary = str(summary)
+
+        if self._is_continuation:
+            # 跨天延续日：只标一个延续箭头，不再重复完整时间段
+            time_text = "↳"
+        elif self._all_day:
             time_text = "全天"
         else:
             time_text = f"{start.strftime('%H:%M')} - {end.strftime('%H:%M')}"
@@ -98,9 +110,6 @@ class EventCard(QFrame):
 
         layout.addLayout(top_row)
 
-        summary = self.event_data.get("summary", "(无标题)")
-        if not isinstance(summary, str):
-            summary = str(summary)
         self.title_label = QLabel(summary)
         self.title_label.setObjectName("eventTitle")
         self.title_label.setWordWrap(True)
@@ -121,6 +130,14 @@ class EventCard(QFrame):
             self.meta_label = QLabel("  ".join(meta_parts))
             self.meta_label.setObjectName("eventMeta")
             layout.addWidget(self.meta_label)
+
+        # 悬停提示：周视图此前完全没有 tooltip，窄列里只能靠点开弹窗才看得到信息
+        tip_parts = [f"{time_text}  {summary}"]
+        location = self.event_data.get("location")
+        if isinstance(location, dict) and location.get("name"):
+            tip_parts.append(f"📍 {location['name']}")
+        tip_parts.extend(meta_parts)
+        self.setToolTip("\n".join(tip_parts))
 
     def _update_status(self):
         """Update visual status based on current time."""
@@ -164,12 +181,15 @@ class EventCard(QFrame):
                 child = self.childAt(self._press_pos)
                 if child is self.delete_btn:
                     return
-                self._dragging = True
                 recurring = bool(self.event_data.get("_is_recurring_instance") or has_recurrence(self.event_data))
-                if not recurring:
-                    drag = QDrag(self)
-                    drag.setMimeData(build_event_mime(self.event_data))
-                    drag.exec(Qt.DropAction.MoveAction)
+                if recurring:
+                    # 重复日程改期会牵动整个序列：不启动拖拽，也不吞掉这次点击
+                    self.drag_blocked.emit()
+                    return
+                self._dragging = True
+                drag = QDrag(self)
+                drag.setMimeData(build_event_mime(self.event_data))
+                drag.exec(Qt.DropAction.MoveAction)
         super().mouseMoveEvent(ev)
 
     def mouseReleaseEvent(self, ev: QMouseEvent):
@@ -177,6 +197,10 @@ class EventCard(QFrame):
             self.clicked.emit(self.event_data)
         self._press_pos = None
         super().mouseReleaseEvent(ev)
+
+    def contextMenuEvent(self, ev: QMouseEvent):
+        self.context_menu_requested.emit(self.event_data, ev.globalPos())
+        ev.accept()
 
     def refresh_status(self):
         """Re-evaluate and refresh the card's time status."""

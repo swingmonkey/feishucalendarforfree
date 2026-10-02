@@ -157,14 +157,23 @@ class UpdateDialog(QDialog):
             self.progress.setValue(int(done * 100 / total))
 
     def _on_finished(self, ok, msg):
-        self.status_label.setText(msg)
         if ok:
             self.progress.setValue(100)
-            self.update_btn.setText("更新已准备")
+            self.update_btn.setEnabled(False)
+            self.update_btn.setText("更新已完成")
             self.later_btn.setText("关闭")
             self.later_btn.setEnabled(True)
-            self.status_label.setText(f"{msg}\n下次启动时自动完成更新。")
+            # 不要再补一句「下次启动时自动完成更新」——worker 已经把文件换好了，
+            # 两句话并排会自相矛盾；这里只说清「什么时候生效」。
+            hint = (
+                "关闭并重新打开应用后生效。"
+                if getattr(sys, "frozen", False) and sys.platform == "win32"
+                else "重新启动应用后生效。"
+            )
+            self.status_label.setText(f"{msg}\n{hint}")
         else:
             self.update_btn.setEnabled(True)
             self.later_btn.setEnabled(True)
             self.progress.setVisible(False)
+            self.status_label.setText(msg)
+

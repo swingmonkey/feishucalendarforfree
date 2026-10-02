@@ -196,6 +196,35 @@ QFrame#dayCellTodayHover {{
     border: 1.5px solid #4E83FD;
     border-radius: 8px;
 }}
+/* 拖拽改期的落点指示：与周视图 weekDayColDrop 保持同一套视觉语言 */
+QFrame#dayCellDrop {{
+    background-color: rgba(51, 112, 255, 0.18);
+    border: 2px dashed #3370FF;
+    border-radius: 8px;
+}}
+QFrame#dayCellOtherDrop {{
+    background-color: rgba(51, 112, 255, 0.12);
+    border: 2px dashed #3370FF;
+    border-radius: 8px;
+}}
+QFrame#dayCellTodayDrop {{
+    background-color: rgba(51, 112, 255, 0.24);
+    border: 2px dashed #4E83FD;
+    border-radius: 8px;
+}}
+/* 键盘游标（↑↓ 移动到的日期） */
+QFrame#dayCellCursor {{
+    border: 2px solid #3370FF;
+    border-radius: 8px;
+}}
+QFrame#dayCellOtherCursor {{
+    border: 2px solid rgba(51, 112, 255, 0.65);
+    border-radius: 8px;
+}}
+QFrame#dayCellTodayCursor {{
+    border: 2px solid #245BDB;
+    border-radius: 8px;
+}}
 
 QLabel#dayNum {{ font-size: 11px; color: #E5E6EB; font-weight: 600; }}
 QLabel#dayNumOther {{ font-size: 11px; color: #646A73; }}
@@ -244,6 +273,24 @@ QFrame#eventCardCurrent {{
     border-left: 3px solid #34C724;
 }}
 QFrame#eventCard:hover {{ background-color: #33373E; }}
+/* 跨天延续日：淡一些，和「起始日」区分开 */
+QFrame#eventCardCont {{
+    background-color: rgba(42, 45, 51, 0.65);
+    border-radius: 8px;
+    border-left: 3px solid #51565D;
+}}
+QFrame#eventCardCont:hover {{ background-color: #2E3239; }}
+/* 全天日程：顶部独立成条 */
+QFrame#eventCardAllDay {{
+    background-color: rgba(15, 179, 118, 0.16);
+    border-radius: 6px;
+    border-left: 3px solid #0FB376;
+}}
+QFrame#eventCardAllDay:hover {{ background-color: rgba(15, 179, 118, 0.26); }}
+QFrame#weekAllDayBar {{
+    background-color: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+}}
 
 QLabel#eventTime {{ font-size: 11px; color: #A9B0B8; font-weight: 600; }}
 QLabel#eventTimePast {{ font-size: 11px; color: #646A73; font-weight: 600; }}
@@ -701,6 +748,35 @@ QFrame#dayCellTodayHover {{
     border: 1.5px solid #4E83FD;
     border-radius: 8px;
 }}
+/* 拖拽改期的落点指示：与周视图 weekDayColDrop 保持同一套视觉语言 */
+QFrame#dayCellDrop {{
+    background-color: rgba(51, 112, 255, 0.10);
+    border: 2px dashed #3370FF;
+    border-radius: 8px;
+}}
+QFrame#dayCellOtherDrop {{
+    background-color: rgba(51, 112, 255, 0.06);
+    border: 2px dashed #3370FF;
+    border-radius: 8px;
+}}
+QFrame#dayCellTodayDrop {{
+    background-color: rgba(51, 112, 255, 0.16);
+    border: 2px dashed #245BDB;
+    border-radius: 8px;
+}}
+/* 键盘游标（↑↓ 移动到的日期） */
+QFrame#dayCellCursor {{
+    border: 2px solid #3370FF;
+    border-radius: 8px;
+}}
+QFrame#dayCellOtherCursor {{
+    border: 2px solid rgba(51, 112, 255, 0.6);
+    border-radius: 8px;
+}}
+QFrame#dayCellTodayCursor {{
+    border: 2px solid #245BDB;
+    border-radius: 8px;
+}}
 
 QLabel#dayNum {{ font-size: 11px; color: #1F2329; font-weight: 600; }}
 QLabel#dayNumOther {{ font-size: 11px; color: #BBBFC4; }}
@@ -747,6 +823,24 @@ QFrame#eventCardCurrent {{
     border-left: 3px solid #34C724;
 }}
 QFrame#eventCard:hover {{ background-color: #F5F6F7; }}
+/* 跨天延续日：淡一些，和「起始日」区分开 */
+QFrame#eventCardCont {{
+    background-color: #F7F8FA;
+    border-radius: 8px;
+    border-left: 3px solid #BBBFC4;
+}}
+QFrame#eventCardCont:hover {{ background-color: #F2F3F5; }}
+/* 全天日程：顶部独立成条 */
+QFrame#eventCardAllDay {{
+    background-color: rgba(15, 179, 118, 0.12);
+    border-radius: 6px;
+    border-left: 3px solid #0FB376;
+}}
+QFrame#eventCardAllDay:hover {{ background-color: rgba(15, 179, 118, 0.20); }}
+QFrame#weekAllDayBar {{
+    background-color: #F7F8FA;
+    border-radius: 6px;
+}}
 
 QLabel#eventTime {{ font-size: 11px; color: #51565D; font-weight: 600; }}
 QLabel#eventTimePast {{ font-size: 11px; color: #BBBFC4; font-weight: 600; }}

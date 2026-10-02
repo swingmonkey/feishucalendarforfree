@@ -33,6 +33,7 @@ from add_event_dialog import RECURRENCE_OPTIONS, ColorSwatch
 from config import Config
 from models_event import (
     PALETTE,
+    describe_recurrence,
     get_event_color,
     has_recurrence,
     is_all_day_event,
@@ -42,6 +43,7 @@ from models_event import (
     rebuild_description,
     set_event_color,
 )
+from ui_common import ConfirmDialog
 
 
 class EventDetailDialog(QDialog):
@@ -158,7 +160,8 @@ class EventDetailDialog(QDialog):
             desc_label.setTextFormat(Qt.TextFormat.RichText)
             desc_label.setOpenExternalLinks(True)
             desc_label.setWordWrap(True)
-            desc_label.setText(markdown_to_html(str(desc)))
+            # 子任务清单下方已有可勾选版本，描述里跳过 - [ ] 行避免同屏显示两遍
+            desc_label.setText(markdown_to_html(str(desc), strip_tasks=True))
             form.addRow(self._label("描述"), desc_label)
 
         vis = self.event_data.get("visibility", "")
@@ -250,10 +253,16 @@ class EventDetailDialog(QDialog):
         return widget
 
     def _recurrence_text(self) -> str:
+        """界面上显示的重复规则（与新建对话框同一份中文标签）。"""
+        r = self.event_data.get("recurrence")
+        return describe_recurrence(r)
+
+    def _recurrence_rule(self) -> str:
+        """原始 RFC5545 规则，供编辑页匹配下拉项。"""
         r = self.event_data.get("recurrence")
         if isinstance(r, list):
             r = r[0] if r else ""
-        return str(r)
+        return str(r or "")
 
     # ─── Edit Mode ───
 
@@ -301,7 +310,7 @@ class EventDetailDialog(QDialog):
         self.edit_recurrence = QComboBox()
         for label, _rule in RECURRENCE_OPTIONS:
             self.edit_recurrence.addItem(label)
-        current_rule = self._recurrence_text()
+        current_rule = self._recurrence_rule()
         idx = next((i for i, (_, r) in enumerate(RECURRENCE_OPTIONS) if r == current_rule), 0)
         self.edit_recurrence.setCurrentIndex(idx)
         form.addRow("重复  ", self.edit_recurrence)
@@ -392,15 +401,18 @@ class EventDetailDialog(QDialog):
             self._rebuild_view()
             return
         self._subtask_edit = True
-        start = parse_event_time(self.event_data.get("start_time", {}))
-        end = parse_event_time(self.event_data.get("end_time", {}))
+        kwargs = {}
+        # 全天日程的 start_time 是 {"date": ...}，一旦把它按 timestamp 写回，
+        # 整天事件就会被改成带具体时刻的定时事件。这里只改描述，不碰时间。
+        if not is_all_day_event(self.event_data):
+            kwargs["start"] = parse_event_time(self.event_data.get("start_time", {}))
+            kwargs["end"] = parse_event_time(self.event_data.get("end_time", {}))
         self.lark_cli.update_event(
             calendar_id=self.event_data.get("organizer_calendar_id", "primary"),
             event_id=self.event_data.get("event_id", ""),
             summary=str(self.event_data.get("summary", "")),
-            start=start,
-            end=end,
             description=new_desc,
+            **kwargs,
         )
 
     # ─── Save / Update ───
@@ -479,6 +491,23 @@ class EventDetailDialog(QDialog):
     # ─── Delete ───
 
     def _on_delete(self):
+        """删除前在本窗口内确认。
+
+        旧实现先 emit 再无条件 ``accept()``：确认框是在详情窗口关闭之后才弹的，
+        用户点「取消」连详情一起没了。确认留在本窗口，取消时什么都不发生。
+        """
+        summary = self.event_data.get("summary", "")
+        if not isinstance(summary, str):
+            summary = str(summary)
+        ok = ConfirmDialog.ask(
+            self,
+            "删除日程",
+            f"确定要删除日程「{summary or '(无标题)'}」吗？\n删除后无法恢复。",
+            ok_text="删除",
+            danger=True,
+        )
+        if not ok:
+            return
         self.event_delete_requested.emit(self.event_data)
         self.accept()
 

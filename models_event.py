@@ -96,6 +96,37 @@ def set_event_color(config, event_id: str, hex_value):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Recurrence labels (single source of truth for 新建 / 详情)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# (显示名, RFC5545 rrule)。新建对话框的下拉与详情页的只读展示共用这一份，
+# 避免同一个规则在两处一个显示「每两周」、一个显示 FREQ=WEEKLY;INTERVAL=2。
+RECURRENCE_CHOICES: list[tuple[str, str | None]] = [
+    ("不重复", None),
+    ("每天", "FREQ=DAILY"),
+    ("每工作日", "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"),
+    ("每周", "FREQ=WEEKLY"),
+    ("每两周", "FREQ=WEEKLY;INTERVAL=2"),
+    ("每月", "FREQ=MONTHLY"),
+]
+
+_RECURRENCE_LABELS = {rule: label for label, rule in RECURRENCE_CHOICES if rule}
+
+
+def describe_recurrence(rrule) -> str:
+    """把 RFC5545 规则翻成中文；未知规则回退为「重复（<原始规则>）」。"""
+    if isinstance(rrule, list):
+        rrule = rrule[0] if rrule else ""
+    rule = str(rrule or "").strip()
+    if not rule:
+        return "不重复"
+    label = _RECURRENCE_LABELS.get(rule)
+    if label:
+        return label
+    return f"重复（{rule}）"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Recurrence expansion (display only — does not touch Feishu writes)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -285,12 +316,15 @@ def expand_events_for_range(events: list[dict], range_start: datetime, range_end
 # Markdown → HTML (for the detail view & subtasks)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def markdown_to_html(text: str) -> str:
+def markdown_to_html(text: str, strip_tasks: bool = False) -> str:
     """Minimal Markdown → HTML converter safe for ``QLabel.setHtml``.
 
     Supports: headings, bold/italic/code, links, unordered/ordered lists,
     task lists (``- [ ]`` / ``- [x]``), blockquotes, horizontal rules and
     line breaks. Intentionally avoids raw HTML pass-through for safety.
+
+    ``strip_tasks=True`` 时跳过 ``- [ ]`` / ``- [x]`` 行：详情页下方已经有
+    一组可勾选的「子任务」，描述里再渲染一份只读版会在同一屏出现两遍清单。
     """
     if not text:
         return ""
@@ -350,6 +384,9 @@ def markdown_to_html(text: str) -> str:
             close_list()
             out.append("<hr>")
         elif stripped.startswith("- [ ] ") or stripped.startswith("- [x] ") or stripped.startswith("- [X] "):
+            if strip_tasks:
+                i += 1
+                continue
             if not in_list:
                 out.append("<ul>")
                 in_list = True

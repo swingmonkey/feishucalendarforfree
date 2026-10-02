@@ -5,6 +5,11 @@
 - 本地颜色标记（按 event id 存入 config.event_colors）
 
 v2.1：校验与创建错误改为对话框内联红字提示，不再弹 QMessageBox。
+v2.2：修复「创建日程」软锁——此前向 ``LarkCliAsync.create_event`` 传了它并不
+接受的 ``location`` 关键字，抛出的 TypeError 会让对话框永久停在「创建中…」
+且全部输入被禁用。``lark-cli calendar +create`` 没有 ``--location`` 参数
+（只有原生 ``calendar events create --data`` 才带 location 字段），因此地点
+改为按 :data:`LOCATION_PREFIX` 约定追加进描述，不再静默丢弃。
 """
 
 from datetime import datetime, timedelta
@@ -24,16 +29,24 @@ from PySide6.QtWidgets import (
 )
 
 from config import Config
-from models_event import PALETTE, set_event_color
+from models_event import PALETTE, RECURRENCE_CHOICES, set_event_color
 
-RECURRENCE_OPTIONS = [
-    ("不重复", None),
-    ("每天", "FREQ=DAILY"),
-    ("每工作日", "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"),
-    ("每周", "FREQ=WEEKLY"),
-    ("每两周", "FREQ=WEEKLY;INTERVAL=2"),
-    ("每月", "FREQ=MONTHLY"),
-]
+# 重复规则的真源在 models_event.RECURRENCE_CHOICES（详情页共用同一份），
+# 这里保留旧名以兼容既有导入。
+RECURRENCE_OPTIONS = RECURRENCE_CHOICES
+
+# lark-cli 的 +create 不支持独立的 location 参数，地点按此前缀写进描述。
+LOCATION_PREFIX = "📍 地点："
+
+
+def compose_description(description: str, location: str) -> str:
+    """把「地点」并入描述，避免用户输入被静默丢弃。"""
+    location = (location or "").strip()
+    if not location:
+        return description or ""
+    line = f"{LOCATION_PREFIX}{location}"
+    description = (description or "").strip()
+    return f"{description}\n\n{line}" if description else line
 
 
 class ColorSwatch(QPushButton):
@@ -133,7 +146,11 @@ class AddEventDialog(QDialog):
         form.addRow("重复  ", self.recurrence_combo)
 
         self.location_input = QLineEdit()
-        self.location_input.setPlaceholderText("地点（可选）")
+        self.location_input.setPlaceholderText("地点（可选，写入日程描述）")
+        self.location_input.setToolTip(
+            f"lark-cli 创建日程没有独立的地点参数，填写的地点会以「{LOCATION_PREFIX}」"
+            "开头追加到日程描述里，在飞书中同样可见。"
+        )
         form.addRow("地点  ", self.location_input)
 
         self.desc_input = QTextEdit()
@@ -219,22 +236,30 @@ class AddEventDialog(QDialog):
             self._show_message("结束时间必须晚于开始时间")
             return
 
-        description = self.desc_input.toPlainText().strip()
-        location = self.location_input.text().strip()
+        description = compose_description(
+            self.desc_input.toPlainText().strip(),
+            self.location_input.text().strip(),
+        )
         rrule = RECURRENCE_OPTIONS[self.recurrence_combo.currentIndex()][1]
 
         self._set_creating(True)
         self.form_message.setVisible(False)
         self.create_btn.setText("创建中…")
 
-        self.lark_cli.create_event(
-            summary=summary,
-            start=start,
-            end=end,
-            description=description,
-            location=location or None,
-            rrule=rrule,
-        )
+        # 发起失败（参数不匹配、QProcess 启动失败等）必须解除「创建中」软锁，
+        # 否则整个表单会永久变灰，只能杀进程。
+        try:
+            self.lark_cli.create_event(
+                summary=summary,
+                start=start,
+                end=end,
+                description=description,
+                rrule=rrule,
+            )
+        except Exception as exc:  # noqa: BLE001 - 面向用户的兜底提示
+            self._set_creating(False)
+            self.create_btn.setText("创建日程")
+            self._show_message(f"创建失败：{str(exc)[:150]}")
 
     def _on_created(self, data: dict):
         # Persist the chosen color locally (keyed by the new event id).
