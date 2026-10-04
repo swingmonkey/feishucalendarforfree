@@ -97,9 +97,35 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: Generate incremental delta for the Windows EXE
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          new_exe="$(find artifacts -type f -name '*.exe' | head -n1)"
+          if [ -z "$new_exe" ]; then
+            echo "no EXE artifact found; skipping delta"
+            exit 0
+          fi
+          delta_name="$(basename "$new_exe").delta"
+          mkdir -p artifacts/delta
+          # 退出码 2 = 找不到可用的上一版基座，属于正常情况（例如首个版本），
+          # 此时不生成补丁，客户端自动回退到全量下载。
+          python tools/make_delta.py --new "$new_exe" --out "artifacts/delta/$delta_name"
+          code=$?
+          if [ "$code" -eq 2 ]; then
+            echo "no usable base release; continuing without delta"
+          elif [ "$code" -ne 0 ]; then
+            exit "$code"
+          fi
+      - name: Attach delta to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/delta/*.delta
+          fail_on_unmatched_files: false
       - name: Generate SHA256SUMS
         run: |
-          find artifacts -type f \( -name '*.exe' -o -name '*.zip' \) \
+          find artifacts -type f \( -name '*.exe' -o -name '*.zip' -o -name '*.delta' \) \
             -exec sha256sum {} \; \
             | awk '{ name=$2; sub(/^.*\//, "", name); print $1 "  " name }' \
             > SHA256SUMS

@@ -52,12 +52,13 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
   - 修：详情页子任务显示两遍（`markdown_to_html(strip_tasks=True)`）；重复规则一处中文一处 RFC5545 原文（真源移到 `models_event.RECURRENCE_CHOICES`）；全天日程勾选子任务会被改成定时事件
   - 修：删除确认框在本窗口弹出（此前先关窗口再弹确认，取消也一起丢）；设置页「重新检测」按钮文案与行为不符；开机启动写注册表失败不回滚；透明度滑块下限与 config clamp 不一致
   - 新增：匿名统计 opt-out（`config.usage_stats_enabled`，设置 → 通用），关闭时清除 `install_id`；关于页不再宣称「不经过任何第三方服务器」
-- 当前测试总量 **237 例**（199 + 38），`ruff check` 全绿
+- 当前测试总量 **260 例**（199 + 38 + 23），`ruff check` 全绿
+- v2.3.0 增量更新：见下方「增量更新（exe_delta.py）」；Windows EXE 从 53.51 MiB 降到 3.01 MiB（省 94.4%），失败自动回退全量
 - v2.2.0 发布约定：推 `v*` 标签触发 `.github/workflows/release.yml`（CI 跑测试 → 打包 Windows EXE + macOS zip → 挂到 Release → 生成并挂 `SHA256SUMS`）。客户端 Windows 静默更新依赖 Release 里的 `.exe` 资产 + `SHA256SUMS`，两者缺一则退回「发现新版本」Toast 引导手动下载；**勿删这两个资产**。CI 用 `FC_APP_NAME=FeishuCalendar` 产出 ASCII 名 `FeishuCalendar.exe`，客户端 `find_exe_asset()` 会回退到 `exes[0]` 命中它
 - 新增模块后记得同步 `build_windows.ps1` 与 `build_macos.sh` 的 `--hidden-import` 清单（仓库里的 `*.spec` 被 gitignore，是本地构建产物，不用管）
 
 ## Git 仓库：状态判定铁律（接手必读）
-- **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.2.0`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag
+- **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.3.0`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag
 - ⚠️ 本机 `refs/remotes/origin/main` 显示**不可靠**（曾长期停在旧 commit `2a4f326`，`git status` 也看不出 ahead/behind）。**判断远程真实状态一律以 GitHub 网页 / API 为准**，不要相信本地 remote-tracking ref
 - ⚠️ **禁止在 `C:\Users\77427\feishucalendarforfree` 执行 `git pull` / `git reset --hard origin/main`**：远程曾有被 force push 成残缺版本的先例，pull 会删掉本地 30+ 源文件
 - 需要覆盖远程时用 `git push --force-with-lease=main:<期望的远程sha> origin main`，**先在本地给旧提交建备份分支**（如 `backup/orphan-4df042e`，仅本地不推送）
@@ -74,3 +75,12 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 触发：启动 4 秒后静默检查（`config.json` 的 `check_update_on_start` 可关）；手动入口在设置 → 检查更新
 - Windows 打包版：后台静默下载暂存到 pending 路径，下次启动或用户确认后 `apply_pending_update()` + `restart_application()`；非 Windows/源码运行保留可点击轻提示
 - 发新版只需打新的 GitHub Release，客户端会自动检测到；**前提是别再让 force push 把仓库清掉**
+
+### 增量更新（exe_delta.py，v2.3.0 起）
+- **为什么必须按成员而不是按字节**：CArchive 里成员顺序拼接，前面任一成员变长会让后面整体偏移。实测固定偏移分块命中率 **0%**、FastCDC 命中率 **0%**，看着像"没有可复用内容"，其实是字节基座被整体挪动了。**成员边界才是稳定的复用单位**
+- 实测 v2.1.6 → v2.2.0：239 个成员里 **236 个逐字节相同**，只有 `PYZ.pyz` / `base_library.zip` / `main` 变了 → 补丁 3.01 MiB vs 全量 53.51 MiB（**省 94.4%**），且 `apply_delta` 能**字节级复现官方产物**（`tests/test_exe_delta.py` 有真实样本往返用例）
+- 补丁里装：目标 EXE 的引导程序 + TOC + cookie + 变更成员原文；未变成员不装数据，客户端从本机旧 EXE 按偏移切片复制
+- **安全边界**：补丁头带 `base_sha256`，本机 EXE 不匹配就拒绝（防止把补丁打到错误基线）；产出结果先比 `target_sha256_prefix`，再由 `SHA256SUMS` 权威校验。**任何一步失败都静默回退全量下载**——补丁只是优化，不是唯一路径
+- 生成侧在 CI：`tools/make_delta.py` 通过 API 找上一个带 `.exe` 的正式版作基座；找不到时**以退出码 2 结束**，工作流跳过补丁上传（首个版本会这样，属正常）
+- ⚠️ 改了 `updater.py` 的导入就要同步 `build_windows.ps1` / `build_macos.sh` 的 `--hidden-import` 清单
+- ⚠️ 峰值内存约 2×EXE（基座 + 结果各 ~53 MiB），只在更新时短暂占用

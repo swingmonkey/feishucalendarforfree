@@ -1,3 +1,3 @@
 """Application version, used by the About panel and the OTA updater."""
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"

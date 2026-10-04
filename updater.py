@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -14,10 +15,14 @@ from urllib.request import Request, urlopen
 
 from PySide6.QtCore import QThread, Signal
 
+import exe_delta
+
 try:
     from __version__ import APP_VERSION
 except Exception:  # pragma: no cover
     APP_VERSION = "0.0.0"
+
+logger = logging.getLogger(__name__)
 
 REPO = "swingmonkey/feishucalendarforfree"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -155,6 +160,73 @@ def verify_file_checksum(file_path: str, expected_hash: str) -> bool:
     if not expected_hash:
         return False
     return compute_sha256(file_path).lower() == expected_hash.lower()
+
+
+def find_delta_asset(release):
+    """Return the member-level ``.delta`` asset dict, or ``None``.
+
+    Release 会同时挂全量 EXE 和增量补丁；补丁是从**上一个正式版**的 EXE 生成的，
+    因此只有恰好处于那个版本的本机才能用（补丁头里带基座 sha256 会校验）。
+    """
+    for a in release.get("assets") or []:
+        name = (a.get("name") or "").lower()
+        if name.endswith(".delta"):
+            return a
+    return None
+
+
+def download_bytes(url: str, timeout: int = 120) -> bytes:
+    """Fetch a small file fully into memory (used for the delta patch)."""
+    req = Request(url, headers={"User-Agent": "feishucalendar-updater"})
+    with urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def build_exe_via_delta(release, dest: str, expected_hash: str, progress_cb=None) -> bool:
+    """Try to produce the new EXE at ``dest`` by applying a member-level delta.
+
+    Returns ``True`` on success. Any problem returns ``False`` so the caller
+    falls back to a full download — the patch is only ever an optimisation, and
+    the result is still verified against ``expected_hash`` (which comes from the
+    release's SHA256SUMS), so a bad patch can never install a bad EXE.
+    """
+    if not getattr(sys, "frozen", False):
+        return False
+    delta_asset = find_delta_asset(release)
+    if not delta_asset:
+        return False
+    try:
+        base_path = os.path.abspath(sys.executable)
+        if not os.path.isfile(base_path):
+            return False
+        if progress_cb:
+            progress_cb(0, 0)  # total unknown until the patch header is read
+        patch = download_bytes(delta_asset.get("browser_download_url", ""))
+        with open(base_path, "rb") as f:
+            base = f.read()
+        result = exe_delta.apply_delta(base, patch)
+        actual = hashlib.sha256(result).hexdigest()
+        if not expected_hash or actual.lower() != expected_hash.lower():
+            logger.warning(
+                "增量更新结果校验不匹配，回退到全量下载（delta=%s）",
+                delta_asset.get("name", ""),
+            )
+            return False
+        tmp = dest + ".delta"
+        with open(tmp, "wb") as f:
+            f.write(result)
+        os.replace(tmp, dest)
+        if progress_cb:
+            progress_cb(len(result), len(result))
+        logger.info(
+            "增量更新成功：补丁 %.2f MiB -> 目标 %.2f MiB",
+            len(patch) / 1048576,
+            len(result) / 1048576,
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 - 补丁失败一律回退全量
+        logger.info("增量更新不可用，回退到全量下载: %s", exc)
+        return False
 
 
 def install_frozen_windows(exe_url: str, expected_hash: str = "", progress_cb=None):
@@ -326,11 +398,13 @@ def prepare_pending_update(release: dict, progress_cb=None):
     metadata = pending_metadata_path()
     staged = False
     try:
-        download(
-            asset["browser_download_url"],
-            downloading,
-            progress_cb=progress_cb,
-        )
+        # 优先走成员级增量（省 ~94% 流量），任何一步不行就自动回退全量下载
+        if not build_exe_via_delta(release, downloading, expected_hash, progress_cb):
+            download(
+                asset["browser_download_url"],
+                downloading,
+                progress_cb=progress_cb,
+            )
         if compute_sha256(downloading).lower() != expected_hash.lower():
             raise ValueError("SHA-256 校验失败")
         os.replace(downloading, pending)
