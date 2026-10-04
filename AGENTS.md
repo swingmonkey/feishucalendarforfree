@@ -42,7 +42,7 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 离线回归测试：`tests/test_refactor_features.py`（覆盖头部收敛、启动加载面板、登录状态机四种模式、auth 错误分类、Toast/ConfirmDialog、mark_authed、设置页异步状态）、`tests/test_ux_improvements.py`（v2.2 体验改造），另有 test_config / test_updater 等；需 `QT_QPA_PLATFORM=offscreen` + PySide6（注意：offscreen 插件无字体库，截图验证 UI 需用 `QT_QPA_PLATFORM=windows` 且不 show 直接 grab）
 - v2.1.5 已提交并推送 origin/main（`1e513ba`），与 GitHub 最新 Release v2.1.5 一致
 - v2.1.6：日程字号可调（月视图 10px / 周·列表 13px，9-24px 两档滑块），测试 `tests/test_font_size.py`（12 项）
-- **v2.2 体验改造（本地已提交，未推送）**，测试 `tests/test_ux_improvements.py`（38 例）：
+- **v2.2 体验改造（已发布 v2.2.0）**，测试 `tests/test_ux_improvements.py`（38 例）：
   - 修 P0：「创建日程」点下去就永久卡在「创建中…」（`location=` 传给了不接受的 `create_event`，TypeError 无兜底）；地点改为写入描述
   - 修 P1：后台自动刷新遇到授权类关键词会把已加载的日历换成登录面板且**无出口**；现在一律只发 Toast，登录面板在还有日程时提供「继续查看已加载日程」
   - 修 P1：月历拖拽没有落点高亮（补 `…Drop` 样式）；重复日程拖拽会**吞掉点击**（`_dragging` 提前置位），现在不吞点击并给 Toast
@@ -53,9 +53,11 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
   - 修：删除确认框在本窗口弹出（此前先关窗口再弹确认，取消也一起丢）；设置页「重新检测」按钮文案与行为不符；开机启动写注册表失败不回滚；透明度滑块下限与 config clamp 不一致
   - 新增：匿名统计 opt-out（`config.usage_stats_enabled`，设置 → 通用），关闭时清除 `install_id`；关于页不再宣称「不经过任何第三方服务器」
 - 当前测试总量 **237 例**（199 + 38），`ruff check` 全绿
+- v2.2.0 发布约定：推 `v*` 标签触发 `.github/workflows/release.yml`（CI 跑测试 → 打包 Windows EXE + macOS zip → 挂到 Release → 生成并挂 `SHA256SUMS`）。客户端 Windows 静默更新依赖 Release 里的 `.exe` 资产 + `SHA256SUMS`，两者缺一则退回「发现新版本」Toast 引导手动下载；**勿删这两个资产**。CI 用 `FC_APP_NAME=FeishuCalendar` 产出 ASCII 名 `FeishuCalendar.exe`，客户端 `find_exe_asset()` 会回退到 `exes[0]` 命中它
+- 新增模块后记得同步 `build_windows.ps1` 与 `build_macos.sh` 的 `--hidden-import` 清单（仓库里的 `*.spec` 被 gitignore，是本地构建产物，不用管）
 
 ## Git 仓库：状态判定铁律（接手必读）
-- **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.1.5`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag
+- **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.2.0`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag
 - ⚠️ 本机 `refs/remotes/origin/main` 显示**不可靠**（曾长期停在旧 commit `2a4f326`，`git status` 也看不出 ahead/behind）。**判断远程真实状态一律以 GitHub 网页 / API 为准**，不要相信本地 remote-tracking ref
 - ⚠️ **禁止在 `C:\Users\77427\feishucalendarforfree` 执行 `git pull` / `git reset --hard origin/main`**：远程曾有被 force push 成残缺版本的先例，pull 会删掉本地 30+ 源文件
 - 需要覆盖远程时用 `git push --force-with-lease=main:<期望的远程sha> origin main`，**先在本地给旧提交建备份分支**（如 `backup/orphan-4df042e`，仅本地不推送）

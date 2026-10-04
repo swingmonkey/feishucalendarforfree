@@ -34,6 +34,7 @@ fi
     --hidden-import config \
     --hidden-import styles \
     --hidden-import ui_common \
+    --hidden-import context_menu \
     --hidden-import lark_cli \
     --hidden-import lark_cli_args \
     --hidden-import lark_cli_async \
