@@ -94,6 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -111,12 +112,15 @@ jobs:
           mkdir -p artifacts/delta
           # 退出码 2 = 找不到可用的上一版基座，属于正常情况（例如首个版本），
           # 此时不生成补丁，客户端自动回退到全量下载。
-          python tools/make_delta.py --new "$new_exe" --out "artifacts/delta/$delta_name"
-          code=$?
-          if [ "$code" -eq 2 ]; then
-            echo "no usable base release; continuing without delta"
-          elif [ "$code" -ne 0 ]; then
-            exit "$code"
+          # 注意用 `if ! cmd` 捕获：GitHub 默认 bash -e，裸命令失败会直接中断。
+          rc=0
+          if ! python tools/make_delta.py --new "$new_exe" --out "artifacts/delta/$delta_name"; then
+            rc=$?
+            if [ "$rc" -eq 2 ]; then
+              echo "no usable base release; continuing without delta"
+            else
+              exit "$rc"
+            fi
           fi
       - name: Attach delta to GitHub Release
         uses: softprops/action-gh-release@v3
