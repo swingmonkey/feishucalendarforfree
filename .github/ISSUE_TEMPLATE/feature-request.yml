@@ -1,0 +1,22 @@
+name: Feature Request
+description: 提出新功能建议
+title: "[Feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: 功能描述
+      description: 你希望增加什么功能
+      placeholder: 支持将日程导出为 ICS 文件...
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 使用场景
+      description: 这个功能在什么场景下对你有帮助
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 替代方案
+      description: 如果没有这个功能，你目前如何解决
