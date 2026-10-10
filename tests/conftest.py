@@ -14,7 +14,5 @@ def pytest_sessionstart(session):
 def pytest_sessionfinish(session, exitstatus):
     global _app
     gc.collect()
-    if _app is not None:
-        _app.close()
-        _app = None
+    _app = None
     gc.collect()
