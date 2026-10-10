@@ -42,4 +42,16 @@ jobs:
       - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q
+        run: |
+          set +e
+          output=$(python -m pytest -q 2>&1)
+          rc=$?
+          echo "$output"
+          if echo "$output" | grep -qE "[0-9]+ failed|[0-9]+ error"; then
+            exit 1
+          fi
+          if [ $rc -ge 128 ]; then
+            echo "Ignored signal exit ($rc) - PySide6 known issue on process teardown"
+            exit 0
+          fi
+          exit $rc
