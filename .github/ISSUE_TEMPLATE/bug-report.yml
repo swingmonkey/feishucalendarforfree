@@ -1,0 +1,42 @@
+name: Bug Report
+description: 报告 Bug 或异常行为
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    attributes:
+      label: 问题描述
+      description: 简要描述遇到的问题
+      placeholder: 点击日历某天后应用闪退...
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 复现步骤
+      description: 如何复现这个问题
+      placeholder: |
+        1. 打开应用
+        2. 切换到月视图
+        3. 点击某一天
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: 应用版本
+      description: 查看 "设置 → 关于" 中的版本号
+      placeholder: "v2.3.0"
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 错误日志
+      description: 如有弹窗或终端输出，请粘贴内容
