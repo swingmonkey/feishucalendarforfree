@@ -312,8 +312,9 @@ FeishuCalendarDesktop/
 ├── build_windows.ps1      # Windows PyInstaller 打包实体脚本
 ├── build_macos.sh         # macOS PyInstaller 打包脚本
 ├── tools/make_ico.py      # 从 PNG 生成 assets/icon.ico（已提交生成结果，无需重复执行）
+├── tools/ci.py            # 本地 CI 门禁：ruff → compileall → pytest + 覆盖率（可装 pre-push 钩子）
 ├── stats_server/           # 标准库 HTTP + SQLite 匿名统计服务与部署文件
-└── .github/workflows/release.yml  # 推送 v* 标签自动打包并上传 Release
+└── .github/workflows/     # ci.yml（lint + 多版本测试）、release.yml（推送 v* 标签自动打包并上传 Release）
 ```
 
 > **架构约定**：飞书读写能力集中在 `lark_cli.py` / `lark_cli_async.py`（通过 QProcess 调 node 版 `lark-cli`），重构只改动 UI 层；新增的拖拽改期、颜色、重复、子任务全部复用既有读写接口，不改变与飞书的数据通路。

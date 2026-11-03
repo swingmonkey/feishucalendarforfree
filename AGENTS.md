@@ -10,6 +10,22 @@ python main.py                              # 或双击 启动飞书日程.bat
 ```
 首次运行不弹任何模态框：显示内联加载面板，未登录/授权过期时切换到登录引导面板（lark-cli device flow：二维码/网页授权，scope 见 login_dialog.py LOGIN_SCOPES）。授权成功一次后凭据由 lark-cli 全局持久化，重启免登录。
 
+## 本地 CI（推送前门禁）
+
+```bash
+python3 tools/ci.py                  # ruff → compileall → pytest + 覆盖率门禁 ≥70%
+python3 tools/ci.py --fast           # 跳过覆盖率统计
+python3 tools/ci.py --build          # 额外打一次本机安装包
+python3 tools/ci.py --install-hook   # 装 pre-push 钩子，推送前自动拦截
+```
+
+与 `.github/workflows/ci.yml` 同源（同样三条命令、同样的 compileall 排除规则），但多了一条线上没有的 `--cov-fail-under=70`：推 workflow 需要 `workflow` 权限，当前推送凭据没有，所以这条门禁只在本地生效。**改完代码至少跑一次，别靠记忆敲四行。**
+
+- 解释器默认取 `.venv`，可用 `--python` 或 `$CI_PYTHON` 覆盖；缺依赖直接以退出码 2 退出，脚本不负责装包
+- pytest 退出码 ≥128（PySide6 进程收尾信号）只有在输出证明「全部通过」时才忽略，绝不凭空放过
+- `.coveragerc` 已 omit `shibokensupport/*` 与 `signature_bootstrap.py`——那是 PySide6 导入期写到工作目录又删掉的临时文件，计入分母会让覆盖率莫名其妙地漂
+
+
 ## 技术栈
 Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共享授权凭据）。
 

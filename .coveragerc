@@ -8,6 +8,13 @@ omit =
     dist/*
     tools/*
     setup.py
+    # PySide6 在导入时会往工作目录生成 signature bootstrap（shiboken），
+    # 进程退出后又删掉；coverage 会把它们记进数据文件，report 阶段反复报
+    # "No source for code"。它们不是本项目的代码，不该出现在分母里。
+    shibokensupport/*
+    signature_bootstrap.py
+    .pytest_tmp/*
+    .release_check/*
 
 [report]
 # 覆盖率只对「应用代码」有意义，测试自身不应计入分母
@@ -18,3 +25,5 @@ exclude_lines =
     \.\.\.
 show_missing = False
 skip_covered = True
+# 残留路径不值得让整份报告刷屏：omit 之外偶尔仍会漏进一两行警告。
+ignore_errors = True
