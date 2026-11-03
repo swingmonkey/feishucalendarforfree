@@ -38,6 +38,40 @@ def wide_range(months_back: int = 12, months_forward: int = 3):
     return start, end
 
 
+# 视图两侧各留 7 天缓冲：月历网格最多渲染前后各 6 天，周视图拖拽/跨天
+# 日程也需要邻近日期的数据。留 7 天既盖住网格，又不会拉回整月。
+MONTH_BUFFER_DAYS = 7
+WEEK_BUFFER_DAYS = 7
+
+
+def view_range(view_mode: str, current_date: datetime):
+    """Return the ``(start, end)`` a view actually needs from the backend.
+
+    Previously every refresh asked for "the whole month" regardless of the
+    view, so a week spanning two months showed an empty column for the
+    neighbouring month. The range is derived from what the view renders:
+
+    - ``month``: the calendar grid can spill up to 6 days into the adjacent
+      months on either side, so the month plus a 7-day buffer.
+    - ``week``: Monday to Sunday, plus the same 7-day buffer.
+
+    Unknown modes fall back to ``month`` (matching ``config.view_mode``
+    validation) so a bad persisted value can never produce an empty window.
+    """
+    day = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if view_mode == "week":
+        monday = day - timedelta(days=day.weekday())
+        start = monday - timedelta(days=WEEK_BUFFER_DAYS)
+        end = monday + timedelta(days=6 + WEEK_BUFFER_DAYS)
+    else:
+        month_start, month_end = month_range(day)
+        start = month_start - timedelta(days=MONTH_BUFFER_DAYS)
+        end = month_end + timedelta(days=MONTH_BUFFER_DAYS)
+
+    return start, end.replace(hour=23, minute=59, second=59, microsecond=0)
+
+
 def event_sort_key(event: dict):
     """Return a comparable sort key for an event's start time.
 

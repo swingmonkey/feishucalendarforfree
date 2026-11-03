@@ -1,6 +1,11 @@
 """Search dialog — keyword search across a wide date range.
 
 Extracted from the old ``calendar_widget.py``.
+
+Search is local-first: the on-disk event store answers immediately (and
+answers at all when the network is down), then the server-side result set is
+merged in once ``+search-event`` returns. The two sources are deduped by
+``event_id`` with the server copy winning.
 """
 
 from PySide6.QtCore import Qt, Signal
@@ -15,7 +20,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+import event_store
 from models_event import is_all_day_event, parse_event_time
+from utils import event_sort_key, wide_range
 
 
 class SearchDialog(QDialog):
@@ -23,10 +30,14 @@ class SearchDialog(QDialog):
 
     event_selected = Signal(dict)  # emits the selected event
 
-    def __init__(self, lark_cli, parent=None):
+    def __init__(self, lark_cli, parent=None, store=None):
         super().__init__(parent)
         self._lark_cli = lark_cli
+        self._store = store
         self._all_events: list = []
+        # 服务端结果不可用时置 True：结果数后面要标明"本地"，
+        # 否则用户会以为搜到的就是全部。
+        self._offline = False
         self.setWindowTitle("搜索日程")
         self.setFixedSize(420, 520)
         self._setup_ui()
@@ -34,7 +45,22 @@ class SearchDialog(QDialog):
         self._lark_cli.search_fetched.connect(self._on_search_fetched)
         self._lark_cli.fetch_error.connect(self._on_fetch_error)
 
+        self._load_local()
         self._start_search()
+
+    def _load_local(self):
+        """Seed the dialog from the local store so search works offline."""
+        if self._store is None:
+            return
+        start, end = wide_range(months_back=12, months_forward=3)
+        local = event_store.read_range(self._store, start, end)
+        if not local:
+            return
+        self._merge_events(local)
+        self.search_input.setReadOnly(False)
+        self.search_input.setPlaceholderText("输入关键词搜索日程标题、描述或发起人...")
+        self.search_input.setFocus()
+        self.result_label.setText(f"本地已加载 {len(self._all_events)} 条日程，正在同步…")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -73,17 +99,38 @@ class SearchDialog(QDialog):
     def _start_search(self):
         self._lark_cli.search_events(months_back=12, months_forward=3)
 
+    def _merge_events(self, events: list):
+        """Merge ``events`` into the result pool, server copy winning per id."""
+        merged = {}
+        for ev in self._all_events:
+            key = ev.get("event_id") or f"anon:{id(ev)}"
+            merged[key] = ev
+        for ev in events:
+            key = ev.get("event_id") or f"anon:{id(ev)}"
+            merged[key] = ev
+        self._all_events = sorted(merged.values(), key=event_sort_key)
+
     def _on_search_fetched(self, events: list):
-        self._all_events = events
+        self._offline = False
+        self._merge_events(events)
         self.search_input.setReadOnly(False)
         self.search_input.setPlaceholderText("输入关键词搜索日程标题、描述或发起人...")
         self.search_input.setFocus()
-        if events:
-            self.result_label.setText(f"已加载 {len(events)} 条日程，请输入关键词搜索")
+        if self._all_events:
+            self.result_label.setText(f"已加载 {len(self._all_events)} 条日程，请输入关键词搜索")
         else:
             self.result_label.setText("未找到任何日程")
+        self._on_search(self.search_input.text())
 
     def _on_fetch_error(self, error_msg: str):
+        if self._all_events:
+            # 离线可用：本地结果照常搜索，网络失败只降级提示。
+            self._offline = True
+            self.result_label.setText(
+                f"网络不可用，仅搜索本地 {len(self._all_events)} 条日程"
+            )
+            self._on_search(self.search_input.text())
+            return
         self.result_label.setText(f"加载失败: {error_msg}")
         self.search_input.setPlaceholderText("加载失败")
 
@@ -107,7 +154,8 @@ class SearchDialog(QDialog):
             if text in summary or text in description or text in organizer:
                 matches.append(ev)
 
-        self.result_label.setText(f"共 {len(matches)} 条结果")
+        suffix = " · 本地" if self._offline else ""
+        self.result_label.setText(f"共 {len(matches)} 条结果{suffix}")
 
         for ev in matches:
             start = parse_event_time(ev.get("start_time", {}))

@@ -14,6 +14,15 @@ venv/
 .venv/
 env/
 
+# pytest scratch dir (used when the OS temp dir is unavailable)
+.pytest_tmp/
+
+# Local event cache (SQLite fact layer)
+events.db
+events.db-wal
+events.db-shm
+events.db.corrupt-*
+
 # User config (contains personal window positions, may contain calendar IDs)
 config.json
 

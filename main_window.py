@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import event_store
 from add_event_dialog import AddEventDialog
 from app_icon import create_app_icon, create_app_logo_pixmap
 from config import Config
@@ -52,6 +53,7 @@ from search_dialog import SearchDialog
 from settings_dialog import SettingsDialog
 from styles import DEFAULT_GRID_FONT, DEFAULT_LIST_FONT, get_theme
 from ui_common import ConfirmDialog, Toast
+from utils import view_range
 from week_view import WeekView
 
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
@@ -139,9 +141,14 @@ class _CornerResizeHandle(QWidget):
 class MainWindow(QMainWindow):
     """Borderless, always-on-top desktop calendar with month/week views."""
 
-    def __init__(self, config: Config, parent=None):
+    def __init__(self, config: Config, parent=None, store=None):
         super().__init__(parent)
         self.config = config
+        # 本地事实层：视图只从这里读，同步只往这里写。
+        # 传入 ``store`` 便于测试注入内存库；默认落在 config.json 同目录。
+        self._store = store if store is not None else event_store.connect()
+        # 滚动窗口：清掉一年前的历史，避免库无限增长
+        event_store.enforce_retention(self._store)
         self.lark_cli = LarkCliAsync(config, self)
         self.current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.events: list[dict] = []
@@ -676,7 +683,13 @@ class MainWindow(QMainWindow):
         self._view_mode = mode
         self.config.set("view_mode", mode)
         self._apply_view_mode()
-        self._render_active_view()
+        # 周视图需要的区间和月视图不一样（跨月那一周）。该窗口已同步过就直接
+        # 从本地重绘，没同步过才联网——否则跨月列永远空着。
+        start, end = self._fetch_window()
+        if event_store.is_covered(self._store, start, end):
+            self._render_from_store(allow_empty=True)
+        else:
+            self.refresh_events()
 
     def _apply_view_mode(self):
         self.month_toggle.setObjectName("toggleBtnActive" if self._view_mode == "month" else "toggleBtn")
@@ -946,21 +959,63 @@ class MainWindow(QMainWindow):
 
     # ── Refresh / fetch ──
 
+    def _fetch_window(self):
+        """当前视图真正需要的远端区间（月视图含 7 天网格缓冲）。"""
+        return view_range(self._view_mode, self.current_date)
+
+    def _render_from_store(self, allow_empty: bool = False) -> int:
+        """把 store 当唯一事实源重绘当前窗口，返回条数。
+
+        ``allow_empty=False`` 时只有拿到数据才切换视图——首次启动不能用一个
+        空日历顶掉加载面板。``allow_empty=True`` 用于视图切换：该窗口已同步过，
+        就算确实没有日程，也应该显示成空白月历而不是沿用上一个视图的内容。
+        """
+        start, end = self._fetch_window()
+        self.events = event_store.read_range(self._store, start, end)
+        count = len(self.events)
+        if count or allow_empty:
+            if count:
+                # 屏幕上已经有内容了：后续任何失败都只能发 Toast，不许抢走视图
+                self._first_load_done = True
+            self._show_calendar_view()
+            self._render_active_view()
+        return count
+
     def refresh_events(self):
-        self.status_label.setText("正在获取日程…")
+        """本地优先刷新：先用缓存立刻出图，再拉远端校准。
+
+        切月/切周/每次落盘后都会走这里。以前每次都是一次 node 冷启动，
+        现在缓存命中时翻页是瞬时的，网络只负责补齐与修正。
+        """
         self.refresh_btn.setEnabled(False)
-        if not self._first_load_done and self.stack.currentIndex() not in (3, 4):
-            self._show_loading()
-        self.lark_cli.fetch_agenda(self.current_date, monthly=True)
+        cached = self._render_from_store()
+        if cached:
+            self.status_label.setText(f"本地缓存 {cached} 项 · 正在同步…")
+        else:
+            self.status_label.setText("正在获取日程…")
+            if not self._first_load_done and self.stack.currentIndex() not in (3, 4):
+                self._show_loading()
+        self.lark_cli.fetch_agenda(
+            self.current_date,
+            monthly=True,
+            view_mode=self._view_mode,
+        )
 
     def _on_events_fetched(self, events: list):
         self._first_load_done = True
-        self.events = events
         # 能成功拉取日程即说明授权有效，持久化登录态，重启不再引导登录
         mark_authed(self.config)
+
+        start, end = self._fetch_window()
+        event_store.store_snapshot(self._store, events, start, end)
+        # 一律回读 store：这样"上游删掉的日程"会同步消失，
+        # 也保证界面渲染的永远是同一个事实源。
+        stored = event_store.read_range(self._store, start, end)
+        self.events = stored if (stored or not events) else list(events)
+
         self._show_calendar_view()
         self._render_active_view()
-        count = len(events)
+        count = len(self.events)
         if count == 0:
             self.status_label.setText("当前范围无日程")
         else:
@@ -969,18 +1024,20 @@ class MainWindow(QMainWindow):
 
     def _on_fetch_error(self, error_msg: str):
         self.refresh_btn.setEnabled(True)
-        self.status_label.setText("获取失败")
-        # 已经成功加载过 → 任何失败（含授权类关键词）都只发 Toast，绝不抢占视图：
-        # 用户内存里的日程仍然可用，把它换成登录面板会让人无路可退。
+        # 已经成功加载过（含仅命中本地缓存）→ 任何失败（含授权类关键词）都只发
+        # Toast，绝不抢占视图：用户手里的日程仍然可用，换成登录面板会让人无路可退。
         if self._first_load_done:
+            count = len(self.events)
+            self.status_label.setText(f"离线 · 本地缓存 {count} 项")
             self.toast.show_message(
-                f"日程刷新失败：{_short_error(error_msg)}",
+                f"日程刷新失败，正在显示本地缓存：{_short_error(error_msg)}",
                 kind="error",
                 action_text="重试",
                 on_action=self.refresh_events,
                 duration=5000,
             )
             return
+        self.status_label.setText("获取失败")
         if not self._cli_available:
             self._show_auth("no_cli")
             return
@@ -1082,7 +1139,7 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     def _on_search(self):
-        dialog = SearchDialog(self.lark_cli, self)
+        dialog = SearchDialog(self.lark_cli, self, store=self._store)
         dialog.event_selected.connect(self._on_search_result_selected)
         dialog.exec()
 
@@ -1161,6 +1218,10 @@ class MainWindow(QMainWindow):
     def _on_deleted(self, event_id: str):
         self.status_label.setText("日程已删除")
         self.toast.show_message("日程已删除", kind="success")
+        # 先本地落地删除：即使随后的同步失败（离线），这条也不再显示。
+        event_store.delete_event(self._store, event_id)
+        self.events = [e for e in self.events if e.get("event_id") != event_id]
+        self._render_active_view()
         self.refresh_events()
 
     def _on_delete_error(self, error_msg: str):

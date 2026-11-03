@@ -26,7 +26,7 @@ class _MemoryConfig(Config):
 def test_header_logo_and_compact_layout():
     app = QApplication.instance() or QApplication([])
     original_fetch = LarkCliAsync.fetch_agenda
-    LarkCliAsync.fetch_agenda = lambda self, current_date, monthly=True: self.agenda_fetched.emit([])
+    LarkCliAsync.fetch_agenda = lambda self, current_date, monthly=True, view_mode=None: self.agenda_fetched.emit([])
     try:
         config = _MemoryConfig(
             {
@@ -86,7 +86,7 @@ def test_window_identity_is_ready_for_taskbar(monkeypatch):
     monkeypatch.setattr(
         LarkCliAsync,
         "fetch_agenda",
-        lambda self, current_date, monthly=True: self.agenda_fetched.emit([]),
+        lambda self, current_date, monthly=True, view_mode=None: self.agenda_fetched.emit([]),
     )
     config = _MemoryConfig(
         {
@@ -120,7 +120,7 @@ def test_window_supports_resizing_from_all_four_corners(monkeypatch):
     monkeypatch.setattr(
         LarkCliAsync,
         "fetch_agenda",
-        lambda self, current_date, monthly=True: self.agenda_fetched.emit([]),
+        lambda self, current_date, monthly=True, view_mode=None: self.agenda_fetched.emit([]),
     )
     config = _MemoryConfig(
         {

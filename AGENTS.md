@@ -23,6 +23,15 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - `widgets.py` 共享小组件（日期徽标 / 可点击标签 / 紧凑日程标签=拖拽源 / 日格=放置目标）；`models_event.py` 事件模型（时间解析、重复展开 RFC5545、Markdown→HTML、颜色/子任务工具、`RECURRENCE_CHOICES` 重复规则真源）
 - `event_card.py` 日程卡片（颜色条 / ♻ 徽标 / 拖拽源 / ↳ 延续）；`day_detail_dialog.py` + `search_dialog.py` 由旧 calendar_widget.py 拆分而出
 - `lark_cli_async.py` 异步封装（QProcess）；**Windows 必须 node 直调 run.js**（cmd/PowerShell 会拆解 `--data` JSON 的双引号和 URL 的 `&`，报 invalid JSON）
+- **`event_store.py` 是本地事实层（v2.4）**：日程落 SQLite（`events.db`，与 config.json 同目录）。视图只从 store 读，`lark_cli_async` 只往 store 写。改渲染路径时不要绕过 store 直接读 `self.events`——`self.events` 是 store 当前窗口的投影，不是事实源
+  - `upsert_many(conn, events, range_start, range_end)`：幂等写入 + 记录已同步区间；`prune` 只删「与本次区间重叠」或「更早开始的重复系列」且快照里没有的行。**非 list 载荷（None/dict）一律不动库**，防止坏响应清空缓存
+  - `query_range` 的语义是**区间重叠**（`end_ts >= start AND start_ts <= end`），且**始终带出更早开始的重复系列**——否则重复日程在后续月份不展开
+  - `read_range` / `store_snapshot` / `is_covered` 是给 UI 用的安全壳：库出问题返回空 / 0 / False，不允许把异常抛进 Qt 槽
+  - 损坏库自愈在 `connect()` 里做：重命名为 `.corrupt-<ts>` 后重建，绝不阻塞启动
+  - 全天日程的 `end_ts` 归一成当天 23:59:59，否则当天 10:00 发起的区间查询会漏掉它（`end_ts == start_ts`）
+- **`utils.view_range(view_mode, current_date)` 是拉取区间的唯一真源**：月视图 = 本月 ±7 天（月历网格最多前后各溢 6 天），周视图 = 周一~周日 ±7 天。**不要再按「整月」拉取**——周视图跨月那一周会缺列（v2.3 的 D2 bug）
+- `_set_view_mode` 切视图时先查 `event_store.is_covered`，已同步过的窗口只从本地重绘，不再起 node 进程；未覆盖才 `refresh_events()`
+- 搜索是本地优先：`SearchDialog` 先用 `event_store.read_range` 出结果（离线可用），服务端结果回来后按 `event_id` 合并、服务端覆盖本地
 - 月历 7 列等宽约定：GridEventLabel/DayCell 水平 sizePolicy=Ignored，表头用 QGridLayout，勿让内容撑宽列
 - **日格样式名是拼接出来的**：`DayCell._refresh_object_name()` 按「基础名(dayCell/dayCellOther/dayCellToday) + Drop > Cursor > Hover」合成，改样式时这 6 个新后缀（`…Drop` / `…Cursor`）两套主题都要补
 - **日格可容纳条数按实际高度算**：`widgets.visible_event_count(grid_font, cell_height, reserve_more)`，窗口压矮或 6 行月份时自动收缩，但必须给「+N更多」留一行（`_MORE_ROW_HEIGHT`）——它是隐藏日程唯一的入口，被挤出去就再也点不开了；`DayCell.resizeEvent` 会重算
@@ -36,6 +45,9 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - **日程字号可调（v2.1.6）**：`config.grid_font_size`（月视图，默认 10）/ `config.list_font_size`（周·列表视图，默认 13），范围 9-24px，设置页「外观」Tab 两个滑块；实现方式是 `styles._event_font_rules()` 生成覆盖规则**追加在主题 QSS 末尾**（同名选择器后定义者生效），不改两套大模板；时间与次要信息由主字号派生（月视图 -1、列表 -2）。改字号必须同步放开 `QFrame#gridEvent` 的 min/max-height（行高 = 字号 +6/+8），否则大字号会被裁；字号变化后 `MainWindow._on_settings_changed` 会 `_render_active_view()` 重建视图
 
 ## 当前状态
+- **v2.4.0 本地事实层（已实现，待发布）**：新增 `event_store.py`（SQLite）+ `utils.view_range`，主窗口改为「先本地出图 → 再远端校准」；同时修掉周视图跨月漏日程（D2）、离线不可用（D1/D7）、全量覆盖非增量（D3）
+  - 测试：`tests/test_event_store.py`（29 例，含幂等、区间重叠、prune 边界、重复系列、损坏自愈、LIKE 转义）、`tests/test_view_range.py`（30 例，含 2026/2027 全年 24 个月的网格覆盖性质测试）、`tests/test_local_first.py`（11 例，主窗口集成：缓存先出图、重启不丢、离线保留视图、跨月双侧显示、已同步窗口不联网、离线搜索）
+  - 全量 **331 例**，`ruff check` 全绿
 - 认证仅 lark-cli 用户授权（App ID/Secret 模式已移除，feishu_api.py 已删除）
 - 已重构：拆分 calendar_widget.py 为 main_window + month_view + week_view + widgets + dialogs；新增月/周双视图、拖拽改期、颜色分类、重复日程、Markdown 子任务
 - v2.1 体验改造：启动零模态弹窗与登录态持久化（状态机面板替代登录框）；Toast/ConfirmDialog/内联红字替代全部 QMessageBox；头部按钮收敛为 月|周、＋、⟳、⋯、—、✕（搜索/导出/置顶/主题/登录/设置收入 ⋯ 菜单）；styles.py 按飞书设计令牌整体重写（默认浅色）；设置页改 4 Tab + 异步状态检测

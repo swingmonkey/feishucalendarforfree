@@ -15,7 +15,7 @@ from lark_cli_args import (
     delete_event_args,
     search_event_args,
 )
-from utils import event_sort_key, get_local_tz_name, month_range, wide_range
+from utils import event_sort_key, get_local_tz_name, month_range, view_range, wide_range
 
 # Default timeout for a single lark-cli QProcess invocation (milliseconds).
 # lark-cli spawns node and makes HTTPS calls; 45 s is generous but prevents
@@ -186,14 +186,20 @@ class LarkCliAsync(QObject):
         # Start the watchdog *after* process.start() so it only counts from launch.
         timeout_timer.start(_PROCESS_TIMEOUT_MS)
 
-    def fetch_agenda(self, date: datetime, monthly: bool = False):
+    def fetch_agenda(self, date: datetime, monthly: bool = False, view_mode: str | None = None):
         """Fetch calendar agenda for a date range.
 
         Args:
             date: Reference date.
             monthly: If True, fetch the entire month containing date.
+            view_mode: When given (``"month"`` / ``"week"``), the range is
+                derived from what the view renders via ``utils.view_range``.
+                This is what stops a week spanning two months from showing an
+                empty column for the neighbouring month.
         """
-        if monthly:
+        if view_mode:
+            start, end = view_range(view_mode, date)
+        elif monthly:
             start, end = month_range(date)
         else:
             start = date.replace(hour=0, minute=0, second=0, microsecond=0)
