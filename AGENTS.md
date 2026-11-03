@@ -43,6 +43,13 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - **托盘摘要是「不打开窗口也要能看」的层**：`MainWindow._refresh_ambient()` 同时刷新 tooltip 与今日条，由 `tray_summary_changed` 信号推给 `main.py`。托盘菜单顶部那行是 disabled QAction——它只是信息，不能被点
 - `today_bar.py` 是**独立顶层窗口**（无 parent、无边框、置顶、可拖），吃不到 application 级 QSS，换肤必须走 `apply_theme()`；点掉窄条 = 关闭该功能（写 `today_bar_enabled=False`），否则每次重启又冒出来等于没关
 - 提醒相关配置全部由 `config.json` 驱动，设置页「提醒」Tab 改完下一次心跳即生效，**不需要重启**
+- **`stats.py` 只算不画，`stats_dialog.py` 只画不算**：统计的输入永远是「事件列表 + 显式区间」，禁止在 stats 里读 clock 或 store；面板打开不触发同步，全部数字来自本地库
+  - 全天日程计入「事项数」但不计入时长——否则一个公司假日就能把「会议小时」拉满
+  - 热力图分档是 `HEAT_THRESHOLDS = (60, 120, 240)` + `heat_level()`，0 分钟必须返回 0（空白），别把阈值写成从 0 开始
+  - `longest_streak` 必须校验日期相邻：只数条目会把 1/2/3/5 号算成连续 4 天
+- **`exporter.py` 是唯一允许写用户目录的地方**，三条约束：原子写（temp + `os.replace`）、失败只记日志绝不弹窗、`export_last_run` 在落盘成功后才推进（失败下次重试而不是跳过一整天）
+  - 定时检查在 `MainWindow._setup_export_timer`（启动 15 秒后首查 + 每 30 分钟），判定逻辑全在 `exporter.is_due`
+  - 导出的是滚动窗口（回看 7 天 / 前瞻 30 天），**不是全量备份**，UI 文案别写成「备份」
 - 月历 7 列等宽约定：GridEventLabel/DayCell 水平 sizePolicy=Ignored，表头用 QGridLayout，勿让内容撑宽列
 - **日格样式名是拼接出来的**：`DayCell._refresh_object_name()` 按「基础名(dayCell/dayCellOther/dayCellToday) + Drop > Cursor > Hover」合成，改样式时这 6 个新后缀（`…Drop` / `…Cursor`）两套主题都要补
 - **日格可容纳条数按实际高度算**：`widgets.visible_event_count(grid_font, cell_height, reserve_more)`，窗口压矮或 6 行月份时自动收缩，但必须给「+N更多」留一行（`_MORE_ROW_HEIGHT`）——它是隐藏日程唯一的入口，被挤出去就再也点不开了；`DayCell.resizeEvent` 会重算
@@ -56,9 +63,11 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - **日程字号可调（v2.1.6）**：`config.grid_font_size`（月视图，默认 10）/ `config.list_font_size`（周·列表视图，默认 13），范围 9-24px，设置页「外观」Tab 两个滑块；实现方式是 `styles._event_font_rules()` 生成覆盖规则**追加在主题 QSS 末尾**（同名选择器后定义者生效），不改两套大模板；时间与次要信息由主字号派生（月视图 -1、列表 -2）。改字号必须同步放开 `QFrame#gridEvent` 的 min/max-height（行高 = 字号 +6/+8），否则大字号会被裁；字号变化后 `MainWindow._on_settings_changed` 会 `_render_active_view()` 重建视图
 
 ## 当前状态
+- **v2.6.0 洞察与可编程导出（已实现）**：新增 `stats.py` + `stats_dialog.py`（月热力图 / 负荷摘要 / 星期分布）、`exporter.py`（定时 JSON+CSV 原子写）；README 补「隐私说明」与「实验性功能」
+  - 测试：`tests/test_stats.py`（16）、`tests/test_exporter.py`（14）、`tests/test_stats_ui.py`（9）
+  - 全量 **409 例**，`ruff check` 全绿
 - **v2.5.0 提醒与常驻形态（已实现）**：新增 `reminder.py`（会前提醒 / 冲突 / 超载 / 免打扰）+ `today_bar.py`（桌面窄条），托盘标题与菜单顶行动态化
   - 测试：`tests/test_reminder.py`（27 例，纯逻辑 + 服务去重/静默/降级）、`tests/test_ambient.py`（12 例，托盘摘要信号、今日条开关/换肤/关闭、通知降级、提醒配置校验）
-  - 全量 **370 例**，`ruff check` 全绿
 - **v2.4.0 本地事实层（已实现）**：新增 `event_store.py`（SQLite）+ `utils.view_range`，主窗口改为「先本地出图 → 再远端校准」；同时修掉周视图跨月漏日程（D2）、离线不可用（D1/D7）、全量覆盖非增量（D3）
   - 测试：`tests/test_event_store.py`（29 例，含幂等、区间重叠、prune 边界、重复系列、损坏自愈、LIKE 转义）、`tests/test_view_range.py`（30 例，含 2026/2027 全年 24 个月的网格覆盖性质测试）、`tests/test_local_first.py`（11 例，主窗口集成：缓存先出图、重启不丢、离线保留视图、跨月双侧显示、已同步窗口不联网、离线搜索）
   - 全量 **331 例**，`ruff check` 全绿

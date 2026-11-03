@@ -43,6 +43,7 @@ def w(cfg):
     for proc in win.lark_cli.findChildren(QProcess):
         proc.kill()
         proc.waitForFinished(1000)
+    win.dispose()
     win.deleteLater()
     app.processEvents()
 

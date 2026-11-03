@@ -70,7 +70,7 @@ def win(cfg, store, calls):
     window = MainWindow(cfg, store=store)
     window.current_date = datetime(2026, 11, 15)
     yield window
-    window.refresh_timer.stop()
+    window.dispose()
     window.deleteLater()
     app.processEvents()
 

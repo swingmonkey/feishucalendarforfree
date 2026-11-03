@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -163,6 +164,43 @@ class SettingsDialog(QDialog):
         stats_hint.setWordWrap(True)
         stats_layout.addWidget(stats_hint)
         layout.addWidget(stats_group)
+
+        export_group = QGroupBox("定时导出")
+        export_layout = QVBoxLayout(export_group)
+        export_layout.setSpacing(8)
+
+        schedule_row = QHBoxLayout()
+        schedule_row.addWidget(QLabel("频率："))
+        self.export_combo = QComboBox()
+        for label, value in (("关闭", "off"), ("每天一次", "daily"), ("每周一次", "weekly")):
+            self.export_combo.addItem(label, value)
+        index = self.export_combo.findData(str(self.config.get("export_schedule", "off")))
+        self.export_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.export_combo.currentIndexChanged.connect(self._on_export_schedule_changed)
+        schedule_row.addWidget(self.export_combo)
+        schedule_row.addStretch()
+        export_layout.addLayout(schedule_row)
+
+        dir_row = QHBoxLayout()
+        self.export_dir_btn = QPushButton("选择目录…")
+        self.export_dir_btn.setObjectName("secondaryBtn")
+        self.export_dir_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.export_dir_btn.clicked.connect(self._on_pick_export_dir)
+        dir_row.addWidget(self.export_dir_btn)
+        self.export_dir_label = QLabel(self._export_dir_text())
+        self.export_dir_label.setObjectName("detailLabel")
+        self.export_dir_label.setWordWrap(True)
+        dir_row.addWidget(self.export_dir_label, 1)
+        export_layout.addLayout(dir_row)
+
+        export_hint = QLabel(
+            "每次写出 events-YYYYMMDD.json 和 .csv（回看 7 天 / 前瞻 30 天），"
+            "可被表格、脚本或笔记工具直接读取。写盘失败只记日志，不会打断使用。"
+        )
+        export_hint.setObjectName("detailLabel")
+        export_hint.setWordWrap(True)
+        export_layout.addWidget(export_hint)
+        layout.addWidget(export_group)
 
         layout.addStretch()
         return tab
@@ -677,6 +715,26 @@ class SettingsDialog(QDialog):
         else:
             self.update_result_label.setText(f"已是最新版本（v{updater.APP_VERSION}）")
             self.update_result_label.setStyleSheet("color: #2EA121;")
+
+    def _export_dir_text(self) -> str:
+        path = str(self.config.get("export_dir", "") or "").strip()
+        return path or "未选择目录（选择后才会导出）"
+
+    def _on_export_schedule_changed(self, _index):
+        value = self.export_combo.currentData()
+        if value is None:
+            return
+        self.config.set("export_schedule", str(value))
+        self.settings_changed.emit()
+
+    def _on_pick_export_dir(self):
+        start_dir = str(self.config.get("export_dir", "") or "") or str(Path.home())
+        chosen = QFileDialog.getExistingDirectory(self, "选择导出目录", start_dir)
+        if not chosen:
+            return
+        self.config.set("export_dir", chosen)
+        self.export_dir_label.setText(self._export_dir_text())
+        self.settings_changed.emit()
 
     def _on_theme_changed(self):
         if self.light_radio.isChecked():

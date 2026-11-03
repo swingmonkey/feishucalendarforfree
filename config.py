@@ -75,6 +75,11 @@ class Config:
         "today_bar_enabled": False,
         "today_bar_x": -1,
         "today_bar_y": -1,
+        # ── 定时导出（Phase 3）──
+        # off / daily / weekly：把滚动窗口内的日程写成 JSON + CSV 到 export_dir
+        "export_schedule": "off",
+        "export_dir": "",
+        "export_last_run": "",
     }
 
     _POSITIVE_INT_KEYS = {"window_width", "window_height", "auto_refresh_interval"}
@@ -86,6 +91,7 @@ class Config:
     _ENUMS = {
         "theme": {"dark", "light"},
         "view_mode": {"month", "week"},
+        "export_schedule": {"off", "daily", "weekly"},
     }
     # 提醒相关的数值区间：(下限, 上限)。超出即夹紧，非法值回退默认。
     _RANGED_INT_KEYS = {
@@ -193,6 +199,9 @@ class Config:
             elif key in {"calendar_id", "auth_user"}:
                 if not isinstance(value, str) or (key == "calendar_id" and not value.strip()):
                     value = default
+            elif key in {"export_dir", "export_last_run"}:
+                if not isinstance(value, str):
+                    value = ""
             clean[key] = value
         return clean
 

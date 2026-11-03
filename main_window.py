@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 import event_store
+import exporter
 import reminder
 from add_event_dialog import AddEventDialog
 from app_icon import create_app_icon, create_app_logo_pixmap
@@ -52,6 +53,7 @@ from models_event import parse_event_time, set_event_color
 from month_view import MonthView
 from search_dialog import SearchDialog
 from settings_dialog import SettingsDialog
+from stats_dialog import StatsDialog
 from styles import DEFAULT_GRID_FONT, DEFAULT_LIST_FONT, get_theme
 from today_bar import TodayBar
 from ui_common import ConfirmDialog, Toast
@@ -210,6 +212,7 @@ class MainWindow(QMainWindow):
         self.reminder.tick.connect(self._refresh_ambient)
         self.reminder.start()
         self._apply_today_bar()
+        self._setup_export_timer()
 
     # ── Window setup ──
 
@@ -380,6 +383,8 @@ class MainWindow(QMainWindow):
         menu.setObjectName("appMenu")
         search_action = menu.addAction("搜索日程")
         search_action.triggered.connect(self._on_search)
+        stats_action = menu.addAction("日程统计")
+        stats_action.triggered.connect(self._on_stats)
         export_action = menu.addAction("导出到 Excel")
         export_action.triggered.connect(self._on_export)
         menu.addSeparator()
@@ -964,6 +969,23 @@ class MainWindow(QMainWindow):
         self.refresh_timer.timeout.connect(self.refresh_events)
         self.refresh_timer.start(self.config.get("auto_refresh_interval", 300) * 1000)
 
+    def _setup_export_timer(self):
+        """定时导出：启动 15 秒后首查，此后每 30 分钟查一次是否到期。
+
+        判定与写盘都在 ``exporter`` 里，失败只记日志 —— 定时任务不能在
+        早上 8 点弹一个没人看得懂的错误框。
+        """
+        self.export_timer = QTimer(self)
+        self.export_timer.setInterval(30 * 60 * 1000)
+        self.export_timer.timeout.connect(self._run_scheduled_export)
+        self.export_timer.start()
+        QTimer.singleShot(15_000, self._run_scheduled_export)
+
+    def _run_scheduled_export(self):
+        written = exporter.run_if_due(self._store, self.config)
+        if written:
+            self.status_label.setText(f"已导出 {written[0].name} 到 {written[0].parent}")
+
     # ── Ambient surfaces (tray title / today bar) ──
 
     def _today_events(self) -> list:
@@ -1217,6 +1239,15 @@ class MainWindow(QMainWindow):
     def _on_search(self):
         dialog = SearchDialog(self.lark_cli, self, store=self._store)
         dialog.event_selected.connect(self._on_search_result_selected)
+        dialog.exec()
+
+    def _on_stats(self):
+        """统计面板：只读本地库，打开即出图，不触发同步。"""
+        dialog = StatsDialog(
+            self._store,
+            theme=self.config.get("theme", "light"),
+            parent=self,
+        )
         dialog.exec()
 
     def _on_search_result_selected(self, event: dict):
@@ -1496,6 +1527,28 @@ class MainWindow(QMainWindow):
         self.config.set("window_height", self.height())
         self.config.set("window_x", pos.x())
         self.config.set("window_y", pos.y())
+
+    # ── Teardown ──
+
+    def dispose(self):
+        """Stop background work before the window is destroyed.
+
+        Timers and the reminder service are Qt children of this window, so
+        destroying the window first (``deleteLater``) leaves their Python
+        wrappers dangling and Qt complains about direct deletion. Detaching
+        them hands ownership back to Python, which is the order that works.
+        """
+        for name in ("refresh_timer", "export_timer"):
+            timer = getattr(self, name, None)
+            if timer is not None:
+                timer.stop()
+        service = getattr(self, "reminder", None)
+        if service is not None:
+            service.stop()
+            service.setParent(None)
+        if self._today_bar is not None:
+            self._today_bar.hide()
+            self._today_bar.close()
 
     def closeEvent(self, ev):
         pos = self.pos()

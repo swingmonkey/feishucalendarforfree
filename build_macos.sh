@@ -39,6 +39,9 @@ fi
 --hidden-import event_store \
     --hidden-import reminder \
     --hidden-import today_bar \
+    --hidden-import stats \
+    --hidden-import stats_dialog \
+    --hidden-import exporter \
     --hidden-import lark_cli \
     --hidden-import lark_cli_args \
     --hidden-import lark_cli_async \

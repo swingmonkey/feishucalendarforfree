@@ -38,6 +38,7 @@ class SearchDialog(QDialog):
         # 服务端结果不可用时置 True：结果数后面要标明"本地"，
         # 否则用户会以为搜到的就是全部。
         self._offline = False
+        self._signals_detached = False
         self.setWindowTitle("搜索日程")
         self.setFixedSize(420, 520)
         self._setup_ui()
@@ -178,9 +179,16 @@ class SearchDialog(QDialog):
             self.accept()
 
     def closeEvent(self, ev):
-        try:
-            self._lark_cli.search_fetched.disconnect(self._on_search_fetched)
-            self._lark_cli.fetch_error.disconnect(self._on_fetch_error)
-        except RuntimeError:
-            pass
+        # 收尾阶段 lark_cli 可能已经被销毁（父窗口析构 / 进程退出）。
+        # 对已删除的 C++ 对象、或已断开过的连接再 disconnect 不会抛异常，
+        # 只会留下一条 libpyside 警告，所以要同时挡住"对象没了"和"关过两次"。
+        import shiboken6
+
+        if not self._signals_detached and shiboken6.isValid(self._lark_cli):
+            self._signals_detached = True
+            try:
+                self._lark_cli.search_fetched.disconnect(self._on_search_fetched)
+                self._lark_cli.fetch_error.disconnect(self._on_fetch_error)
+            except RuntimeError:
+                pass
         super().closeEvent(ev)

@@ -56,16 +56,7 @@ def win(cfg, store, monkeypatch):
     window = MainWindow(cfg, store=store)
     window.refresh_timer.stop()
     yield window
-    window.refresh_timer.stop()
-    window.reminder.stop()
-    # 主动断开父子关系再删，避免 C++ 已随父对象销毁、Python 包装器又被 GC 时
-    # 触发 "shared QObject was deleted directly" 噪音（会掩盖真正的内存问题）
-    window.reminder.setParent(None)
-    window.reminder.deleteLater()
-    if window._today_bar is not None:
-        window._today_bar.hide()
-        window._today_bar.close()
-        window._today_bar.deleteLater()
+    window.dispose()
     window.deleteLater()
     app.processEvents()
 

@@ -16,6 +16,14 @@ def pytest_sessionstart(session):
 
 def pytest_sessionfinish(session, exitstatus):
     global _app
+    if _app is not None:
+        # 先关顶层窗口：对话框的 closeEvent 会等后台线程退出（登录检测、
+        # 使用统计），直接让 GC 砸掉还在跑 QThread 的窗口会触发 Qt 的
+        # "shared QObject was deleted directly" 警告，掩盖真正的问题。
+        for widget in _app.topLevelWidgets():
+            widget.close()
+            widget.deleteLater()
+        _app.processEvents()
     gc.collect()
     _app = None
     gc.collect()

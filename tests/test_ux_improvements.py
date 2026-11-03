@@ -53,7 +53,11 @@ def w(app, cfg, monkeypatch):
     """主窗口：屏蔽真实网络与桌面快捷方式副作用。"""
     monkeypatch.setattr(MainWindow, "refresh_events", lambda self: None)
     monkeypatch.setattr(main, "_ensure_desktop_shortcut", lambda config: None)
-    return MainWindow(cfg)
+    window = MainWindow(cfg)
+    yield window
+    window.dispose()
+    window.deleteLater()
+    app.processEvents()
 
 
 def _event(**over):
