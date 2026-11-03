@@ -10,6 +10,9 @@
 
 **Tech Stack:** 保持 Python 3.10+ / PySide6 / 标准库 `sqlite3`，不引入新依赖。
 
+> **实施进度**：Phase 1（v2.4.0）已实现并本地提交（`caa21a1`），331 例测试全绿。
+> Phase 2–4 未开始。
+
 ---
 
 ## 一、token-monitor 的设计内核（值得迁移的部分）
