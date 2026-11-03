@@ -264,15 +264,19 @@ class TrayApp(QApplication):
         self.quit()
 
 
-def _ensure_desktop_shortcut(config):
+def _ensure_desktop_shortcut(config, desktop: Path | None = None):
     """首次运行时自动在桌面创建快捷方式（Windows .lnk / macOS symlink）。
 
     用 config 标记 desktop_shortcut_created，只创建一次；失败不阻塞启动。
     快捷方式已存在（例如手动删除标记）时直接补标记，不重复创建。
+
+    标记**只在真的建出东西之后**才写。之前无论成败都写，冻结包里路径判断
+    必然落空，于是「标记已完成、桌面空无一物、以后再也不重试」——实机部署
+    时踩到的就是这个。
     """
     if config.get("desktop_shortcut_created"):
         return
-    desktop = Path.home() / "Desktop"
+    desktop = desktop or (Path.home() / "Desktop")
     if not desktop.exists():
         return
     try:
@@ -287,30 +291,45 @@ def _ensure_desktop_shortcut(config):
         if candidate is not None and candidate.exists():
             config.set("desktop_shortcut_created", True)
             return
+        created = False
         if sys.platform == "win32":
-            _create_windows_shortcut(desktop)
+            created = _create_windows_shortcut(desktop)
         elif sys.platform == "darwin":
-            _create_macos_shortcut(desktop)
-        config.set("desktop_shortcut_created", True)
+            created = _create_macos_shortcut(desktop)
+        if created:
+            config.set("desktop_shortcut_created", True)
     except Exception:
         # 创建失败不阻塞启动，下次运行会重试
         pass
 
 
-def _create_windows_shortcut(desktop: Path):
-    """用 PowerShell COM 创建 .lnk，指向 pythonw + main.py（无控制台窗口）。"""
+def _windows_shortcut_target() -> tuple[Path, str, Path]:
+    """Return (target executable, arguments, working directory) for the .lnk.
+
+    冻结包里 ``__file__`` 指向打包进去的 pyz，那个路径不存在于磁盘，
+    必须以 EXE 自身为目标、不带参数；源码运行时才需要 pythonw + main.py。
+    """
+    if getattr(sys, "frozen", False):
+        target = Path(sys.executable)
+        return target, "", target.parent
     script = Path(__file__).resolve()
     target = Path(sys.executable).with_name("pythonw.exe")
     if not target.exists():
         target = Path(sys.executable)
+    return target, f'"{script}"', script.parent
+
+
+def _create_windows_shortcut(desktop: Path) -> bool:
+    """用 PowerShell COM 创建 .lnk，指向 pythonw + main.py（无控制台窗口）。"""
+    target, arguments, workdir = _windows_shortcut_target()
     lnk = desktop / "飞书日程.lnk"
 
     ps = (
         "$ws = New-Object -ComObject WScript.Shell" + "\n"
         + f"$s = $ws.CreateShortcut('{lnk}')" + "\n"
         + f"$s.TargetPath = '{target}'" + "\n"
-        + f"$s.Arguments = '\"{script}\"'" + "\n"
-        + f"$s.WorkingDirectory = '{script.parent}'" + "\n"
+        + f"$s.Arguments = '{arguments}'" + "\n"
+        + f"$s.WorkingDirectory = '{workdir}'" + "\n"
         + "$s.Save()" + "\n"
     )
     # 写入临时 .ps1（UTF-8 with BOM），避免命令行中文编码问题
@@ -326,21 +345,41 @@ def _create_windows_shortcut(desktop: Path):
         )
     finally:
         os.unlink(tmp)
+    return True
 
 
-def _create_macos_shortcut(desktop: Path):
+def _frozen_bundle() -> Path | None:
+    """Locate the .app bundle that contains this frozen executable."""
+    exe = Path(sys.executable).resolve()
+    for parent in exe.parents:
+        if parent.suffix == ".app":
+            return parent
+    return None
+
+
+def _create_macos_shortcut(desktop: Path) -> bool:
     """macOS：优先软链 .app，否则软链启动脚本 .command。"""
+    if getattr(sys, "frozen", False):
+        # 冻结包就装在 .app 里，链自己即可——不能去源码目录找 dist/。
+        bundle = _frozen_bundle()
+        if bundle is not None:
+            link = desktop / f"{bundle.name}"
+            if not link.exists():
+                link.symlink_to(bundle)
+            return True
     app = Path(__file__).parent / "dist" / "飞书日程.app"
     if app.exists():
         link = desktop / "飞书日程.app"
         if not link.exists():
             link.symlink_to(app)
-        return
+        return True
     cmd = Path(__file__).parent / "启动飞书日程.command"
     if cmd.exists():
         link = desktop / "启动飞书日程.command"
         if not link.exists():
             link.symlink_to(cmd)
+        return True
+    return False
 
 
 def main():
