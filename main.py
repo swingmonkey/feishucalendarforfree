@@ -29,6 +29,13 @@ def _build_tray_menu(widget, show_callback, quit_callback, parent=None):
     menu = QMenu(parent)
     menu.setObjectName("trayMenu")
 
+    # 托盘菜单顶部常驻一行今日摘要：不打开窗口也能知道「下一条是什么」。
+    # 禁用态保证它只是信息，不会被误点。
+    header_action = QAction("今天没有日程", menu)
+    header_action.setEnabled(False)
+    menu.addAction(header_action)
+    menu.addSeparator()
+
     show_action = QAction("显示日程", menu)
     show_action.triggered.connect(show_callback)
     menu.addAction(show_action)
@@ -70,7 +77,7 @@ def _build_tray_menu(widget, show_callback, quit_callback, parent=None):
     menu.aboutToShow.connect(
         lambda: pin_action.setChecked(bool(widget._pinned))
     )
-    return menu, pin_action
+    return menu, pin_action, header_action
 
 
 def _set_windows_app_user_model_id():
@@ -140,9 +147,9 @@ class TrayApp(QApplication):
 
     def _setup_tray(self):
         self.tray = QSystemTrayIcon(self.icon, self)
-        self.tray.setToolTip("飞书日程 - 点击显示")
+        self.tray.setToolTip("飞书日程")
 
-        menu, self.pin_action = _build_tray_menu(
+        menu, self.pin_action, self.tray_header_action = _build_tray_menu(
             self.widget,
             self._show_widget,
             self._quit,
@@ -152,6 +159,32 @@ class TrayApp(QApplication):
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._on_tray_activated)
         self.tray.show()
+
+        # 主窗口决定「什么时候该说什么」，托盘只负责把话说出去
+        self.widget.tray_summary_changed.connect(self._on_tray_summary)
+        self.widget.notify_requested.connect(self._on_notify_requested)
+
+    def _on_tray_summary(self, text: str):
+        if not text:
+            return
+        self.tray.setToolTip(f"飞书日程 · {text}")
+        self.tray_header_action.setText(text)
+
+    def _on_notify_requested(self, title: str, body: str):
+        """System notification when the tray supports it, in-app Toast otherwise.
+
+        A headless/CI run has no tray, so falling back to the window Toast keeps
+        the reminder observable instead of silently dropped.
+        """
+        if self.tray is not None and self.tray.isVisible() and QSystemTrayIcon.supportsMessages():
+            self.tray.showMessage(
+                title,
+                body,
+                QSystemTrayIcon.MessageIcon.Information,
+                8000,
+            )
+            return
+        self.widget.toast.show_message(f"{title}：{body}", kind="info", duration=6000)
 
     def _on_tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -226,6 +259,7 @@ class TrayApp(QApplication):
         self.config.set("window_y", pos.y())
         self.config.set("window_width", self.widget.width())
         self.config.set("window_height", self.widget.height())
+        self.widget._save_today_bar_geometry()
         self.tray.hide()
         self.quit()
 

@@ -19,7 +19,7 @@ It does **not** touch the Feishu read/write layer
 import shutil
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QMouseEvent, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 import event_store
+import reminder
 from add_event_dialog import AddEventDialog
 from app_icon import create_app_icon, create_app_logo_pixmap
 from config import Config
@@ -52,6 +53,7 @@ from month_view import MonthView
 from search_dialog import SearchDialog
 from settings_dialog import SettingsDialog
 from styles import DEFAULT_GRID_FONT, DEFAULT_LIST_FONT, get_theme
+from today_bar import TodayBar
 from ui_common import ConfirmDialog, Toast
 from utils import view_range
 from week_view import WeekView
@@ -141,6 +143,11 @@ class _CornerResizeHandle(QWidget):
 class MainWindow(QMainWindow):
     """Borderless, always-on-top desktop calendar with month/week views."""
 
+    # 托盘通知由 MainWindow 决策、由 TrayApp 展示：主窗口不该知道托盘长什么样，
+    # 但没有托盘的环境（测试、无托盘桌面）也不该炸。
+    notify_requested = Signal(str, str)      # title, body
+    tray_summary_changed = Signal(str)       # 托盘 tooltip 文案
+
     def __init__(self, config: Config, parent=None, store=None):
         super().__init__(parent)
         self.config = config
@@ -161,6 +168,7 @@ class MainWindow(QMainWindow):
         self._first_load_done = False
         self._auth_mode = "welcome"
         self._update_dialog = None
+        self._today_bar: TodayBar | None = None
         self._resize_handles: dict[str, _CornerResizeHandle] = {}
         self._resize_edges: str | None = None
         self._resize_start: QPoint | None = None
@@ -196,6 +204,12 @@ class MainWindow(QMainWindow):
         # 启动直接拉取日程；加载过程用内联面板反馈，不弹任何模态框
         self._show_loading()
         self.refresh_events()
+        # 提醒心跳：30 秒一次，只读本地库，不产生任何网络请求
+        self.reminder = reminder.ReminderService(self._store, self.config, parent=self)
+        self.reminder.notified.connect(self._on_reminder_notified)
+        self.reminder.tick.connect(self._refresh_ambient)
+        self.reminder.start()
+        self._apply_today_bar()
 
     # ── Window setup ──
 
@@ -888,6 +902,9 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(qss)
         if hasattr(self, "more_btn"):
             self.more_btn.setIcon(_create_more_icon(theme))
+        # 今日条是独立顶层窗口，吃不到 application 级样式表，得单独换肤
+        if getattr(self, "_today_bar", None) is not None:
+            self._today_bar.apply_theme(theme)
 
     def _toggle_theme(self):
         cur = self.config.get("theme", "light")
@@ -934,6 +951,7 @@ class MainWindow(QMainWindow):
         )
         self._apply_theme()
         self.refresh_timer.setInterval(self.config.get("auto_refresh_interval", 300) * 1000)
+        self._apply_today_bar()
         if fonts_changed:
             # 日格行高随字号变化，可容纳的日程条数需重算 → 重建当前视图
             self._render_active_view()
@@ -945,6 +963,62 @@ class MainWindow(QMainWindow):
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.refresh_events)
         self.refresh_timer.start(self.config.get("auto_refresh_interval", 300) * 1000)
+
+    # ── Ambient surfaces (tray title / today bar) ──
+
+    def _today_events(self) -> list:
+        """Today's events straight from the local store (never hits the network)."""
+        now = datetime.now()
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return event_store.read_range(
+            self._store, day_start, day_start.replace(hour=23, minute=59, second=59)
+        )
+
+    def _refresh_ambient(self):
+        """Keep the tray title and today bar current without any I/O beyond SQLite."""
+        now = datetime.now()
+        events = self._today_events()
+        self.tray_summary_changed.emit(reminder.tray_summary(events, now))
+        if self._today_bar is not None and self._today_bar.isVisible():
+            self._today_bar.set_events(events, now)
+
+    def _on_reminder_notified(self, title: str, body: str):
+        self.notify_requested.emit(title, body)
+
+    def _apply_today_bar(self):
+        if not self.config.get("today_bar_enabled", False):
+            if self._today_bar is not None:
+                self._today_bar.hide()
+            return
+        if self._today_bar is None:
+            self._today_bar = TodayBar(dark=self.config.get("theme") == "dark")
+            self._today_bar.activated.connect(self._show_from_today_bar)
+            self._today_bar.closed.connect(self._on_today_bar_closed)
+        self._today_bar.apply_theme(self.config.get("theme", "light"))
+        self._today_bar.set_events(self._today_events(), datetime.now())
+        self._today_bar.restore_position(
+            int(self.config.get("today_bar_x", -1)),
+            int(self.config.get("today_bar_y", -1)),
+        )
+        self._today_bar.show()
+
+    def _on_today_bar_closed(self):
+        # 点掉窄条 = 关掉这个功能；否则每次重启它又冒出来，等于没关
+        self._save_today_bar_geometry()
+        self.config.set("today_bar_enabled", False)
+
+    def _save_today_bar_geometry(self):
+        if self._today_bar is None:
+            return
+        pos = self._today_bar.pos()
+        self.config.set("today_bar_x", pos.x())
+        self.config.set("today_bar_y", pos.y())
+
+    def _show_from_today_bar(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
 
     # ── Login ──
 
@@ -979,6 +1053,7 @@ class MainWindow(QMainWindow):
                 self._first_load_done = True
             self._show_calendar_view()
             self._render_active_view()
+            self._refresh_ambient()
         return count
 
     def refresh_events(self):
@@ -1021,6 +1096,7 @@ class MainWindow(QMainWindow):
         else:
             self.status_label.setText(f"共 {count} 项日程  |  更新于 {datetime.now().strftime('%H:%M')}")
         self.refresh_btn.setEnabled(True)
+        self._refresh_ambient()
 
     def _on_fetch_error(self, error_msg: str):
         self.refresh_btn.setEnabled(True)
@@ -1425,6 +1501,8 @@ class MainWindow(QMainWindow):
         pos = self.pos()
         self.config.set("window_x", pos.x())
         self.config.set("window_y", pos.y())
+        # 关主窗口是「收到托盘」而不是退出：窄条按设计继续留在桌面上
+        self._save_today_bar_geometry()
         super().closeEvent(ev)
 
 

@@ -1,21 +1,27 @@
-"""Settings dialog — tabbed (通用 / 账号 / 外观 / 关于).
+"""Settings dialog — tabbed (通用 / 提醒 / 账号 / 外观 / 关于).
 
 v2.1 调整：
 - 登录状态检测走后台线程，不再卡住界面；
 - 「检查更新」结果以内联文案呈现，不再弹 QMessageBox；
 - 登录成功后主动发出 settings_changed，主窗口立即重新拉取日程。
+
+v2.5 新增「提醒」页：会前提醒、冲突/超载告警、免打扰时段、今日条。
+提醒的时间参数全部由 config 驱动，主窗口的扫描服务下次心跳即生效，
+不需要重启应用。
 """
 
 import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtCore import Qt, QTime, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -25,6 +31,7 @@ from PySide6.QtWidgets import (
     QSlider,
     QSpinBox,
     QTabWidget,
+    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -62,6 +69,7 @@ class SettingsDialog(QDialog):
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_general_tab(), "通用")
+        self.tabs.addTab(self._build_reminder_tab(), "提醒")
         self.tabs.addTab(self._build_connection_tab(), "账号")
         self.tabs.addTab(self._build_appearance_tab(), "外观")
         self.tabs.addTab(self._build_about_tab(), "关于")
@@ -164,6 +172,155 @@ class SettingsDialog(QDialog):
         w.setStyleSheet("background: transparent;")
         w.setLayout(row_layout)
         return w
+
+    # ── Reminder tab ──
+
+    def _build_reminder_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        remind_group = QGroupBox("会前提醒")
+        remind_form = QFormLayout(remind_group)
+        self.reminder_check = QCheckBox("日程开始前提醒我")
+        self.reminder_check.setToolTip("通过系统通知提醒，同一场日程只提醒一次。")
+        self.reminder_check.setChecked(bool(self.config.get("reminder_enabled", True)))
+        self.reminder_check.stateChanged.connect(self._on_reminder_toggled)
+        remind_form.addRow(self.reminder_check)
+
+        self.lead_combo = QComboBox()
+        for minutes in (0, 5, 10, 15, 30, 60):
+            self.lead_combo.addItem(
+                "准时（开始时）" if minutes == 0 else f"{minutes} 分钟前", minutes
+            )
+        index = self.lead_combo.findData(int(self.config.get("reminder_lead_minutes", 10)))
+        self.lead_combo.setCurrentIndex(index if index >= 0 else 2)
+        self.lead_combo.setEnabled(self.reminder_check.isChecked())
+        self.lead_combo.currentIndexChanged.connect(self._on_lead_changed)
+        remind_form.addRow("提前量：", self.lead_combo)
+        layout.addWidget(remind_group)
+
+        alert_group = QGroupBox("自动告警")
+        alert_layout = QVBoxLayout(alert_group)
+        alert_layout.setSpacing(6)
+        self.conflict_check = QCheckBox("日程时间冲突时提醒（每天一次）")
+        self.conflict_check.setChecked(bool(self.config.get("conflict_alert_enabled", True)))
+        self.conflict_check.stateChanged.connect(self._on_conflict_toggled)
+        alert_layout.addWidget(self.conflict_check)
+
+        overload_row = QHBoxLayout()
+        self.overload_check = QCheckBox("单日会议总时长超过")
+        self.overload_check.setChecked(bool(self.config.get("overload_alert_enabled", True)))
+        self.overload_check.stateChanged.connect(self._on_overload_toggled)
+        self.overload_spin = QDoubleSpinBox()
+        self.overload_spin.setRange(1.0, 16.0)
+        self.overload_spin.setSingleStep(0.5)
+        self.overload_spin.setDecimals(1)
+        self.overload_spin.setSuffix(" 小时")
+        self.overload_spin.setValue(float(self.config.get("overload_threshold_hours", 6)))
+        self.overload_spin.setEnabled(self.overload_check.isChecked())
+        self.overload_spin.valueChanged.connect(self._on_overload_changed)
+        overload_row.addWidget(self.overload_check)
+        overload_row.addWidget(self.overload_spin)
+        overload_row.addStretch()
+        alert_layout.addLayout(overload_row)
+        overload_hint = QLabel("全天日程不计入时长；告警每天最多一次，不重复打扰。")
+        overload_hint.setObjectName("detailLabel")
+        overload_hint.setWordWrap(True)
+        alert_layout.addWidget(overload_hint)
+        layout.addWidget(alert_group)
+
+        quiet_group = QGroupBox("免打扰")
+        quiet_form = QFormLayout(quiet_group)
+        self.quiet_check = QCheckBox("在以下时段不发送任何提醒")
+        self.quiet_check.setChecked(bool(self.config.get("quiet_hours_enabled", False)))
+        self.quiet_check.stateChanged.connect(self._on_quiet_toggled)
+        quiet_form.addRow(self.quiet_check)
+
+        quiet_row = QHBoxLayout()
+        self.quiet_start_edit = QTimeEdit()
+        self.quiet_start_edit.setDisplayFormat("HH:mm")
+        self.quiet_start_edit.setTime(self._parse_time(self.config.get("quiet_start", "22:00")))
+        self.quiet_start_edit.timeChanged.connect(self._on_quiet_time_changed)
+        self.quiet_end_edit = QTimeEdit()
+        self.quiet_end_edit.setDisplayFormat("HH:mm")
+        self.quiet_end_edit.setTime(self._parse_time(self.config.get("quiet_end", "08:00")))
+        self.quiet_end_edit.timeChanged.connect(self._on_quiet_time_changed)
+        for widget in (self.quiet_start_edit, self.quiet_end_edit):
+            widget.setEnabled(self.quiet_check.isChecked())
+        quiet_row.addWidget(self.quiet_start_edit)
+        quiet_row.addWidget(QLabel("至"))
+        quiet_row.addWidget(self.quiet_end_edit)
+        quiet_row.addStretch()
+        quiet_form.addRow("时段：", self._wrap_row(quiet_row))
+        layout.addWidget(quiet_group)
+
+        bar_group = QGroupBox("今日条")
+        bar_layout = QVBoxLayout(bar_group)
+        self.today_bar_check = QCheckBox("在桌面显示今日日程窄条")
+        self.today_bar_check.setChecked(bool(self.config.get("today_bar_enabled", False)))
+        self.today_bar_check.stateChanged.connect(self._on_today_bar_toggled)
+        bar_layout.addWidget(self.today_bar_check)
+        bar_hint = QLabel("无边框置顶，可拖动到任意位置；点击窄条打开主窗口。")
+        bar_hint.setObjectName("detailLabel")
+        bar_hint.setWordWrap(True)
+        bar_layout.addWidget(bar_hint)
+        layout.addWidget(bar_group)
+
+        layout.addStretch()
+        return tab
+
+    @staticmethod
+    def _parse_time(value: str) -> QTime:
+        try:
+            hour, minute = str(value).split(":")
+            return QTime(int(hour), int(minute))
+        except (ValueError, AttributeError):
+            return QTime(22, 0)
+
+    def _on_reminder_toggled(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.config.set("reminder_enabled", enabled)
+        self.lead_combo.setEnabled(enabled)
+        self.settings_changed.emit()
+
+    def _on_lead_changed(self, _index):
+        minutes = self.lead_combo.currentData()
+        if minutes is None:
+            return
+        self.config.set("reminder_lead_minutes", int(minutes))
+        self.settings_changed.emit()
+
+    def _on_conflict_toggled(self, state):
+        self.config.set("conflict_alert_enabled", state == Qt.CheckState.Checked.value)
+        self.settings_changed.emit()
+
+    def _on_overload_toggled(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.config.set("overload_alert_enabled", enabled)
+        self.overload_spin.setEnabled(enabled)
+        self.settings_changed.emit()
+
+    def _on_overload_changed(self, value):
+        self.config.set("overload_threshold_hours", float(value))
+        self.settings_changed.emit()
+
+    def _on_quiet_toggled(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.config.set("quiet_hours_enabled", enabled)
+        self.quiet_start_edit.setEnabled(enabled)
+        self.quiet_end_edit.setEnabled(enabled)
+        self.settings_changed.emit()
+
+    def _on_quiet_time_changed(self, _time):
+        self.config.set("quiet_start", self.quiet_start_edit.time().toString("HH:mm"))
+        self.config.set("quiet_end", self.quiet_end_edit.time().toString("HH:mm"))
+        self.settings_changed.emit()
+
+    def _on_today_bar_toggled(self, state):
+        self.config.set("today_bar_enabled", state == Qt.CheckState.Checked.value)
+        self.settings_changed.emit()
 
     # ── Connection tab ──
 

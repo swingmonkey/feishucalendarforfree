@@ -58,6 +58,23 @@ class Config:
         # 该标记仅用于区分「首次使用」与「登录过期」两种引导文案。
         "auth_completed": False,
         "auth_user": "",
+        # ── 主动提醒（Phase 2）──
+        # 会前提醒：日程开始前 N 分钟弹一次系统通知，同一场只弹一次。
+        "reminder_enabled": True,
+        "reminder_lead_minutes": 10,
+        # 同时间段 ≥2 项日程 → 冲突提示（每天最多一次）
+        "conflict_alert_enabled": True,
+        # 单日非全天日程总时长超过阈值 → 超载提示（每天最多一次）
+        "overload_alert_enabled": True,
+        "overload_threshold_hours": 6,
+        # 免打扰时段（可跨零点，如 22:00-08:00）
+        "quiet_hours_enabled": False,
+        "quiet_start": "22:00",
+        "quiet_end": "08:00",
+        # 今日条：无边框置顶窄条，常驻显示今天剩余日程
+        "today_bar_enabled": False,
+        "today_bar_x": -1,
+        "today_bar_y": -1,
     }
 
     _POSITIVE_INT_KEYS = {"window_width", "window_height", "auto_refresh_interval"}
@@ -70,6 +87,42 @@ class Config:
         "theme": {"dark", "light"},
         "view_mode": {"month", "week"},
     }
+    # 提醒相关的数值区间：(下限, 上限)。超出即夹紧，非法值回退默认。
+    _RANGED_INT_KEYS = {
+        "reminder_lead_minutes": (0, 120),
+    }
+    _RANGED_FLOAT_KEYS = {
+        "overload_threshold_hours": (1.0, 24.0),
+    }
+    _BOOL_KEYS = {
+        "pin_to_top",
+        "auto_start",
+        "desktop_shortcut_created",
+        "check_update_on_start",
+        "auth_completed",
+        "usage_stats_enabled",
+        "reminder_enabled",
+        "conflict_alert_enabled",
+        "overload_alert_enabled",
+        "quiet_hours_enabled",
+        "today_bar_enabled",
+    }
+
+    @staticmethod
+    def _valid_hhmm(value, default: str) -> str:
+        """Accept ``HH:MM`` only; anything else falls back to the default."""
+        if not isinstance(value, str):
+            return default
+        parts = value.strip().split(":")
+        if len(parts) != 2:
+            return default
+        try:
+            hour, minute = int(parts[0]), int(parts[1])
+        except ValueError:
+            return default
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            return default
+        return f"{hour:02d}:{minute:02d}"
 
     def __init__(self):
         self._path = get_app_dir() / "config.json"
@@ -112,7 +165,29 @@ class Config:
                         or any(ch not in "0123456789abcdef" for ch in value)
                     ):
                         value = ""
-            elif key in {"pin_to_top", "auto_start", "desktop_shortcut_created", "check_update_on_start", "auth_completed", "usage_stats_enabled"}:
+            elif key in cls._RANGED_INT_KEYS:
+                low, high = cls._RANGED_INT_KEYS[key]
+                if isinstance(value, bool) or not isinstance(value, int):
+                    value = default
+                elif value < low:
+                    # 负数不是「偏小」，是坏数据 → 回默认；超上限则夹紧
+                    value = default
+                else:
+                    value = min(high, value)
+            elif key in cls._RANGED_FLOAT_KEYS:
+                low, high = cls._RANGED_FLOAT_KEYS[key]
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    value = default
+                elif value < low:
+                    value = default
+                else:
+                    value = min(high, float(value))
+            elif key in {"quiet_start", "quiet_end"}:
+                value = cls._valid_hhmm(value, default)
+            elif key in {"today_bar_x", "today_bar_y"}:
+                if isinstance(value, bool) or not isinstance(value, int):
+                    value = default
+            elif key in cls._BOOL_KEYS:
                 if not isinstance(value, bool):
                     value = default
             elif key in {"calendar_id", "auth_user"}:

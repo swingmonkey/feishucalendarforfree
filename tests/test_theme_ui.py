@@ -291,7 +291,7 @@ def test_tray_menu_pin_action_tracks_window_state():
 
     QApplication.instance() or QApplication([])
     widget = _FakeWidget()
-    menu, pin_action = _build_tray_menu(
+    menu, pin_action, header_action = _build_tray_menu(
         widget,
         lambda: None,
         lambda: None,
@@ -301,6 +301,8 @@ def test_tray_menu_pin_action_tracks_window_state():
     assert pin_action.isCheckable()
     assert pin_action.isChecked()
     assert any("窗口置顶" in action.text() for action in menu.actions())
+    # 顶部摘要行只是信息，不能被点
+    assert header_action.isEnabled() is False
 
     widget._pinned = False
     menu.aboutToShow.emit()

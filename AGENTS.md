@@ -32,6 +32,17 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - **`utils.view_range(view_mode, current_date)` 是拉取区间的唯一真源**：月视图 = 本月 ±7 天（月历网格最多前后各溢 6 天），周视图 = 周一~周日 ±7 天。**不要再按「整月」拉取**——周视图跨月那一周会缺列（v2.3 的 D2 bug）
 - `_set_view_mode` 切视图时先查 `event_store.is_covered`，已同步过的窗口只从本地重绘，不再起 node 进程；未覆盖才 `refresh_events()`
 - 搜索是本地优先：`SearchDialog` 先用 `event_store.read_range` 出结果（离线可用），服务端结果回来后按 `event_id` 合并、服务端覆盖本地
+- **`reminder.py` 是提醒的唯一决策点（v2.5）**：30 秒心跳，只读本地库，不发任何网络请求
+  - 纯函数层（`collect_occurrences` / `due_reminders` / `find_conflicts` / `day_load_minutes` / `current_or_next` / `tray_summary` / `in_quiet_hours`）全部接收显式 `now`，禁止在这里调 `datetime.now()`，否则又变成不可测
+  - `ReminderService` 只做三件事：读库、判类、发信号。**去重记账在发通知之前**（`event_store.mark_notified`），宁可丢一条也不重复轰炸
+  - 去重键是「某一次发生」`<event_id>@<start>`，不是 `event_id`：每周例会下周要再提醒一次；`conflict:<date>` / `overload:<date>` 才是按天
+  - 冲突与超载按**整天**取数（扫描窗只有 1 小时），否则早上算不到下午的会议
+  - 免打扰命中时**直接返回、不记账**，否则静音期间的事件会白白消耗掉一次提醒
+  - 已开始的事件不再提醒：`START_GRACE_SECONDS = 30`，超时就说明错过发车了
+- **通知递送方向是单向的**：`MainWindow.notify_requested` → `TrayApp._on_notify_requested`。主窗口不知道托盘长什么样；没有托盘（headless/CI）时降级成 Toast，不允许静默丢弃
+- **托盘摘要是「不打开窗口也要能看」的层**：`MainWindow._refresh_ambient()` 同时刷新 tooltip 与今日条，由 `tray_summary_changed` 信号推给 `main.py`。托盘菜单顶部那行是 disabled QAction——它只是信息，不能被点
+- `today_bar.py` 是**独立顶层窗口**（无 parent、无边框、置顶、可拖），吃不到 application 级 QSS，换肤必须走 `apply_theme()`；点掉窄条 = 关闭该功能（写 `today_bar_enabled=False`），否则每次重启又冒出来等于没关
+- 提醒相关配置全部由 `config.json` 驱动，设置页「提醒」Tab 改完下一次心跳即生效，**不需要重启**
 - 月历 7 列等宽约定：GridEventLabel/DayCell 水平 sizePolicy=Ignored，表头用 QGridLayout，勿让内容撑宽列
 - **日格样式名是拼接出来的**：`DayCell._refresh_object_name()` 按「基础名(dayCell/dayCellOther/dayCellToday) + Drop > Cursor > Hover」合成，改样式时这 6 个新后缀（`…Drop` / `…Cursor`）两套主题都要补
 - **日格可容纳条数按实际高度算**：`widgets.visible_event_count(grid_font, cell_height, reserve_more)`，窗口压矮或 6 行月份时自动收缩，但必须给「+N更多」留一行（`_MORE_ROW_HEIGHT`）——它是隐藏日程唯一的入口，被挤出去就再也点不开了；`DayCell.resizeEvent` 会重算
@@ -45,7 +56,10 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - **日程字号可调（v2.1.6）**：`config.grid_font_size`（月视图，默认 10）/ `config.list_font_size`（周·列表视图，默认 13），范围 9-24px，设置页「外观」Tab 两个滑块；实现方式是 `styles._event_font_rules()` 生成覆盖规则**追加在主题 QSS 末尾**（同名选择器后定义者生效），不改两套大模板；时间与次要信息由主字号派生（月视图 -1、列表 -2）。改字号必须同步放开 `QFrame#gridEvent` 的 min/max-height（行高 = 字号 +6/+8），否则大字号会被裁；字号变化后 `MainWindow._on_settings_changed` 会 `_render_active_view()` 重建视图
 
 ## 当前状态
-- **v2.4.0 本地事实层（已实现，待发布）**：新增 `event_store.py`（SQLite）+ `utils.view_range`，主窗口改为「先本地出图 → 再远端校准」；同时修掉周视图跨月漏日程（D2）、离线不可用（D1/D7）、全量覆盖非增量（D3）
+- **v2.5.0 提醒与常驻形态（已实现）**：新增 `reminder.py`（会前提醒 / 冲突 / 超载 / 免打扰）+ `today_bar.py`（桌面窄条），托盘标题与菜单顶行动态化
+  - 测试：`tests/test_reminder.py`（27 例，纯逻辑 + 服务去重/静默/降级）、`tests/test_ambient.py`（12 例，托盘摘要信号、今日条开关/换肤/关闭、通知降级、提醒配置校验）
+  - 全量 **370 例**，`ruff check` 全绿
+- **v2.4.0 本地事实层（已实现）**：新增 `event_store.py`（SQLite）+ `utils.view_range`，主窗口改为「先本地出图 → 再远端校准」；同时修掉周视图跨月漏日程（D2）、离线不可用（D1/D7）、全量覆盖非增量（D3）
   - 测试：`tests/test_event_store.py`（29 例，含幂等、区间重叠、prune 边界、重复系列、损坏自愈、LIKE 转义）、`tests/test_view_range.py`（30 例，含 2026/2027 全年 24 个月的网格覆盖性质测试）、`tests/test_local_first.py`（11 例，主窗口集成：缓存先出图、重启不丢、离线保留视图、跨月双侧显示、已同步窗口不联网、离线搜索）
   - 全量 **331 例**，`ruff check` 全绿
 - 认证仅 lark-cli 用户授权（App ID/Secret 模式已移除，feishu_api.py 已删除）

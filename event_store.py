@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS sync_ranges (
     synced_at   INTEGER NOT NULL,
     PRIMARY KEY (range_start, range_end, calendar_id)
 );
+
+-- 已发出的提醒（按「某次发生」而非「某个日程」记账）：
+-- 每周例会下周一要再提醒一次，而同一场会刷新一分钟后不能重复提醒。
+CREATE TABLE IF NOT EXISTS notified (
+    event_key TEXT    PRIMARY KEY,
+    fired_at  INTEGER NOT NULL
+);
 """
 
 
@@ -430,7 +437,61 @@ def enforce_retention(conn: sqlite3.Connection, days: int = RETENTION_DAYS) -> i
         with conn:
             cursor = conn.execute("DELETE FROM events WHERE end_ts < ?", (cutoff,))
             conn.execute("DELETE FROM sync_ranges WHERE range_end < ?", (cutoff,))
+            conn.execute("DELETE FROM notified WHERE fired_at < ?", (cutoff,))
     except sqlite3.Error as exc:
         logger.warning("Retention sweep failed: %s", exc)
         return 0
     return cursor.rowcount
+
+
+# ── Notification bookkeeping ─────────────────────────────────────────────────
+
+
+def mark_notified(conn: sqlite3.Connection, keys, when=None) -> int:
+    """Record that reminders for ``keys`` have been delivered. Idempotent."""
+    items = [str(k) for k in (keys or []) if str(k or "").strip()]
+    if not items:
+        return 0
+    stamp = int(when if when is not None else time.time())
+    try:
+        with conn:
+            conn.executemany(
+                "INSERT INTO notified (event_key, fired_at) VALUES (?, ?) "
+                "ON CONFLICT(event_key) DO NOTHING",
+                [(key, stamp) for key in items],
+            )
+    except sqlite3.Error as exc:
+        # 记不住就宁可多提醒一次，也不能让提醒流程抛进 Qt 槽
+        logger.warning("Could not record notification: %s", exc)
+        return 0
+    return len(items)
+
+
+def is_notified(conn: sqlite3.Connection, key: str) -> bool:
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM notified WHERE event_key = ?", (str(key),)
+        ).fetchone()
+    except sqlite3.Error as exc:
+        logger.warning("Notification lookup failed: %s", exc)
+        return False
+    return row is not None
+
+
+def notified_keys(conn: sqlite3.Connection, keys) -> set:
+    """Subset of ``keys`` already notified (one query, chunked by 400)."""
+    items = [str(k) for k in (keys or []) if str(k or "").strip()]
+    found: set = set()
+    for offset in range(0, len(items), 400):
+        chunk = items[offset : offset + 400]
+        placeholders = ",".join("?" * len(chunk))
+        try:
+            rows = conn.execute(
+                f"SELECT event_key FROM notified WHERE event_key IN ({placeholders})",
+                chunk,
+            ).fetchall()
+        except sqlite3.Error as exc:
+            logger.warning("Notification lookup failed: %s", exc)
+            return found
+        found.update(str(row[0]) for row in rows)
+    return found
