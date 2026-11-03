@@ -10,8 +10,13 @@
 
 **Tech Stack:** 保持 Python 3.10+ / PySide6 / 标准库 `sqlite3`，不引入新依赖。
 
-> **实施进度**：Phase 1（v2.4.0）已实现并本地提交（`caa21a1`），331 例测试全绿。
-> Phase 2–4 未开始。
+> **实施进度**：四个阶段全部完成并推送（`698b3a3..57ddf26`，v2.7.0）。
+> Phase 1 v2.4.0 `caa21a1` · Phase 2 v2.5.0 `bee343e` · Phase 3 v2.6.0 `7c38d9d` · Phase 4 v2.7.0 `57ddf26`。
+> 440 例测试全绿，应用代码覆盖率 74.88%。
+>
+> 两处与本文档原计划的偏差，原因已记在对应 commit 里：
+> 1. **Phase 4 的覆盖率门禁未能推到 CI**：推送 token 缺 `workflow` 权限，改动暂存在本地分支 `ci/coverage-gate`（`978aebb`），补权限后 `git push origin ci/coverage-gate` 并开 PR 即可。
+> 2. **GUI 未接入 `CalendarBackend` 协议**：该协议是同步的，接入会让窗口刷新卡在子进程上几秒；主窗口继续用 `lark_cli_async`（QProcess），协议由 headless CLI 与测试消费。这是有意为之的边界，不是遗漏。
 
 ---
 
