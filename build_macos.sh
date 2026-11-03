@@ -42,6 +42,9 @@ fi
     --hidden-import stats \
     --hidden-import stats_dialog \
     --hidden-import exporter \
+    --hidden-import occurrences \
+    --hidden-import backends \
+    --hidden-import headless \
     --hidden-import lark_cli \
     --hidden-import lark_cli_args \
     --hidden-import lark_cli_async \

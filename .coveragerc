@@ -1,0 +1,20 @@
+[run]
+source = .
+omit =
+    tests/*
+    .venv/*
+    venv/*
+    build/*
+    dist/*
+    tools/*
+    setup.py
+
+[report]
+# 覆盖率只对「应用代码」有意义，测试自身不应计入分母
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    \.\.\.
+show_missing = False
+skip_covered = True

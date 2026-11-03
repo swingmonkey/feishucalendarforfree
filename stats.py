@@ -12,7 +12,7 @@ a company holiday does not inflate "meeting hours".
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-from reminder import collect_occurrences
+from occurrences import collect as collect_occurrences
 
 WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"]
 

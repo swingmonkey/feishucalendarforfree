@@ -48,3 +48,15 @@ lark_config/
 
 # Runtime QR temp file
 feishu-login-qr.png
+
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+.pytest_tmp/
+
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+.pytest_tmp/

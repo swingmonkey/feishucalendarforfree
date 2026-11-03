@@ -155,6 +155,8 @@ class MainWindow(QMainWindow):
         self.config = config
         # 本地事实层：视图只从这里读，同步只往这里写。
         # 传入 ``store`` 便于测试注入内存库；默认落在 config.json 同目录。
+        # 只有自己打开的连接才由自己关闭（注入的连接可能被别处复用）。
+        self._owns_store = store is None
         self._store = store if store is not None else event_store.connect()
         # 滚动窗口：清掉一年前的历史，避免库无限增长
         event_store.enforce_retention(self._store)
@@ -1549,6 +1551,11 @@ class MainWindow(QMainWindow):
         if self._today_bar is not None:
             self._today_bar.hide()
             self._today_bar.close()
+        if self._owns_store:
+            try:
+                self._store.close()
+            except Exception:  # noqa: BLE001 - 收尾失败不该盖住真正的错误
+                pass
 
     def closeEvent(self, ev):
         pos = self.pos()

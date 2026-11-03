@@ -50,6 +50,14 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - **`exporter.py` 是唯一允许写用户目录的地方**，三条约束：原子写（temp + `os.replace`）、失败只记日志绝不弹窗、`export_last_run` 在落盘成功后才推进（失败下次重试而不是跳过一整天）
   - 定时检查在 `MainWindow._setup_export_timer`（启动 15 秒后首查 + 每 30 分钟），判定逻辑全在 `exporter.is_due`
   - 导出的是滚动窗口（回看 7 天 / 前瞻 30 天），**不是全量备份**，UI 文案别写成「备份」
+- **`occurrences.py` 是 Qt-free 的具体发生层**：`collect(events, start, end)` 负责展开 RRULE、去重（键 `<event_id>@<start>`）、排序。`reminder` / `stats` / `backends` / `headless` 全部复用它，**不要在别处再写一遍展开逻辑**
+  - 它必须保持不 import PySide6：`tests/test_headless.py::test_cli_runs_without_pyside6` 会检查这一点，破坏它等于让命令行入口在无显示的服务器上起不来
+- **`backends.py` 的定位要说清**：协议 + 三实现（lark-cli / 本地库 / ICS），当前由 **headless CLI 与测试**消费；**GUI 故意不走它**，因为它是同步的，把窗口刷新塞进同步调用会让界面卡几秒。GUI 继续用 `lark_cli_async`（QProcess）。别误以为它是死代码，也别顺手把 GUI 改成同步调用
+  - `fetch_range` / `search` 统一返回 **Occurrence**（不是原始 dict），否则每个调用方都要自己展开重复规则
+  - 只读后端（本地库、ICS）的写入方法抛 `ReadOnlyBackend`，不许静默成功
+  - ICS 解析只处理 VEVENT + SUMMARY/DTSTART/DTEND/DESCRIPTION/LOCATION/ORGANIZER/RRULE，含折行展开；未知属性忽略而不是猜
+- **`headless.py` 的输出是对外契约**：`--json` 信封 `{command, generated_at, count, events[]}`，退出码 0/1/2。公共选项挂在**子命令**上（`headless today --json`），挪到顶层会让「子命令后写参数」直接报错
+- **覆盖率门禁在 CI**（`.coveragerc` 排除 tests/，`--cov-fail-under=70`）：本地实测应用代码 75%，新模块别把它拉下去。UI 弹窗类（export_dialog / login_dialog）天然低覆盖，属于已知区间，不必为凑数字写假测试
 - 月历 7 列等宽约定：GridEventLabel/DayCell 水平 sizePolicy=Ignored，表头用 QGridLayout，勿让内容撑宽列
 - **日格样式名是拼接出来的**：`DayCell._refresh_object_name()` 按「基础名(dayCell/dayCellOther/dayCellToday) + Drop > Cursor > Hover」合成，改样式时这 6 个新后缀（`…Drop` / `…Cursor`）两套主题都要补
 - **日格可容纳条数按实际高度算**：`widgets.visible_event_count(grid_font, cell_height, reserve_more)`，窗口压矮或 6 行月份时自动收缩，但必须给「+N更多」留一行（`_MORE_ROW_HEIGHT`）——它是隐藏日程唯一的入口，被挤出去就再也点不开了；`DayCell.resizeEvent` 会重算
@@ -63,9 +71,11 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - **日程字号可调（v2.1.6）**：`config.grid_font_size`（月视图，默认 10）/ `config.list_font_size`（周·列表视图，默认 13），范围 9-24px，设置页「外观」Tab 两个滑块；实现方式是 `styles._event_font_rules()` 生成覆盖规则**追加在主题 QSS 末尾**（同名选择器后定义者生效），不改两套大模板；时间与次要信息由主字号派生（月视图 -1、列表 -2）。改字号必须同步放开 `QFrame#gridEvent` 的 min/max-height（行高 = 字号 +6/+8），否则大字号会被裁；字号变化后 `MainWindow._on_settings_changed` 会 `_render_active_view()` 重建视图
 
 ## 当前状态
+- **v2.7.0 后端协议与 headless（已实现）**：新增 `occurrences.py`（Qt-free 具体发生层，reminder/stats/backends 共用）、`backends.py`（`CalendarBackend` 协议 + lark-cli / 本地库 / ICS 三实现）、`headless.py`（`python -m headless today|next|range|search`）；CI 加覆盖率门禁（`--cov-fail-under=70`，本地 75%）
+  - 测试：`tests/test_backends.py`（19）、`tests/test_headless.py`（12，含「不得 import PySide6」与 `-m` 入口用例）
+  - 全量 **440 例**，`ruff check` 全绿，应用代码覆盖率 75%
 - **v2.6.0 洞察与可编程导出（已实现）**：新增 `stats.py` + `stats_dialog.py`（月热力图 / 负荷摘要 / 星期分布）、`exporter.py`（定时 JSON+CSV 原子写）；README 补「隐私说明」与「实验性功能」
   - 测试：`tests/test_stats.py`（16）、`tests/test_exporter.py`（14）、`tests/test_stats_ui.py`（9）
-  - 全量 **409 例**，`ruff check` 全绿
 - **v2.5.0 提醒与常驻形态（已实现）**：新增 `reminder.py`（会前提醒 / 冲突 / 超载 / 免打扰）+ `today_bar.py`（桌面窄条），托盘标题与菜单顶行动态化
   - 测试：`tests/test_reminder.py`（27 例，纯逻辑 + 服务去重/静默/降级）、`tests/test_ambient.py`（12 例，托盘摘要信号、今日条开关/换肤/关闭、通知降级、提醒配置校验）
 - **v2.4.0 本地事实层（已实现）**：新增 `event_store.py`（SQLite）+ `utils.view_range`，主窗口改为「先本地出图 → 再远端校准」；同时修掉周视图跨月漏日程（D2）、离线不可用（D1/D7）、全量覆盖非增量（D3）

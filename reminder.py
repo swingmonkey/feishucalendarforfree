@@ -23,7 +23,8 @@ from datetime import datetime, timedelta
 from PySide6.QtCore import QObject, QTimer, Signal
 
 import event_store
-from models_event import expand_recurrence, has_recurrence, is_all_day_event, parse_event_time
+from occurrences import Occurrence
+from occurrences import collect as _collect_occurrences
 
 logger = logging.getLogger(__name__)
 
@@ -41,18 +42,6 @@ ALL_DAY_REMINDER_SUPPRESSED = True
 
 
 @dataclass(frozen=True)
-class Occurrence:
-    """One concrete instance of an event (recurring series already expanded)."""
-
-    key: str
-    summary: str
-    start: datetime
-    end: datetime
-    all_day: bool
-    event: dict
-
-
-@dataclass(frozen=True)
 class ReminderHit:
     occurrence: Occurrence
     minutes_until: int
@@ -62,56 +51,9 @@ class ReminderHit:
         return self.occurrence.key
 
 
-# ── Occurrence collection ───────────────────────────────────────────────────
-
-
-def occurrence_key(event: dict) -> str:
-    """Stable id for one occurrence: ``<event_id>@<start>``.
-
-    The series template and its expanded first occurrence resolve to the same
-    key, which is what keeps ``collect_occurrences`` free of duplicates.
-    """
-    event_id = str(event.get("event_id") or "")
-    start = parse_event_time(event.get("start_time", {}))
-    return f"{event_id}@{start.strftime('%Y%m%dT%H%M%S')}"
-
-
-def _as_occurrence(event: dict) -> Occurrence:
-    start = parse_event_time(event.get("start_time", {}))
-    end = parse_event_time(event.get("end_time", {}))
-    all_day = is_all_day_event(event)
-    if all_day:
-        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start.replace(hour=23, minute=59, second=59, microsecond=0)
-    elif end < start:
-        end = start
-    return Occurrence(
-        key=occurrence_key(event),
-        summary=str(event.get("summary", "") or ""),
-        start=start,
-        end=end,
-        all_day=all_day,
-        event=event,
-    )
-
-
-def collect_occurrences(events, start: datetime, end: datetime) -> list[Occurrence]:
-    """Return every occurrence overlapping ``[start, end]``, deduplicated."""
-    out: dict[str, Occurrence] = {}
-    for event in events or []:
-        if not isinstance(event, dict):
-            continue
-        if has_recurrence(event):
-            expanded = expand_recurrence(event, start, end)
-            candidates = expanded or [event]
-        else:
-            candidates = [event]
-        for candidate in candidates:
-            occ = _as_occurrence(candidate)
-            if occ.end < start or occ.start > end:
-                continue
-            out.setdefault(occ.key, occ)
-    return sorted(out.values(), key=lambda o: (o.start, o.end))
+def collect_occurrences(events, start: datetime, end: datetime) -> list:
+    """Occurrences overlapping ``[start, end]`` (see :mod:`occurrences`)."""
+    return _collect_occurrences(events, start, end)
 
 
 # ── Reminder decisions ──────────────────────────────────────────────────────

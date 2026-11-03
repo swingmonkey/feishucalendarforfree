@@ -39,7 +39,9 @@ def at(day, hour, minute=0):
 
 @pytest.fixture
 def conn(tmp_path):
-    return event_store.connect(tmp_path / "events.db")
+    connection = event_store.connect(tmp_path / "events.db")
+    yield connection
+    connection.close()
 
 
 # ── Occurrence collection ───────────────────────────────────────────────────

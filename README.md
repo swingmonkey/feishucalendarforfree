@@ -12,6 +12,7 @@
 - **免打扰时段** - 可设置一段静音窗口（支持跨零点，如 22:00–08:00），时段内不发送任何提醒
 - **托盘动态标题** - 托盘提示与菜单顶行显示「今天 3 项 · 14:30 评审」，不打开窗口也能知道下一条是什么
 - **今日条** - 可选的无边框置顶窄条，常驻桌面显示今天剩余日程，可拖到任意位置，点击打开主窗口
+- **命令行读取** - `python -m headless today --json`，不打开窗口、不需要登录态，供脚本 / 快捷指令 / Stream Deck 消费
 - **月 / 周双视图** - 顶部「月 / 周」切换。月历网格纵览整月；周计划（weektodo 风格）以 7 列展示本周每天的可滚动日程卡片
 - **拖拽改期** - 在月历格之间、或在周计划各列之间拖动日程卡片即可改期，自动写回飞书
 - **日程颜色 / 分类** - 新建或查看日程时可设置颜色（本地分类，按 event id 存于 config.json，不影响飞书）
@@ -251,6 +252,24 @@ bash build_macos.sh
 - macOS 与源码运行暂时仍是全量更新
 
 
+## 命令行读取（headless）
+
+不打开窗口、不需要登录态也能读日程。默认读本地缓存（`events.db`），因此断网可用，且**不会**把 PySide6 拉进依赖。
+
+```bash
+python -m headless today                      # 今天的日程（文本）
+python -m headless next --json                # 下一条，给脚本 / Stream Deck
+python -m headless range --start 2026-11-01 --end 2026-11-30
+python -m headless search 评审 --json
+python -m headless today --source ics --ics ./calendar.ics   # 读导出的 ICS
+python -m headless today --source lark        # 直接问飞书（需要 lark-cli 已登录）
+python -m headless today --db /path/events.db # 指定库文件
+```
+
+- `--json` 输出固定信封：`{command, generated_at, count, events[]}`，事件含 `date / start / end / summary / organizer / event_id / all_day / running`
+- 退出码：`0` 成功、`1` 读取失败、`2` 参数错误
+- 加 `--limit N` 限制条数
+
 ## 项目结构
 
 ```
@@ -262,6 +281,15 @@ FeishuCalendarDesktop/
 ├── week_view.py           # 周计划视图组件（weektodo 风格 7 列）
 ├── widgets.py             # 共享小组件：日期徽标、可点击标签、紧凑日程标签（拖拽源）、日格（放置目标）
 ├── models_event.py        # 事件模型：时间解析、重复展开、Markdown→HTML、颜色/子任务工具
+├── occurrences.py         # 具体发生（重复规则展开结果），无 Qt 依赖，供提醒/统计/命令行共用
+├── event_store.py         # 本地事实层：SQLite 缓存、区间查询、同步区间记录、提醒去重
+├── reminder.py            # 主动提醒：会前提醒 / 冲突 / 超载 / 免打扰（30 秒心跳，只读本地库）
+├── stats.py               # 统计计算：日负荷、月热力图分档、负荷摘要、连续天数
+├── stats_dialog.py        # 统计面板：月热力图 + 负荷摘要 + 星期分布
+├── exporter.py            # 定时导出：滚动窗口写成 events-YYYYMMDD.json/.csv（原子写）
+├── backends.py            # 后端协议：lark-cli / 本地库 / ICS 三种实现
+├── headless.py            # 命令行读取入口（python -m headless）
+├── today_bar.py           # 桌面今日条（无边框置顶窄条）
 ├── usage_stats.py         # 匿名安装 ID、启动心跳、统计查询后台 Worker
 ├── event_card.py          # 日程卡片组件（颜色条 / ♻ 徽标 / 拖拽源）
 ├── day_detail_dialog.py   # 当日详情对话框
