@@ -44,6 +44,7 @@
 - **授权失效引导** - 检测到授权错误时切换到登录引导面板，重新授权后自动恢复
 - **错误信息可复制** - 错误面板支持选中和复制，方便排查问题
 - **导出日程** - 一键导出当前范围日程到 Excel
+- **一键装依赖** - 没装 lark-cli 时应用内直接安装（走一次全局 `npm install`，过程与结果都显示在面板里），装完自动接上登录流程；没有 Node.js 则引导到下载页
 
 ## 认证方式（lark-cli 用户授权）
 
@@ -54,6 +55,10 @@ lark-cli auth login --scope "calendar:calendar.event:read" --scope "calendar:cal
 ```
 
 > **注意：** `--recommend` 不包含日历日程读取权限，必须使用上面的 `--scope` 参数明确指定。
+
+第一次使用可以跳过终端：应用启动若检测不到 lark-cli，会给出「自动安装 lark-cli」按钮，点一下即可。仅当系统里已有 Node.js（含 npm）时可用；装完会把 npm 的全局 bin 目录补进 PATH，不需要重启应用。
+
+> 自动安装不会提权。如果 npm 全局目录不可写，面板会提示改用用户级 prefix（`npm config set prefix ~/.npm-global`）或用 sudo 手动执行。
 
 ## 安装与运行
 
@@ -289,6 +294,8 @@ FeishuCalendarDesktop/
 ├── exporter.py            # 定时导出：滚动窗口写成 events-YYYYMMDD.json/.csv（原子写）
 ├── backends.py            # 后端协议：lark-cli / 本地库 / ICS 三种实现
 ├── headless.py            # 命令行读取入口（python -m headless）
+├── cli_installer.py       # lark-cli 自动安装的纯逻辑：环境探测、命令构造、PATH 刷新、报错翻译
+├── cli_install_async.py   # 自动安装的 QProcess 包装（逐行输出、超时、可取消）
 ├── today_bar.py           # 桌面今日条（无边框置顶窄条）
 ├── usage_stats.py         # 匿名安装 ID、启动心跳、统计查询后台 Worker
 ├── event_card.py          # 日程卡片组件（颜色条 / ♻ 徽标 / 拖拽源）

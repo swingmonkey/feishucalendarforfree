@@ -39,6 +39,7 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - `widgets.py` 共享小组件（日期徽标 / 可点击标签 / 紧凑日程标签=拖拽源 / 日格=放置目标）；`models_event.py` 事件模型（时间解析、重复展开 RFC5545、Markdown→HTML、颜色/子任务工具、`RECURRENCE_CHOICES` 重复规则真源）
 - `event_card.py` 日程卡片（颜色条 / ♻ 徽标 / 拖拽源 / ↳ 延续）；`day_detail_dialog.py` + `search_dialog.py` 由旧 calendar_widget.py 拆分而出
 - `lark_cli_async.py` 异步封装（QProcess）；**Windows 必须 node 直调 run.js**（cmd/PowerShell 会拆解 `--data` JSON 的双引号和 URL 的 `&`，报 invalid JSON）
+- **`cli_installer.py` 负责装 lark-cli**：纯逻辑（探测 npm/node、构造安装命令、刷新 PATH、翻译 npm 报错），`cli_install_async.py` 是 QProcess 外壳（逐行输出、300 秒超时、可取消）。两条铁律——① 不自动 sudo，全局目录不可写时只给建议；② 装完必须 `refresh_path(npm_bin_dir(npm))`，否则会出现「npm 说装好了、应用还说找不到」，因为 .app 从 Finder 继承的 PATH 里没有 npm 的全局 bin。`main.py:_extend_path_for_app_bundle` 也靠它补 PATH，让终端里装过的用户重启就能被识别
 - **`event_store.py` 是本地事实层（v2.4）**：日程落 SQLite（`events.db`，与 config.json 同目录）。视图只从 store 读，`lark_cli_async` 只往 store 写。改渲染路径时不要绕过 store 直接读 `self.events`——`self.events` 是 store 当前窗口的投影，不是事实源
   - `upsert_many(conn, events, range_start, range_end)`：幂等写入 + 记录已同步区间；`prune` 只删「与本次区间重叠」或「更早开始的重复系列」且快照里没有的行。**非 list 载荷（None/dict）一律不动库**，防止坏响应清空缓存
   - `query_range` 的语义是**区间重叠**（`end_ts >= start AND start_ts <= end`），且**始终带出更早开始的重复系列**——否则重复日程在后续月份不展开

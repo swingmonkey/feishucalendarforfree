@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 
+import cli_installer
 import updater
 import usage_stats
 from __version__ import APP_VERSION
@@ -120,6 +122,15 @@ def _extend_path_for_app_bundle():
         if d not in parts and Path(d).is_dir():
             parts.append(d)
     os.environ["PATH"] = os.pathsep.join(parts)
+
+    # 还有一类更常见的情况：用户明明在终端里装过 lark-cli，.app 却说找不到，
+    # 因为 npm 把它放在了 own prefix 下，而上面那几个目录都不对。问一下 npm
+    # 它把全局 bin 放哪，补进来——只在真的找不到 CLI 时问，省掉启动开销。
+    if shutil.which(cli_installer.BIN_NAME) is None:
+        try:
+            cli_installer.bootstrap_path()
+        except Exception:  # noqa: BLE001 - 探测失败不该拦住启动
+            pass
 
 
 class TrayApp(QApplication):

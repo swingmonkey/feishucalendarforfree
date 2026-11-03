@@ -19,8 +19,18 @@ It does **not** touch the Feishu read/write layer
 import shutil
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QMouseEvent, QPainter, QPixmap, QShortcut
+from PySide6.QtCore import QPoint, QPointF, QRect, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QDesktopServices,
+    QIcon,
+    QKeySequence,
+    QMouseEvent,
+    QPainter,
+    QPixmap,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -37,11 +47,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import cli_installer
 import event_store
 import exporter
 import reminder
 from add_event_dialog import AddEventDialog
 from app_icon import create_app_icon, create_app_logo_pixmap
+from cli_install_async import InstallWorker
 from config import Config
 from context_menu import build_background_menu, build_day_menu, build_event_menu
 from day_detail_dialog import DayDetailDialog
@@ -169,6 +181,8 @@ class MainWindow(QMainWindow):
         self._drag_offset: QPoint | None = None
         self._pinned = self.config.get("pin_to_top", True)
         self._cli_available = shutil.which("lark-cli") is not None
+        self._install_worker: InstallWorker | None = None
+        self._install_log: list[str] = []
         self._first_load_done = False
         self._auth_mode = "welcome"
         self._update_dialog = None
@@ -649,16 +663,25 @@ class MainWindow(QMainWindow):
         # 只有真的还有日程可看时才给出「返回」出口
         self.auth_back_btn.setVisible(bool(self._first_load_done and self.events))
         if mode == "no_cli":
+            env = cli_installer.detect()
             self.auth_title.setText("需要先安装 lark-cli")
-            self.auth_message.setText(
-                "本应用通过飞书官方 lark-cli 读取日历。\n"
-                "请在终端执行下面的命令安装，安装后点击重试："
-            )
+            if env.can_install:
+                self.auth_message.setText(
+                    "本应用通过飞书官方 lark-cli 读取日历。\n"
+                    "点下面的按钮自动安装（会执行一次全局 npm 安装），"
+                    "也可以复制命令到终端里自己执行。"
+                )
+                self.auth_primary_btn.setText("自动安装 lark-cli")
+            else:
+                self.auth_message.setText(
+                    "本应用通过飞书官方 lark-cli 读取日历，它需要 Node.js 环境。\n"
+                    f"{env.blocker or '当前环境无法自动安装。'}"
+                )
+                self.auth_primary_btn.setText("去下载 Node.js")
             self.auth_detail.setObjectName("codeBox")
             self.auth_detail.setPlainText("npm install -g @larksuite/cli")
             self.auth_detail.setVisible(True)
-            self.auth_primary_btn.setText("复制安装命令")
-            self.auth_secondary_btn.setText("我已安装，重试")
+            self.auth_secondary_btn.setText("复制安装命令")
             self.auth_secondary_btn.setVisible(True)
         elif mode == "expired":
             self.auth_title.setText("登录已过期")
@@ -681,20 +704,82 @@ class MainWindow(QMainWindow):
 
     def _on_auth_primary(self):
         if self._auth_mode == "no_cli":
-            QApplication.clipboard().setText("npm install -g @larksuite/cli")
-            self.toast.show_message("安装命令已复制到剪贴板", kind="success")
+            self._start_cli_install()
             return
         self.open_login()
 
     def _on_auth_secondary(self):
         if self._auth_mode == "no_cli":
-            self._cli_available = shutil.which("lark-cli") is not None
-            if self._cli_available:
-                self.toast.show_message("已检测到 lark-cli", kind="success")
-                self._show_loading()
-                self.refresh_events()
-            else:
-                self.toast.show_message("仍未检测到 lark-cli，请确认安装成功", kind="warning")
+            QApplication.clipboard().setText("npm install -g @larksuite/cli")
+            self.toast.show_message("安装命令已复制到剪贴板", kind="success")
+
+    # ── lark-cli 自动安装 ──
+
+    def _start_cli_install(self):
+        """装上读日程所依赖的 lark-cli。
+
+        先探测：已经装好了就只做「重试」（用户可能刚在终端里手动装完）；
+        环境不允许自动装就退到下载页；否则确认后跑一次全局安装。
+        """
+        env = cli_installer.detect()
+        if env.installed:
+            self._cli_available = True
+            self.toast.show_message("已检测到 lark-cli", kind="success")
+            self._show_loading()
+            self.refresh_events()
+            return
+        if not env.can_install:
+            self.toast.show_message("当前的 Node.js 环境不完整，请先安装", kind="warning")
+            QDesktopServices.openUrl(QUrl("https://nodejs.org/zh-cn/download"))
+            return
+        if not ConfirmDialog.ask(
+            self,
+            "安装 lark-cli",
+            "将通过 npm 全局安装飞书官方命令行工具：\n"
+            f"{' '.join(cli_installer.install_argv(env.npm))}\n\n"
+            "这会改动当前 Node.js 的全局包目录，通常不需要管理员权限。",
+            ok_text="开始安装",
+        ):
+            return
+
+        self._install_log = []
+        self.auth_title.setText("正在安装 lark-cli…")
+        self.auth_message.setText(
+            "安装过程会显示在下面。首次安装需要从 npm 源下载，网络慢时可能要一两分钟。"
+        )
+        self.auth_detail.setPlainText("$ " + " ".join(cli_installer.install_argv(env.npm)))
+        self.auth_primary_btn.setEnabled(False)
+        self.auth_primary_btn.setText("安装中…")
+        self.auth_secondary_btn.setEnabled(False)
+
+        worker = InstallWorker(npm=env.npm, parent=self)
+        worker.log.connect(self._on_cli_install_log)
+        worker.finished.connect(self._on_cli_install_done)
+        self._install_worker = worker
+        worker.start()
+
+    def _on_cli_install_log(self, line: str):
+        self._install_log.append(line)
+        # 只留最近若干行：这是个进度窗，不是日志归档
+        self.auth_detail.setPlainText("\n".join(self._install_log[-14:]))
+        bar = self.auth_detail.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
+    def _on_cli_install_done(self, ok: bool, message: str):
+        self._install_worker = None
+        self.auth_primary_btn.setEnabled(True)
+        self.auth_secondary_btn.setEnabled(True)
+        if ok:
+            self._cli_available = True
+            self.toast.show_message("lark-cli 安装完成", kind="success")
+            self._show_loading()
+            self.refresh_events()
+            return
+        self.auth_title.setText("安装没有完成")
+        self.auth_message.setText("可以看看下面的输出，或复制命令到终端里自己执行。")
+        self.auth_detail.setPlainText(message)
+        self.auth_primary_btn.setText("再试一次")
+        self.toast.show_message("lark-cli 安装失败", kind="warning")
 
     # ── View mode ──
 
@@ -1548,6 +1633,10 @@ class MainWindow(QMainWindow):
         if service is not None:
             service.stop()
             service.setParent(None)
+        worker = getattr(self, "_install_worker", None)
+        if worker is not None:
+            worker.dispose()
+            self._install_worker = None
         if self._today_bar is not None:
             self._today_bar.hide()
             self._today_bar.close()
