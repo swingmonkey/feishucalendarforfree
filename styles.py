@@ -17,10 +17,10 @@
   焦点     : 可交互控件获得 2px 品牌蓝焦点环
 """
 
-FONT_STACK = (
-    '"SF Pro Text", "PingFang SC", "Microsoft YaHei UI", '
-    '"Segoe UI", sans-serif'
-)
+import theme
+
+FONT_STACK = theme.SANS_STACK
+MONO_STACK = theme.MONO_STACK
 
 DARK_THEME = f"""
 QMainWindow, QDialog, QWidget {{
@@ -1451,8 +1451,12 @@ QDialog QGroupBox {{
     background-color: {surface};
     border: 1px solid {border};
     border-radius: 8px;
-    margin-top: 20px;
-    padding: 18px 12px 12px 12px;
+    /* QGroupBox 的 sizeHint 不包含 QSS 的 margin，所以 margin-top
+       必须小：标题就压在边框线上（Qt 官方示例的做法）。原来 20px
+       的 margin 叠上四值 padding，把内容区挤到 0 高——设置面板的
+       「自动刷新」「开机启动」曾只剩一条细线，按钮也被裁掉下半截。 */
+    margin-top: 8px;
+    padding: 2px 0px 0px 0px;
     color: {text};
     font-weight: 600;
 }}
@@ -1612,26 +1616,26 @@ _FONT_RANGE = (9, 24)
 
 _EVENT_FONT_COLORS = {
     "dark": {
-        "grid_time": "#B8C0CC",
-        "grid_title": "#F0F1F2",
-        "more": "#8F959E",
-        "list_time": "#A9B0B8",
-        "list_time_past": "#646A73",
-        "list_time_current": "#4FD963",
-        "list_title": "#F0F1F2",
-        "list_title_past": "#646A73",
-        "list_meta": "#8F959E",
+        "grid_time": "#9aa7b8",
+        "grid_title": "#eaf2ff",
+        "more": "#9aa7b8",
+        "list_time": "#9aa7b8",
+        "list_time_past": "rgba(234,242,255,0.52)",
+        "list_time_current": "#34d399",
+        "list_title": "#eaf2ff",
+        "list_title_past": "#9aa7b8",
+        "list_meta": "#9aa7b8",
     },
     "light": {
-        "grid_time": "#646A73",
-        "grid_title": "#1F2329",
-        "more": "#8F959E",
-        "list_time": "#51565D",
-        "list_time_past": "#BBBFC4",
-        "list_time_current": "#2EA121",
-        "list_title": "#1F2329",
-        "list_title_past": "#BBBFC4",
-        "list_meta": "#8F959E",
+        "grid_time": "#6b7684",
+        "grid_title": "#1a2029",
+        "more": "#6b7684",
+        "list_time": "#6b7684",
+        "list_time_past": "rgba(26,32,41,0.52)",
+        "list_time_current": "#0f9d70",
+        "list_title": "#1a2029",
+        "list_title_past": "#6b7684",
+        "list_meta": "#6b7684",
     },
 }
 
@@ -1679,6 +1683,932 @@ QLabel#eventMeta {{ font-size: {list_sub}px; color: {c["list_meta"]}; }}
 """
 
 
+def _skin_rules(name: str) -> str:
+    """外观重塑层：把 token-monitor 的设计语言覆盖到飞书骨架之上。
+
+    为什么是「覆写」而不是重写：原有 1697 行 QSS 里有大量布局约束
+    （min-height、padding、grid 内边距），那些是功能性的、与视觉风格无关。
+    这里只重定义颜色 / 边框 / 圆角 / 字体族，靠 QSS「后定义者生效」的
+    层叠规则压在上面，尺寸一律不碰——所以日历的密度、日格能放下几条
+    日程、按钮点击区域，全部保持原样。
+
+    令牌来自 theme.py，语义名与原项目 tokens.css 一一对应。
+    """
+    t = theme.tokens(name)
+    dark = theme.is_dark(name)
+    # 日格与日程卡在深色下靠「白 alpha」堆叠出层次，浅色下必须反过来用
+    # 「黑 alpha」，否则白底上叠白会彻底消失。
+    cell_bg = "rgba(255,255,255,0.05)" if dark else "rgba(12,16,22,0.045)"
+    cell_bg_hover = "rgba(255,255,255,0.085)" if dark else "rgba(12,16,22,0.075)"
+    cell_other = "rgba(255,255,255,0.016)" if dark else "rgba(12,16,22,0.022)"
+    head_bg = t["nav_bg"]
+
+    return f"""
+/* ═══════════════════════════════════════════════════════════
+   外观层 · 覆盖颜色/边框/圆角/字族，不改布局尺寸
+   令牌见 theme.py；数值体系移植自 token-monitor/tokens.css
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 台面 ── */
+QMainWindow {{
+    background-color: transparent;
+}}
+QWidget#appSurface, QWidget#monthView, QWidget#weekView,
+QWidget#gridContainer, QWidget#viewStack {{
+    background-color: transparent;
+}}
+QMainWindow, QDialog {{
+    background-color: {t["bg"]};
+    color: {t["text"]};
+    font-family: {FONT_STACK};
+}}
+/* 别把 QWidget 写进上面那一条：QSS 的 QWidget 会连 QLabel / QCheckBox
+   一起刷成窗口底色，落在比背景更亮的组框表面（surface）上就是一道道
+   深色横条——设置窗的复选框曾经就是这副样子。所以底色只给窗口和
+   对话框架，字体/文字颜色另立一条不带 background 的规则。 */
+QWidget {{
+    color: {t["text"]};
+    font-family: {FONT_STACK};
+}}
+QLabel, QCheckBox, QRadioButton {{
+    background-color: transparent;
+}}
+QDialog {{
+    background-color: {t["bg"]};
+}}
+
+/* 焦点环：细一档，用青蓝而不是纯蓝 */
+QPushButton:focus-visible, QLineEdit:focus-visible, QTextEdit:focus-visible,
+QComboBox:focus-visible, QDateTimeEdit:focus-visible, QSpinBox:focus-visible,
+QCheckBox:focus-visible, QRadioButton:focus-visible, QListWidget:focus-visible,
+QToolButton:focus-visible, QTabWidget:focus-visible {{
+    outline: 2px solid {t["accent"]};
+    outline-offset: 1px;
+}}
+
+/* ── 顶部：半透明玻璃条，让背景光带透上来 ── */
+QFrame#headerBar {{
+    background-color: {head_bg};
+    border: none;
+    border-bottom: 1px solid {t["line_soft"]};
+}}
+QLabel#headerTitle {{
+    color: {t["text_strong"]};
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}}
+QFrame#monthBar {{
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid {t["line_soft"]};
+}}
+QLabel#headerDate {{
+    color: {t["muted"]};
+    font-family: {MONO_STACK};
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}}
+
+/* ── 分段控件：玻璃槽 + 白色滑块 ── */
+QFrame#segmented {{
+    background-color: {t["surface"]};
+    border: 1px solid {t["line_soft"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QPushButton#toggleBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+    color: {t["muted"]};
+    font-size: 11px;
+    font-weight: 600;
+}}
+QPushButton#toggleBtn:hover {{
+    color: {t["text_strong"]};
+    background-color: {t["surface"]};
+}}
+QPushButton#toggleBtnActive {{
+    background-color: {t["btn_primary_bg"]};
+    border: none;
+    border-radius: 8px;
+    color: {t["btn_primary_fg"]};
+    font-weight: 700;
+    font-size: 11px;
+}}
+
+/* ── 图标按钮 ── */
+QPushButton#iconBtn, QToolButton#iconBtn, QToolButton#moreBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+    color: {t["muted"]};
+    font-size: 14px;
+}}
+QPushButton#iconBtn:hover, QToolButton#iconBtn:hover, QToolButton#moreBtn:hover {{
+    background-color: {t["surface_2"]};
+    color: {t["text_strong"]};
+}}
+QPushButton#iconBtn:pressed, QToolButton#iconBtn:pressed,
+QToolButton#moreBtn:pressed, QToolButton#moreBtn:checked {{
+    background-color: {t["surface_2"]};
+}}
+QPushButton#closeBtn, QToolButton#closeBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+    color: {t["muted"]};
+}}
+QPushButton#closeBtn:hover, QToolButton#closeBtn:hover {{
+    background-color: rgba(239,68,68,0.18);
+    color: #fca5a5;
+}}
+
+/* 主操作：纯白（原项目最克制的一笔——强调色只给渐变，主按钮不给） */
+QPushButton#addBtn {{
+    background-color: {t["btn_primary_bg"]};
+    border: none;
+    border-radius: 9px;
+    color: {t["btn_primary_fg"]};
+    font-weight: 700;
+}}
+QPushButton#addBtn:hover {{
+    background-color: {t["btn_primary_hover"]};
+}}
+QPushButton#addBtn:pressed {{
+    background-color: {t["btn_primary_bg"]};
+}}
+QPushButton#todayBtn {{
+    background-color: {t["surface"]};
+    border: 1px solid {t["line"]};
+    border-radius: 999px;
+    color: {t["text"]};
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 12px;
+}}
+QPushButton#todayBtn:hover {{
+    background-color: {t["surface_2"]};
+    border-color: {t["line_strong"]};
+    color: {t["text_strong"]};
+}}
+
+/* ── 星期表头：小号大写、字距放开 ── */
+QLabel#weekDay {{
+    color: {t["eyebrow"]};
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}}
+QLabel#weekDayWeekend {{
+    color: {t["soft"]};
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}}
+
+/* 日格：一层薄面，不描边。相邻格子的 1px 边会叠成 2px 亮线，
+   在深色底上像砖缝；用透明边保持盒模型尺寸、视觉上只留面块的间隙 */
+QFrame#dayCell {{
+    background-color: {cell_bg};
+    border: 1px solid transparent;
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#dayCellHover {{
+    background-color: {cell_bg_hover};
+    border: 1px solid {t["line_strong"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#dayCellOther {{
+    background-color: {cell_other};
+    border: 1px solid transparent;
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#dayCellOtherHover {{
+    background-color: {cell_bg};
+    border: 1px solid {t["line_soft"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+/* 今天：青蓝描边 + 极淡的同色底，是全界面唯一的「发光」元素 */
+QFrame#dayCellToday {{
+    background-color: rgba(34,211,238,0.075);
+    border: 1.5px solid {t["accent_from"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#dayCellTodayHover {{
+    background-color: rgba(34,211,238,0.12);
+    border: 1.5px solid {t["accent_from"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#dayCellDrop, QFrame#dayCellOtherDrop, QFrame#dayCellTodayDrop {{
+    background-color: rgba(91,157,255,0.14);
+    border: 1.5px dashed {t["accent"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#dayCellCursor {{
+    border: 1.5px solid {t["accent"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#dayCellOtherCursor {{
+    border: 1.5px solid {t["glass_border_soft"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#dayCellTodayCursor {{
+    border: 1.5px solid {t["accent_from"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+
+/* 日号：等宽数字——一列日期上下对齐，扫视时不会左右跳 */
+QLabel#dayNum {{
+    font-family: {MONO_STACK};
+    font-size: 11px;
+    font-weight: 600;
+    color: {t["text"]};
+}}
+QLabel#dayNumOther {{
+    font-family: {MONO_STACK};
+    font-size: 11px;
+    color: {t["soft"]};
+}}
+QLabel#dayNumToday {{
+    font-family: {MONO_STACK};
+    font-size: 11px;
+    font-weight: 800;
+    color: {t["accent_from"]};
+}}
+
+/* ── 月视图日程条：2px 左侧色条，不是整块实底 ── */
+QFrame#gridEvent {{
+    background-color: {t["event_ink"]};
+    border: none;
+    border-left: 2px solid {t["accent"]};
+    border-radius: 4px;
+}}
+QFrame#gridEvent:hover {{
+    background-color: {t["event_ink_hover"]};
+}}
+QFrame#gridEventMultiDay {{
+    background-color: rgba(52,211,153,0.14);
+    border: none;
+    border-left: 2px solid {t["success"]};
+    border-radius: 4px;
+}}
+QFrame#gridEventMultiDay:hover {{
+    background-color: rgba(52,211,153,0.24);
+}}
+QLabel#gridEventTime {{
+    font-family: {MONO_STACK};
+    color: {t["muted"]};
+    font-weight: 600;
+}}
+QLabel#gridEventTitle {{
+    color: {t["text"]};
+    font-weight: 500;
+}}
+QLabel#moreLabel {{
+    font-family: {MONO_STACK};
+    font-size: 9px;
+    color: {t["muted"]};
+}}
+QLabel#moreLabel:hover {{
+    color: {t["accent"]};
+}}
+
+/* ── 周视图日程卡：玻璃面 + 左色条 ── */
+QFrame#eventCard {{
+    background-color: {t["glass"]};
+    border: 1px solid {t["glass_border_soft"]};
+    border-left: 2px solid {t["accent"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#eventCard:hover {{
+    background-color: {t["glass_strong"]};
+    border-color: {t["line"]};
+    border-left-color: {t["accent"]};
+}}
+QFrame#eventCardPast {{
+    background-color: {t["surface"]};
+    border: 1px solid {t["line_soft"]};
+    border-left: 2px solid {t["soft"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#eventCardCurrent {{
+    background-color: rgba(52,211,153,0.10);
+    border: 1px solid rgba(52,211,153,0.28);
+    border-left: 2px solid {t["success"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#eventCardCont {{
+    background-color: {cell_other};
+    border: 1px solid transparent;
+    border-left: 2px solid {t["line_strong"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+QFrame#eventCardCont:hover {{
+    background-color: {cell_bg};
+}}
+QFrame#eventCardAllDay {{
+    background-color: rgba(52,211,153,0.12);
+    border: none;
+    border-left: 2px solid {t["success"]};
+    border-radius: 6px;
+}}
+QFrame#eventCardAllDay:hover {{
+    background-color: rgba(52,211,153,0.20);
+}}
+QFrame#weekAllDayBar {{
+    background-color: {cell_other};
+    border: 1px solid {t["line_soft"]};
+    border-radius: 8px;
+}}
+
+QLabel#eventTime {{
+    font-family: {MONO_STACK};
+    color: {t["muted"]};
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}}
+QLabel#eventTimePast {{
+    font-family: {MONO_STACK};
+    color: {t["soft"]};
+    font-weight: 600;
+}}
+QLabel#eventTimeCurrent {{
+    font-family: {MONO_STACK};
+    color: {t["success"]};
+    font-weight: 700;
+}}
+QLabel#eventTitle {{
+    color: {t["text"]};
+    font-weight: 500;
+}}
+QLabel#eventTitlePast {{
+    color: {t["muted"]};
+    font-weight: 400;
+}}
+QLabel#eventMeta {{
+    color: {t["muted"]};
+}}
+QPushButton#deleteBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    color: {t["soft"]};
+}}
+QPushButton#deleteBtn:hover {{
+    background-color: rgba(239,68,68,0.16);
+    color: #fca5a5;
+}}
+
+/* ── 周视图列 ── */
+QFrame#weekDayCol {{
+    background-color: {cell_other};
+    border: 1px solid {t["line_soft"]};
+    border-radius: {theme.RADIUS["md"]}px;
+}}
+QFrame#weekDayColToday {{
+    background-color: rgba(34,211,238,0.05);
+    border: 1px solid {t["accent_from"]};
+    border-radius: {theme.RADIUS["md"]}px;
+}}
+QFrame#weekDayColDrop {{
+    background-color: rgba(91,157,255,0.10);
+    border: 1.5px dashed {t["accent"]};
+    border-radius: {theme.RADIUS["md"]}px;
+}}
+QLabel#weekColDate {{
+    font-family: {MONO_STACK};
+    font-size: 11px;
+    font-weight: 700;
+    color: {t["text"]};
+}}
+QLabel#weekColAdd {{
+    color: {t["soft"]};
+    font-size: 13px;
+    border-radius: 6px;
+}}
+QLabel#weekColAdd:hover {{
+    color: {t["text_strong"]};
+    background-color: {t["surface_2"]};
+}}
+QLabel#weekRangeLabel {{
+    font-family: {MONO_STACK};
+    font-size: 11px;
+    font-weight: 600;
+    color: {t["muted"]};
+}}
+
+/* ── 表单控件 ── */
+QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QDateTimeEdit, QSpinBox {{
+    background-color: {t["surface"]};
+    border: 1px solid {t["line"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+    padding: 5px 8px;
+    color: {t["text"]};
+    selection-background-color: {t["accent"]};
+    selection-color: {t["accent_ink"]};
+}}
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
+QDateTimeEdit:focus, QSpinBox:focus {{
+    border: 1px solid {t["accent"]};
+    background-color: {t["surface_2"]};
+}}
+QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled,
+QDateTimeEdit:disabled, QSpinBox:disabled {{
+    color: {t["soft"]};
+    background-color: {cell_other};
+}}
+QComboBox QAbstractItemView {{
+    background-color: {t["glass_strong"]};
+    border: 1px solid {t["line"]};
+    border-radius: 8px;
+    selection-background-color: {t["surface_2"]};
+    selection-color: {t["text_strong"]};
+    outline: none;
+}}
+
+/* ── 按钮体系 ── */
+QPushButton#primaryBtn, QDialogButtonBox QPushButton:default, QMessageBox QPushButton:default {{
+    background-color: {t["btn_primary_bg"]};
+    border: none;
+    border-radius: {theme.RADIUS["sm"]}px;
+    color: {t["btn_primary_fg"]};
+    font-weight: 700;
+    padding: 6px 16px;
+}}
+QPushButton#primaryBtn:hover, QDialogButtonBox QPushButton:default:hover,
+QMessageBox QPushButton:default:hover {{
+    background-color: {t["btn_primary_hover"]};
+}}
+QPushButton#primaryBtn:pressed, QDialogButtonBox QPushButton:default:pressed {{
+    background-color: {t["btn_primary_bg"]};
+}}
+QPushButton#primaryBtn:disabled, QDialogButtonBox QPushButton:default:disabled {{
+    background-color: {t["surface_2"]};
+    color: {t["soft"]};
+}}
+/* 对话框里的主按钮要带 QDialog 前缀重写一遍：基础层的
+   QDialog QPushButton#primaryBtn 靠这个前缀压过了上面那条，
+   按钮一直是老的飞书蓝 #3370FF，和青蓝渐变的主色调对不上。 */
+QDialog QPushButton#primaryBtn {{
+    background-color: {t["btn_primary_bg"]};
+    border: 1px solid transparent;
+    border-radius: {theme.RADIUS["sm"]}px;
+    color: {t["btn_primary_fg"]};
+    padding: 6px 16px;
+    font-weight: 700;
+}}
+QDialog QPushButton#primaryBtn:hover {{
+    background-color: {t["btn_primary_hover"]};
+    border-color: transparent;
+}}
+QDialog QPushButton#primaryBtn:pressed {{
+    background-color: {t["btn_primary_bg"]};
+    border-color: transparent;
+}}
+QDialog QPushButton#primaryBtn:disabled {{
+    background-color: {t["surface_2"]};
+    border-color: transparent;
+    color: {t["soft"]};
+}}
+QPushButton#secondaryBtn, QDialogButtonBox QPushButton, QMessageBox QPushButton {{
+    background-color: transparent;
+    border: 1px solid {t["line_strong"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+    color: {t["text"]};
+    padding: 6px 14px;
+    font-weight: 600;
+}}
+QPushButton#secondaryBtn:hover, QDialogButtonBox QPushButton:hover,
+QMessageBox QPushButton:hover {{
+    background-color: {t["surface_2"]};
+    border-color: {t["glass_border"]};
+    color: {t["text_strong"]};
+}}
+QPushButton#secondaryBtn:pressed, QDialogButtonBox QPushButton:pressed {{
+    background-color: {t["surface"]};
+}}
+QPushButton#secondaryBtn:disabled, QDialogButtonBox QPushButton:disabled {{
+    color: {t["soft"]};
+    border-color: {t["line_soft"]};
+}}
+QPushButton#dangerBtn {{
+    background-color: transparent;
+    border: 1px solid rgba(239,68,68,0.45);
+    border-radius: {theme.RADIUS["sm"]}px;
+    color: #f87171;
+    padding: 6px 14px;
+    font-weight: 600;
+}}
+QPushButton#dangerBtn:hover {{
+    background-color: rgba(239,68,68,0.14);
+    border-color: rgba(239,68,68,0.7);
+    color: #fca5a5;
+}}
+QPushButton#linkBtn {{
+    background-color: transparent;
+    border: none;
+    color: {t["link"]};
+    font-weight: 500;
+}}
+QPushButton#linkBtn:hover {{
+    color: {t["accent"]};
+}}
+/* 统计窗的 ‹ › 导航：28px 见方，不能带 secondaryBtn 的横向 padding */
+QPushButton#navBtn {{
+    background-color: {t["surface"]};
+    border: 1px solid {t["line"]};
+    border-radius: 8px;
+    color: {t["text"]};
+    padding: 0px;
+    font-size: 13px;
+}}
+QPushButton#navBtn:hover {{
+    background-color: {t["surface_2"]};
+    border-color: {t["glass_border"]};
+}}
+
+/* ── 滚动条：细、无轨道感 ── */
+QScrollBar:vertical {{
+    background: transparent;
+    width: 8px;
+    margin: 0;
+}}
+QScrollBar::handle:vertical {{
+    background: {t["scroll_handle"]};
+    border-radius: 4px;
+    min-height: 28px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: {t["scroll_handle_hover"]};
+}}
+QScrollBar:horizontal {{
+    background: transparent;
+    height: 8px;
+    margin: 0;
+}}
+QScrollBar::handle:horizontal {{
+    background: {t["scroll_handle"]};
+    border-radius: 4px;
+    min-width: 28px;
+}}
+QScrollBar::handle:horizontal:hover {{
+    background: {t["scroll_handle_hover"]};
+}}
+QScrollBar::add-line, QScrollBar::sub-line {{
+    width: 0; height: 0; border: none; background: none;
+}}
+QScrollBar::add-page, QScrollBar::sub-page {{
+    background: none;
+}}
+QScrollArea {{
+    background: transparent;
+    border: none;
+}}
+
+/* ── 菜单：玻璃面板 ── */
+QMenu {{
+    background-color: {t["glass_strong"]};
+    border: 1px solid {t["glass_border_soft"]};
+    border-radius: {theme.RADIUS["md"]}px;
+    padding: 6px;
+    color: {t["text"]};
+}}
+QMenu::item {{
+    background-color: transparent;
+    border-radius: 8px;
+    padding: 6px 18px 6px 12px;
+    color: {t["text"]};
+}}
+QMenu::item:selected {{
+    background-color: {t["surface_2"]};
+    color: {t["text_strong"]};
+}}
+QMenu::item:pressed {{
+    background-color: {t["surface"]};
+}}
+QMenu::item:disabled {{
+    color: {t["soft"]};
+}}
+QMenu::separator {{
+    height: 1px;
+    background: {t["line_soft"]};
+    margin: 5px 8px;
+}}
+QMenu::indicator {{
+    width: 14px; height: 14px;
+}}
+
+/* ── 标签页 ── */
+QTabWidget::pane {{
+    border: none;
+    background: transparent;
+}}
+QTabBar::tab {{
+    background: transparent;
+    border: none;
+    border-bottom: 1.5px solid transparent;
+    padding: 7px 14px;
+    color: {t["muted"]};
+    font-weight: 600;
+}}
+QTabBar::tab:hover:!selected {{
+    color: {t["text"]};
+}}
+QTabBar::tab:selected {{
+    color: {t["text_strong"]};
+    border-bottom: 1.5px solid {t["accent"]};
+}}
+/* 对话框里的标签页要收窄：基础层给的是 18px 内边距 + 68px 最小宽度，
+   五个中文短标签（通用/提醒/账号/外观/关于）在 520px 宽的设置窗里
+   撑出滚动箭头，「关于」直接被藏掉。选择器要连 QDialog 前缀一起写，
+   否则特异性输给基础层的 QDialog QTabBar::tab。 */
+QDialog QTabBar::tab {{
+    background-color: transparent;
+    border: none;
+    border-bottom: 1.5px solid transparent;
+    min-width: 0px;
+    padding: 7px 13px;
+    margin-right: 2px;
+    color: {t["muted"]};
+    font-size: 13px;
+    font-weight: 600;
+}}
+QDialog QTabBar::tab:hover:!selected {{
+    background-color: transparent;
+    color: {t["text"]};
+}}
+QDialog QTabBar::tab:selected {{
+    background-color: transparent;
+    color: {t["text_strong"]};
+    border-bottom: 1.5px solid {t["accent"]};
+}}
+
+/* ── 提示气泡 ── */
+QToolTip {{
+    background-color: {t["glass_strong"]};
+    border: 1px solid {t["glass_border_soft"]};
+    border-radius: 8px;
+    color: {t["text_strong"]};
+    padding: 5px 9px;
+}}
+
+/* ── 进度条 ── */
+QProgressBar {{
+    background-color: {t["surface"]};
+    border: none;
+    border-radius: 3px;
+    height: 6px;
+    text-align: center;
+    color: transparent;
+}}
+QProgressBar::chunk {{
+    background-color: {t["accent"]};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {t["accent_from"]}, stop:1 {t["accent_to"]});
+    border-radius: 3px;
+}}
+
+/* ── 复选框 / 单选框 ── */
+/* 复选框只调间距与文字色：一旦用 QSS 给 ::indicator 设 background/image，
+   Qt 就不再画系统的勾选标记，只剩一个纯色方块——分不清「已选」和「禁用」。
+   尺寸与勾选交给系统风格，深色下会自动适配。 */
+QCheckBox, QRadioButton {{
+    color: {t["text"]};
+    spacing: 7px;
+}}
+/* 勾选框只换配色，不动尺寸和勾选标记：基础层用飞书蓝 #3370FF 的老
+   配色，落在青蓝渐变的新台面上像一块外来补丁。background / border 换
+   成令牌，image 仍交给 assets/check.svg（白描边），勾选态照样看得见。 */
+QCheckBox::indicator, QRadioButton::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 1px solid {t["line_strong"]};
+    background-color: {t["surface_2"]};
+}}
+QCheckBox::indicator {{
+    border-radius: 4px;
+}}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {{
+    border-color: {t["accent"]};
+}}
+QCheckBox::indicator:checked {{
+    background-color: {t["accent"]};
+    border-color: {t["accent"]};
+    image: url(assets/check.svg);
+}}
+QRadioButton::indicator {{
+    border-radius: 8px;
+}}
+/* 选中态用「外环 + 中空」，不是实心点：16px 里留 6px 的洞，
+   外面 5px 全是强调色，一眼能看出这是个选中了的圆钮。 */
+QRadioButton::indicator:checked {{
+    background-color: {t["surface"]};
+    border: 5px solid {t["accent"]};
+    width: 6px;
+    height: 6px;
+    border-radius: 8px;
+}}
+
+QGroupBox {{
+    border: 1px solid {t["line_soft"]};
+    border-radius: {theme.RADIUS["md"]}px;
+    /* 同 QDialog QGroupBox：margin 要小，padding 不要四值 */
+    margin-top: 8px;
+    padding: 2px 0px 0px 0px;
+}}
+QGroupBox::title {{
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    top: 0px;
+    left: 12px;
+    padding: 0 6px;
+    background-color: transparent;
+    color: {t["muted"]};
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}}
+
+QSlider::groove:horizontal {{
+    height: 4px;
+    background: {t["surface_2"]};
+    border-radius: 2px;
+}}
+QSlider::handle:horizontal {{
+    width: 14px; height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+    background: {t["btn_primary_bg"]};
+    border: 1px solid {t["line"]};
+}}
+QSlider::handle:horizontal:hover {{
+    background: {t["accent"]};
+    border-color: {t["accent"]};
+}}
+QSlider::sub-page:horizontal {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {t["accent_from"]}, stop:1 {t["accent_to"]});
+    border-radius: 2px;
+}}
+
+/* ── 加载 / 授权 / 空态面板 ── */
+QLabel#stateIcon {{
+    color: {t["accent"]};
+}}
+QLabel#stateTitle {{
+    color: {t["text_strong"]};
+    font-size: 13px;
+    font-weight: 600;
+}}
+QLabel#stateMessage {{
+    color: {t["muted"]};
+}}
+QTextEdit#stateDetail, QTextEdit#errorDisplay {{
+    background-color: {cell_other};
+    border: 1px solid {t["line_soft"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+    color: {t["muted"]};
+    font-family: {MONO_STACK};
+    font-size: 11px;
+}}
+QTextEdit#codeBox {{
+    background-color: {cell_other};
+    border: 1px solid {t["line_soft"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+    color: {t["text"]};
+    font-family: {MONO_STACK};
+    font-size: 11px;
+}}
+QLabel#statusLabel {{
+    color: {t["muted"]};
+    font-size: 10px;
+}}
+QLabel#emptyLabel {{
+    color: {t["muted"]};
+    font-size: 12px;
+}}
+QLabel#formError {{
+    color: {t["danger"]};
+    font-size: 11px;
+}}
+QLabel#resizeGrip {{
+    color: {t["soft"]};
+}}
+
+/* ── 搜索结果 ── */
+QLineEdit#searchInput {{
+    background-color: {t["surface"]};
+    border: 1px solid {t["line"]};
+    border-radius: {theme.RADIUS["sm"]}px;
+    padding: 7px 10px;
+    color: {t["text"]};
+}}
+QLineEdit#searchInput:focus {{
+    border: 1px solid {t["accent"]};
+    background-color: {t["surface_2"]};
+}}
+QListWidget#searchResultList {{
+    background-color: transparent;
+    border: none;
+    outline: none;
+}}
+QListWidget#searchResultList::item {{
+    background-color: transparent;
+    border-radius: 8px;
+    padding: 6px 8px;
+    color: {t["text"]};
+}}
+QListWidget#searchResultList::item:hover {{
+    background-color: {t["surface"]};
+}}
+QListWidget#searchResultList::item:selected {{
+    background-color: {t["event_ink"]};
+    color: {t["text_strong"]};
+}}
+
+/* ── 对话框内容 ── */
+QLabel#detailTitle {{
+    color: {t["text_strong"]};
+    font-size: 14px;
+    font-weight: 600;
+}}
+QLabel#detailLabel {{
+    color: {t["muted"]};
+    font-size: 11px;
+    font-weight: 600;
+}}
+QLabel#detailValue {{
+    color: {t["text"]};
+    font-size: 12px;
+}}
+QLabel#confirmTitle {{
+    color: {t["text_strong"]};
+    font-size: 14px;
+    font-weight: 600;
+}}
+QLabel#confirmMessage {{
+    color: {t["muted"]};
+    font-size: 12px;
+}}
+QFrame#dialogSeparator {{
+    background-color: {t["line_soft"]};
+    border: none;
+    max-height: 1px;
+    min-height: 1px;
+}}
+QFrame#qrCard {{
+    background-color: {t["btn_primary_bg"]};
+    border: 1px solid {t["line"]};
+    border-radius: {theme.RADIUS["md"]}px;
+}}
+QLabel#loginBadge {{
+    color: {t["muted"]};
+    background-color: {t["surface"]};
+    border: 1px solid {t["line_soft"]};
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 10px;
+    font-weight: 600;
+}}
+
+/* ── Toast ── */
+QFrame#toast {{
+    background-color: {t["glass_strong"]};
+    border: 1px solid {t["glass_border_soft"]};
+    border-radius: {theme.RADIUS["md"]}px;
+}}
+QLabel#toastIcon {{
+    color: {t["accent"]};
+}}
+QLabel#toastMsg {{
+    color: {t["text_strong"]};
+    font-size: 12px;
+}}
+QPushButton#toastAction {{
+    background-color: transparent;
+    border: none;
+    color: {t["link"]};
+    font-size: 11px;
+    font-weight: 700;
+}}
+QPushButton#toastAction:hover {{
+    color: {t["accent"]};
+}}
+QPushButton#toastClose {{
+    background-color: transparent;
+    border: none;
+    color: {t["soft"]};
+    border-radius: 6px;
+}}
+QPushButton#toastClose:hover {{
+    background-color: {t["surface_2"]};
+    color: {t["text"]};
+}}
+"""
+
+
 def get_theme(
     name: str,
     grid_font: int = DEFAULT_GRID_FONT,
@@ -1694,4 +2624,8 @@ def get_theme(
         + _menu_dialog_rules(name)
         + _extra_rules(name)
         + _event_font_rules(name, grid_font, list_font)
+        # 外观层放最后：同特异性下后定义者生效，这是整套换肤的落点。
+        # 它只覆盖颜色/边框/圆角/字族，字号仍由上面的 _event_font_rules
+        # 按用户配置决定。
+        + _skin_rules(name)
     )

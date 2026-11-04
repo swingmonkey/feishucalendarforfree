@@ -40,6 +40,8 @@ class MonthView(QWidget):
 
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
+        # 视图容器必须透明：台面的光晕由 MainWindow 自绘，这里染色就挡住了
+        self.setObjectName("monthView")
         self.config = config
         self.current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.events: list[dict] = []
@@ -56,17 +58,18 @@ class MonthView(QWidget):
         layout.addWidget(self._build_weekday_header())
 
         self.grid_container = QWidget()
+        self.grid_container.setObjectName("gridContainer")
         self.grid_layout = QGridLayout(self.grid_container)
-        self.grid_layout.setContentsMargins(4, 4, 4, 4)
-        self.grid_layout.setSpacing(2)
+        self.grid_layout.setContentsMargins(6, 6, 6, 6)
+        self.grid_layout.setSpacing(4)
         layout.addWidget(self.grid_container, 1)
 
     def _build_weekday_header(self) -> QWidget:
         header = QFrame()
         header.setFixedHeight(24)
         g = QGridLayout(header)
-        g.setContentsMargins(4, 0, 4, 0)
-        g.setSpacing(2)
+        g.setContentsMargins(6, 0, 6, 0)
+        g.setSpacing(4)
         for i, name in enumerate(WEEKDAY_NAMES):
             lbl = QLabel(name)
             if i >= 5:

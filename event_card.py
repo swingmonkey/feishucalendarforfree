@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
 )
 
@@ -30,7 +31,7 @@ from models_event import (
     is_all_day_event,
     parse_event_time,
 )
-from widgets import build_event_mime
+from widgets import ElidedLabel, build_event_mime
 
 # Re-export for legacy imports (``from event_card import parse_event_time``).
 __all__ = ["EventCard", "parse_event_time", "is_all_day_event"]
@@ -65,18 +66,18 @@ class EventCard(QFrame):
     def _apply_color(self):
         color = get_event_color(self._config, self.event_data.get("event_id", ""))
         if color:
-            self.setStyleSheet(f"border-left: 3px solid {color};")
+            self.setStyleSheet(f"border-left: 2px solid {color};")
 
     def _setup_ui(self):
         self.setObjectName("eventCardCont" if self._is_continuation else "eventCard")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 8, 8)
+        layout.setContentsMargins(8, 7, 6, 7)
         layout.setSpacing(4)
 
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(8)
+        top_row.setSpacing(6)
 
         start = parse_event_time(self.event_data.get("start_time", {}))
         end = parse_event_time(self.event_data.get("end_time", {}))
@@ -91,12 +92,16 @@ class EventCard(QFrame):
         elif self._all_day:
             time_text = "全天"
         else:
-            time_text = f"{start.strftime('%H:%M')} - {end.strftime('%H:%M')}"
+            # 窄列里宽度寸土寸金：用 en dash 而不是 " - "，省下的
+            # 6px 正好够 7 列布局下时间不被截掉最后一位
+            time_text = f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
         if recurring:
             time_text = "♻ " + time_text
 
         self.time_label = QLabel(time_text)
         self.time_label.setObjectName("eventTime")
+        # 让时间保持自身宽度，不被右侧按钮和 stretch 挤到缩字
+        self.time_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
         top_row.addWidget(self.time_label)
 
         top_row.addStretch()
@@ -106,11 +111,16 @@ class EventCard(QFrame):
         self.delete_btn.setToolTip("删除日程")
         self.delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.delete_btn.clicked.connect(lambda: self.delete_clicked.emit(self.event_data))
-        top_row.addWidget(self.delete_btn)
+        # 不放进布局：周视图列宽在 720px 窗口下只有 ~96px，一个常驻 22px
+        # 的按钮会把「14:00–15:00」挤成「14:00–15:0」。改成父控件上的
+        # 悬浮定位（resizeEvent 里贴右上角），完全不参与宽度分配。
+        self.delete_btn.setParent(self)
+        self.delete_btn.resize(18, 18)
+        self.delete_btn.raise_()
 
         layout.addLayout(top_row)
 
-        self.title_label = QLabel(summary)
+        self.title_label = ElidedLabel(summary)
         self.title_label.setObjectName("eventTitle")
         self.title_label.setWordWrap(True)
         self.title_label.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -138,6 +148,13 @@ class EventCard(QFrame):
             tip_parts.append(f"📍 {location['name']}")
         tip_parts.extend(meta_parts)
         self.setToolTip("\n".join(tip_parts))
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        # 删除按钮贴在右上角（不参与布局，见 _setup_ui 的说明）
+        btn = getattr(self, "delete_btn", None)
+        if btn is not None:
+            btn.move(max(0, self.width() - btn.width() - 4), 5)
 
     def _update_status(self):
         """Update visual status based on current time."""

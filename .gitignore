@@ -55,8 +55,5 @@ coverage.xml
 htmlcov/
 .pytest_tmp/
 
-# Coverage artifacts
-.coverage
-coverage.xml
-htmlcov/
-.pytest_tmp/
+# UI 截图验收产物（tools/ui_shot.py 的输出）
+.ui_shot/

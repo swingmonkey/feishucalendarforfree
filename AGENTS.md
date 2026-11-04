@@ -83,8 +83,17 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 飞书读写能力集中在 `lark_cli.py`/`lark_cli_async.py`，**重构只动 UI 层**：拖拽改期复用 `update_event`，重复写入复用 `+create --rrule`/`patch recurrence`，颜色仅存本地 `config.json.event_colors`，子任务即描述里的 Markdown 勾选清单 `- [ ]`
 - **lark-cli `calendar +create` 没有 `--location`**（只有原生 `calendar events create --data` 才带 location 字段），所以新建对话框的「地点」按 `add_event_dialog.compose_description()` 以 `📍 地点：` 追加进描述，**不要再给 `create_event` 传 `location=`**（会 TypeError 并让表单永久卡在「创建中…」）
 - **全天日程（`start_time.date`）不要用 timestamp 写回**：勾选子任务时只改描述、不传 start/end，否则整天事件会被改成带具体时刻的定时事件
-- `config.json` 存窗口/主题（默认 light、opacity 1.0）/刷新间隔/视图模式/颜色/`grid_font_size`/`list_font_size`/`usage_stats_enabled`/`auth_completed`/`auth_user`（`.gitignore` 排除，不含任何凭据）
-- UI 统一飞书设计语言：品牌蓝 #3370FF（hover #4E83FD、pressed #245BDB），成功 #34C724、警告 #FF8800、危险 #F54A45，中性色 N 系列；QSS 集中在 `styles.py`（`get_theme(name, grid_font, list_font)`），新控件先加 objectName 再在两套主题补样式，勿在代码里散落硬编码色值
+- `config.json` 存窗口/主题（默认 dark、opacity 1.0）/刷新间隔/视图模式/颜色/`grid_font_size`/`list_font_size`/`usage_stats_enabled`/`auth_completed`/`auth_user`（`.gitignore` 排除，不含任何凭据）
+- **视觉的真源是 `theme.py`，不是 `styles.py` 里那些十六进制**：令牌分三层——字体栈（`SANS_STACK` / `MONO_STACK`）、尺度（`RADIUS` / `SPACE` / `FONT_SIZE` / `DURATION` / `EASING_ENTER`）、双主题调色板（`_DARK` / `_LIGHT`，`tokens(name)` 取用，未知主题名退回深色不抛异常）。`paint_colors(name)` 给 QPainter 自绘用
+  - 外观层是 `styles._skin_rules(name)`，**追加在 `get_theme()` 最末尾**，靠 QSS「同特异性后定义者生效」压住基础层；它只改颜色/边框/圆角/字族，**刻意不动布局尺寸**（min-height、padding、grid 间距），日历密度是原有功能的一部分
+  - 改外观时**先看基础层有没有带前缀的规则**：`QDialog QPushButton#primaryBtn`、`QDialog QTabBar::tab`、`QDialog QGroupBox` 这类带 `QDialog` 前缀的选择器特异性更高，只写 `QPushButton#primaryBtn` 是压不住的（对话框里的主按钮曾经一直是老的飞书蓝就是这个原因）
+  - 基础层的飞书蓝 #3370FF 仍留在 `styles.py` 里当兜底，新写控件不要再抄它；要颜色就 `theme.tokens(...)`
+- **QSS 里的 `QWidget` 是个陷阱**：`QMainWindow, QDialog, QWidget { background-color: bg }` 会把 QLabel / QCheckBox 一起刷成窗口底色，落在比背景更亮的组框表面（`surface`）上就是一道道深色横条。底色只给窗口和对话框，字体/文字色另立一条不带 `background` 的 `QWidget` 规则
+- **主窗口台面是自绘的**：`MainWindow.paintEvent` + `_backdrop()` 烘焙 QPixmap 缓存（key = 宽/高/主题名/DPR），画深底 + 右上径向光晕 + 20° 旋转青蓝光带。换肤时必须丢弃缓存（`_apply_theme` 里已做）。QSS 里看不到这一层，改配色要去 `theme.PAINT`
+- **不要用 `setFixedSize` 关住对话框**：`QVBoxLayout` 在空间不够时会把子控件压到低于 sizeHint——标签高度变 0、组框里的控件叠在一起，而且没有任何报错。设置窗和统计窗都栽过（520×560 / 520×620 vs 实际需要 613×727 / 654×860）。做法是让内容决定尺寸（`SettingsDialog._fit_to_content` / `StatsDialog._fit_size`），放不下时滚动（统计窗用 QScrollArea）或退回屏幕可用区
+  - 量尺寸要在 `showEvent` 之后：构造期子控件还没被 polish，`sizeHint` 全是初值
+  - `QGroupBox` 的 QSS `margin` 不计入 `sizeHint`，四值 `padding` 会同向压缩内容区，所以对话框里的组框用 `margin-top: 8px; padding: 2px 0 0 0`，标题就压在边框线上（Qt 官方示例的做法）
+- **UI 改动必须真的看一眼**：QSS 和自绘都没有单元测试能断言。`tools/ui_shot.py` 灌 18 条中文示例日程，在 `QT_QPA_PLATFORM=offscreen` 下用 `QWidget.grab()` 截月/周视图（这台机器没有屏幕录制权限，`screencapture` 拿不到窗口）。冒烟命令：`QT_QPA_PLATFORM=offscreen .venv/bin/python tools/ui_shot.py .ui_shot dark`（第二参数换成 `light` 出浅色）
 - **日程字号可调（v2.1.6）**：`config.grid_font_size`（月视图，默认 10）/ `config.list_font_size`（周·列表视图，默认 13），范围 9-24px，设置页「外观」Tab 两个滑块；实现方式是 `styles._event_font_rules()` 生成覆盖规则**追加在主题 QSS 末尾**（同名选择器后定义者生效），不改两套大模板；时间与次要信息由主字号派生（月视图 -1、列表 -2）。改字号必须同步放开 `QFrame#gridEvent` 的 min/max-height（行高 = 字号 +6/+8），否则大字号会被裁；字号变化后 `MainWindow._on_settings_changed` 会 `_render_active_view()` 重建视图
 
 ## 当前状态

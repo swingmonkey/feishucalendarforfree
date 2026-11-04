@@ -1,7 +1,10 @@
 """Offline tests for the adjustable event font size (月视图 / 周·列表视图)."""
 
+import re
+
 import config as config_module
 import styles
+import theme
 from widgets import MAX_VISIBLE_EVENTS, visible_event_count
 
 # ── Config: defaults & clamping ──
@@ -45,10 +48,26 @@ def test_font_size_persists(tmp_path, monkeypatch):
 
 # ── Stylesheet injection ──
 
+_RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}", re.S)
+
+
 def _rule_for(qss: str, selector: str) -> str:
-    """Return the last rule block for ``selector`` (later rules win)."""
-    blocks = [b for b in qss.split("}") if selector in b]
-    return blocks[-1] if blocks else ""
+    """合并 ``selector`` 的全部规则体。
+
+    QSS 的层叠语义是「同选择器后定义者覆盖同名属性，未声明的属性保留」，
+    所以外观层（styles._skin_rules）再写一遍同名选择器改颜色时，前面注入的
+    字号依然生效。只取最后一块会误判成字号丢失。
+    """
+    bodies = []
+    for m in _RULE_RE.finditer(qss):
+        # group(1) 会带上上一条规则的收尾 "}" 和本条的注释，都切掉
+        head = m.group(1).split("}")[-1]
+        head = re.sub(r"/\*.*?\*/", " ", head, flags=re.S)
+        # 支持 "QFrame#gridEvent, QFrame#gridEventMultiDay" 这类选择器组
+        selectors = [s.strip() for s in head.split(",")]
+        if selector in selectors:
+            bodies.append(m.group(2).strip())
+    return "\n".join(bodies)
 
 
 def test_default_theme_matches_legacy_sizes():
@@ -93,8 +112,9 @@ def test_font_rules_clamp_invalid_input():
 def test_font_rules_keep_theme_colors():
     light = styles.get_theme("light", grid_font=14)
     dark = styles.get_theme("dark", grid_font=14)
-    assert "#1F2329" in _rule_for(light, "QLabel#gridEventTitle")
-    assert "#F0F1F2" in _rule_for(dark, "QLabel#gridEventTitle")
+    # 色值从令牌取，避免换肤时再来改一遍测试
+    assert theme.tokens("light")["text"] in _rule_for(light, "QLabel#gridEventTitle")
+    assert theme.tokens("dark")["text"] in _rule_for(dark, "QLabel#gridEventTitle")
 
 
 # ── Day cell capacity ──

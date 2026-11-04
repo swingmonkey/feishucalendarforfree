@@ -19,21 +19,38 @@ It does **not** touch the Feishu read/write layer
 import shutil
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import (
+    QAbstractAnimation,
+    QEasingCurve,
+    QPoint,
+    QPointF,
+    QPropertyAnimation,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    QTimer,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import (
     QAction,
     QColor,
     QDesktopServices,
     QIcon,
     QKeySequence,
+    QLinearGradient,
     QMouseEvent,
     QPainter,
+    QPen,
     QPixmap,
+    QRadialGradient,
     QShortcut,
 )
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -51,6 +68,7 @@ import cli_installer
 import event_store
 import exporter
 import reminder
+import theme
 from add_event_dialog import AddEventDialog
 from app_icon import create_app_icon, create_app_logo_pixmap
 from cli_install_async import InstallWorker
@@ -193,6 +211,11 @@ class MainWindow(QMainWindow):
         self._resize_start_geometry: QRect | None = None
         self._kb_cursor_date = self.current_date
         self._duplicate_pending = False
+        # 台面自绘缓存：尺寸或主题不变就不重画（拖动窗口会连续触发
+        # paintEvent，渐变填充每次重算不划算）
+        self._theme_name = self.config.get("theme", "dark")
+        self._backdrop_cache: QPixmap | None = None
+        self._backdrop_key: tuple | None = None
 
         self._geometry_save_timer = QTimer(self)
         self._geometry_save_timer.setSingleShot(True)
@@ -247,8 +270,77 @@ class MainWindow(QMainWindow):
         self.move(self.config.get("window_x", 100), self.config.get("window_y", 100))
         self.setWindowOpacity(float(self.config.get("opacity", 1.0)))
 
+    # ── 台面自绘 ──
+
+    def paintEvent(self, event):
+        """画台面：深底 + 右上径向光晕 + 一道斜向青蓝光带。
+
+        为什么不用 QSS：``qradialgradient`` 的圆心只能取 0–1 的比例，
+        做不出「从窗口顶部溢出去」的光晕；光带还要旋转 20°，QSS 也没有
+        变换。Qt 同样没有 ``backdrop-filter``，柔边只能拿横向 alpha 渐变
+        近似——真模糊得给每个控件挂 QGraphicsBlurEffect，那会让每次重绘
+        都走一遍离屏渲染，对一个常驻桌面挂件不值当。
+        """
+        painter = QPainter(self)
+        painter.drawPixmap(0, 0, self._backdrop())
+
+    def _backdrop(self) -> QPixmap:
+        """台面位图，按 (尺寸, 主题, DPR) 缓存。"""
+        dpr = self.devicePixelRatioF()
+        w, h = self.width(), self.height()
+        key = (w, h, self._theme_name, dpr)
+        if self._backdrop_cache is not None and self._backdrop_key == key:
+            return self._backdrop_cache
+
+        pm = QPixmap(max(1, int(w * dpr)), max(1, int(h * dpr)))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.GlobalColor.transparent)
+
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        c = theme.paint_colors(self._theme_name)
+        dark = theme.is_dark(self._theme_name)
+
+        p.fillRect(QRectF(0, 0, w, h), QColor(*c["bg"]))
+
+        # 右上角光晕：token-monitor 的 --bg-glow
+        glow = QRadialGradient(QPointF(w * 0.80, -h * 0.12), max(w, h) * 0.95)
+        glow.setColorAt(0.0, QColor(*c["glow"], 150 if dark else 100))
+        glow.setColorAt(0.45, QColor(*c["glow"], 52 if dark else 32))
+        glow.setColorAt(1.0, QColor(*c["glow"], 0))
+        p.fillRect(QRectF(0, 0, w, h), glow)
+
+        # 斜向光带：边缘靠 alpha 渐变化开，替代模糊。
+        # 透明度压得很低——光带是「有空气感」的暗示，不是彩色背景，
+        # 逼近 0.06 以上就会整片泛绿，日历的可读性先崩。
+        p.save()
+        p.translate(w * 0.62, h * 0.32)
+        p.rotate(20.0)
+        band_w = w * 1.15
+        band = QLinearGradient(QPointF(-band_w / 2, 0), QPointF(band_w / 2, 0))
+        alpha = 14 if dark else 9
+        band.setColorAt(0.00, QColor(*c["beam_from"], 0))
+        band.setColorAt(0.42, QColor(*c["beam_from"], alpha))
+        band.setColorAt(0.58, QColor(*c["beam_to"], alpha + 3))
+        band.setColorAt(1.00, QColor(*c["beam_to"], 0))
+        p.fillRect(QRectF(-band_w / 2, -h * 1.3, band_w, h * 2.6), band)
+        p.restore()
+
+        # 顶沿 1px 高光：玻璃边缘的暗示
+        if dark:
+            p.setPen(QPen(QColor(255, 255, 255, 16), 1))
+            p.drawLine(QPointF(0, 0), QPointF(w, 0))
+        p.end()
+
+        self._backdrop_cache = pm
+        self._backdrop_key = key
+        return pm
+
     def _setup_ui(self):
         central = QWidget()
+        # appSurface 必须透明：台面由 paintEvent 自绘，否则 QSS 的
+        # QWidget 通配底色会把光晕盖掉
+        central.setObjectName("appSurface")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -274,6 +366,7 @@ class MainWindow(QMainWindow):
         self.week_view.drag_blocked.connect(self._on_drag_blocked)
 
         self.stack = QStackedWidget()
+        self.stack.setObjectName("viewStack")
         self.stack.addWidget(self.month_view)   # 0
         self.stack.addWidget(self.week_view)    # 1
         self.stack.addWidget(self._build_loading_panel())  # 2
@@ -413,7 +506,7 @@ class MainWindow(QMainWindow):
 
         self.theme_action = QAction("深色主题", self)
         self.theme_action.setCheckable(True)
-        self.theme_action.setChecked(self.config.get("theme", "light") == "dark")
+        self.theme_action.setChecked(self.config.get("theme", "dark") == "dark")
         self.theme_action.triggered.connect(self._set_dark_theme)
         menu.addAction(self.theme_action)
         menu.addSeparator()
@@ -429,10 +522,10 @@ class MainWindow(QMainWindow):
 
     def _sync_menu(self):
         self.pin_action.setChecked(self._pinned)
-        self.theme_action.setChecked(self.config.get("theme", "light") == "dark")
+        self.theme_action.setChecked(self.config.get("theme", "dark") == "dark")
         # QSS 对 QMenu::indicator 支持有限，用文本勾号直观呈现开关状态
         self.pin_action.setText(("✓ " if self._pinned else "    ") + "窗口置顶")
-        dark = self.config.get("theme", "light") == "dark"
+        dark = self.config.get("theme", "dark") == "dark"
         self.theme_action.setText(("✓ " if dark else "    ") + "深色主题")
 
     def _build_month_bar(self) -> QWidget:
@@ -800,11 +893,54 @@ class MainWindow(QMainWindow):
     def _apply_view_mode(self):
         self.month_toggle.setObjectName("toggleBtnActive" if self._view_mode == "month" else "toggleBtn")
         self.week_toggle.setObjectName("toggleBtnActive" if self._view_mode == "week" else "toggleBtn")
-        self.month_toggle.setStyle(self.month_toggle.style())
-        self.week_toggle.setStyle(self.week_toggle.style())
+        # 换 objectName 后必须 unpolish/polish 才会重算 QSS。
+        # 原来这里是 ``setStyle(self.style())``——`style()` 返回的其实是被
+        # 样式表包装过的 QStyleSheetStyle，再 set 回去等于把包装层剥掉，
+        # 这个控件从此不吃 application 级样式表，渲染成系统默认的浅色按钮。
+        for btn in (self.month_toggle, self.week_toggle):
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+            btn.update()
         if self.stack.currentIndex() in (0, 1):
             self.stack.setCurrentIndex(0 if self._view_mode == "month" else 1)
         self._update_period_label()
+        self._animate_view_enter()
+
+    def _animate_view_enter(self):
+        """切视图时给一个短促淡入（220ms，OutExpo）。
+
+        曲线取 OutExpo——对应原项目 ``cubic-bezier(.16,1,.3,1)``，那种
+        「冲出去再缓缓收住」的手感。时长只有 220ms：网页上的入场动画
+        动辄 900ms，在桌面工具里会让人觉得卡。
+
+        只做透明度、不做位移：视图由 QStackedWidget 的布局管理，
+        给 ``pos`` 做动画会被布局立刻覆写，反而抖一下。
+        """
+        if not self.isVisible():
+            return
+        app = QApplication.instance()
+        if app is not None and not app.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu):
+            # 系统要求减少动态效果，直接跳过
+            return
+        view = self.stack.currentWidget()
+        if view is None or view.graphicsEffect() is not None:
+            return
+
+        effect = QGraphicsOpacityEffect(view)
+        view.setGraphicsEffect(effect)
+        fade = QPropertyAnimation(effect, b"opacity", self)
+        fade.setDuration(theme.DURATION["mid"] + 40)
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.setEasingCurve(QEasingCurve.Type.OutExpo)
+
+        def _cleanup():
+            # 动画结束后必须摘掉 effect：留着会让这棵子树持续走离屏合成，
+            # 拖窗口时明显掉帧
+            view.setGraphicsEffect(None)
+
+        fade.finished.connect(_cleanup)
+        fade.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _active_view(self):
         return self.month_view if self._view_mode == "month" else self.week_view
@@ -981,25 +1117,30 @@ class MainWindow(QMainWindow):
 
     def _apply_theme(self):
         # 应用到 application 级别：登录框等独立顶层窗口即便没有父窗口也能统一风格
-        theme = self.config.get("theme", "light")
+        theme_name = self.config.get("theme", "dark")
         grid_font = self.config.get("grid_font_size", DEFAULT_GRID_FONT)
         list_font = self.config.get("list_font_size", DEFAULT_LIST_FONT)
         self._applied_grid_font = grid_font
         self._applied_list_font = list_font
-        qss = get_theme(theme, grid_font, list_font)
+        qss = get_theme(theme_name, grid_font, list_font)
+        # 台面自绘跟着换：缓存按主题名分辨，换肤后必须丢弃旧位图
+        self._theme_name = theme_name
+        self._backdrop_cache = None
+        self._backdrop_key = None
+        self.update()
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(qss)
         else:
             self.setStyleSheet(qss)
         if hasattr(self, "more_btn"):
-            self.more_btn.setIcon(_create_more_icon(theme))
+            self.more_btn.setIcon(_create_more_icon(theme_name))
         # 今日条是独立顶层窗口，吃不到 application 级样式表，得单独换肤
         if getattr(self, "_today_bar", None) is not None:
-            self._today_bar.apply_theme(theme)
+            self._today_bar.apply_theme(theme_name)
 
     def _toggle_theme(self):
-        cur = self.config.get("theme", "light")
+        cur = self.config.get("theme", "dark")
         self.config.set("theme", "light" if cur == "dark" else "dark")
         self._apply_theme()
 
@@ -1100,10 +1241,10 @@ class MainWindow(QMainWindow):
                 self._today_bar.hide()
             return
         if self._today_bar is None:
-            self._today_bar = TodayBar(dark=self.config.get("theme") == "dark")
+            self._today_bar = TodayBar(dark=self.config.get("theme", "dark") == "dark")
             self._today_bar.activated.connect(self._show_from_today_bar)
             self._today_bar.closed.connect(self._on_today_bar_closed)
-        self._today_bar.apply_theme(self.config.get("theme", "light"))
+        self._today_bar.apply_theme(self.config.get("theme", "dark"))
         self._today_bar.set_events(self._today_events(), datetime.now())
         self._today_bar.restore_position(
             int(self.config.get("today_bar_x", -1)),
@@ -1332,7 +1473,7 @@ class MainWindow(QMainWindow):
         """统计面板：只读本地库，打开即出图，不触发同步。"""
         dialog = StatsDialog(
             self._store,
-            theme=self.config.get("theme", "light"),
+            theme=self.config.get("theme", "dark"),
             parent=self,
         )
         dialog.exec()
@@ -1604,6 +1745,8 @@ class MainWindow(QMainWindow):
         self._position_resize_handles()
         self._save_window_size()
         super().resizeEvent(ev)
+        # 台面缓存按尺寸分键，尺寸变了要重画
+        self.update()
 
     def _save_window_size(self):
         self._geometry_save_timer.start()

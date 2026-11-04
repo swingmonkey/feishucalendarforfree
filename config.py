@@ -36,7 +36,7 @@ class Config:
         "window_height": 640,
         "auto_refresh_interval": 300,
         # 与飞书桌面端一致，默认浅色主题
-        "theme": "light",
+        "theme": "dark",
         "opacity": 1.0,
         "pin_to_top": True,
         "calendar_id": "primary",

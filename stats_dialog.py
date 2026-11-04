@@ -8,7 +8,7 @@ import calendar
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -16,55 +16,91 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 import event_store
 import stats
+import theme
 
 _WEEK_HEADERS = stats.WEEKDAY_LABELS
 
-_LIGHT = {
-    "cell": ["#F2F3F5", "#D6E4FF", "#ADC6FF", "#3370FF", "#1F4CD6"],
-    "cell_text": ["#646A73", "#1F2329", "#1F2329", "#FFFFFF", "#FFFFFF"],
-    "bar": "#3370FF",
-    "card": "QFrame#statsCard { background: #FFFFFF; border: 1px solid #E4E6EB; border-radius: 8px; }",
-    "muted": "color: #646A73;",
-    "value": "color: #1F2329; font-weight: 600;",
-}
-_DARK = {
-    "cell": ["#2A2D34", "#1E355C", "#2A4C86", "#3370FF", "#6E8FF5"],
-    "cell_text": ["#8F959E", "#C9D4E8", "#E5E6EB", "#FFFFFF", "#0B1B33"],
-    "bar": "#4E83FD",
-    "card": "QFrame#statsCard { background: #23262D; border: 1px solid #3A3F4B; border-radius: 8px; }",
-    "muted": "color: #A6ADBB;",
-    "value": "color: #E5E6EB; font-weight: 600;",
-}
+
+def _build_palette(name: str) -> dict:
+    """热力图与卡片的取色，全部从设计令牌派生。
+
+    热力梯度沿用 token-monitor 的「深蓝 → 亮青」路线：低负荷是冷灰，
+    越忙越往青蓝亮部走。原来这里是飞书蓝（#3370FF）单色系五档，
+    和整套新外观不搭。
+    """
+    t = theme.tokens(name)
+    if theme.is_dark(name):
+        cells = [
+            "rgba(255,255,255,0.05)",
+            "rgba(14,116,144,0.70)",
+            "rgba(8,145,178,0.85)",
+            "rgba(34,211,238,0.90)",
+            "#67e8f9",
+        ]
+        cell_text = ["#9aa7b8", "#bae6fd", "#e0f2fe", "#07111f", "#07111f"]
+    else:
+        cells = [
+            "rgba(12,16,22,0.05)",
+            "#cffafe",
+            "#7dd3e8",
+            "#22b8d4",
+            "#0e7490",
+        ]
+        cell_text = ["#6b7684", "#0c1016", "#0c1016", "#ffffff", "#ffffff"]
+    return {
+        "cell": cells,
+        "cell_text": cell_text,
+        "bar": t["accent_from"],
+        "bar_grad": (
+            "qlineargradient(x1:0, y1:1, x2:0, y2:0, "
+            f"stop:0 {t['accent_to']}, stop:1 {t['accent_from']})"
+        ),
+        "card": (
+            f"QFrame#statsCard {{ background: {t['glass']}; "
+            f"border: 1px solid {t['glass_border_soft']}; "
+            f"border-radius: {theme.RADIUS['md']}px; }}"
+        ),
+        "muted": f"color: {t['muted']};",
+        "value": f"color: {t['text']}; font-weight: 600;",
+    }
 
 
 class StatsDialog(QDialog):
     """Heatmap + load summary for one month, read from the local store."""
 
-    def __init__(self, store, theme: str = "light", today: datetime = None, parent=None):
+    def __init__(self, store, theme: str = "dark", today: datetime = None, parent=None):
         super().__init__(parent)
         self._store = store
         self._theme = theme
         self._today = (today or datetime.now()).replace(hour=0, minute=0, second=0, microsecond=0)
         self._year = self._today.year
         self._month = self._today.month
-        self._palette = _DARK if theme == "dark" else _LIGHT
+        self._palette = _build_palette(theme)
 
         self.setWindowTitle("日程统计")
-        self.setFixedSize(520, 620)
         self._build_ui()
         self._reload()
 
     # ── Layout ──
 
     def _build_ui(self):
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(20, 16, 20, 16)
+        shell = QVBoxLayout(self)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+
+        # 内容放进滚动区：热力格子是固定尺寸，月份换一行（5 周 / 6 周）
+        # 就会差出一整排。写死窗口高度时多出来的那部分直接把正文压扁，
+        # 摘要行的标签高度会被压成 0，整个「本月概况」变成一块空面板。
+        content = QWidget()
+        outer = QVBoxLayout(content)
+        outer.setContentsMargins(20, 16, 20, 8)
         outer.setSpacing(12)
 
         nav = QHBoxLayout()
@@ -86,7 +122,7 @@ class StatsDialog(QDialog):
         self.grid_host = QWidget()
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
-        self.grid.setSpacing(4)
+        self.grid.setSpacing(6)
         outer.addWidget(self.grid_host)
 
         outer.addLayout(self._build_legend())
@@ -107,7 +143,20 @@ class StatsDialog(QDialog):
 
         outer.addStretch()
 
-        bottom = QHBoxLayout()
+        self._content = content
+        # 固定高度就等于把它压扁：让内容保持自然高度，窗口放不下时滚动
+        content.setMinimumHeight(content.sizeHint().height())
+        self.scroll = QScrollArea()
+        self.scroll.setObjectName("statsScroll")
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setWidget(content)
+        shell.addWidget(self.scroll, 1)
+
+        bottom_wrap = QWidget()
+        bottom = QHBoxLayout(bottom_wrap)
+        bottom.setContentsMargins(20, 6, 20, 14)
         self.hint_label = QLabel("统计来自本地日程库，不含全天日程时长")
         self.hint_label.setStyleSheet(self._palette["muted"])
         bottom.addWidget(self.hint_label, 1)
@@ -116,11 +165,47 @@ class StatsDialog(QDialog):
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.clicked.connect(self.accept)
         bottom.addWidget(close_btn)
-        outer.addLayout(bottom)
+        shell.addWidget(bottom_wrap)
+
+    def _sync_height(self):
+        """内容填好之后再量一次：热力格子是固定尺寸，5 周和 6 周的
+        月份差一整排，摘要行也是每月不同。量完把内容的最小高度钉住，
+        滚动区才不会把它压回去。"""
+        layout = self._content.layout()
+        if layout is not None:
+            layout.activate()
+        need = layout.totalSizeHint().height() if layout is not None else 0
+        if need and self._content.minimumHeight() != need:
+            self._content.setMinimumHeight(need)
+        self._fit_size()
+
+    def showEvent(self, event):
+        # 构造时子控件还没被 polish 过，sizeHint 全是初值；必须等真正
+        # 显示出来再量一次，否则窗口仍按 165px 的内容高度定高。
+        super().showEvent(event)
+        self._sync_height()
+
+    def _fit_size(self):
+        """按内容定窗口尺寸，最多长到屏幕可用区。
+
+        宽度取内容的最小宽度：按星期分布那七列各带一个「4 小时 15 分」
+        的标签，压到 520 会把右侧的数值裁掉。高度取内容的自然高度。
+        """
+        need_h = self._content.minimumHeight() + 76
+        need_w = max(self._content.minimumSizeHint().width() + 24, 560)
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        limit_h, limit_w = 860, 900
+        if screen is not None:
+            avail = screen.availableGeometry()
+            limit_h = min(limit_h, avail.height() - 80)
+            limit_w = min(limit_w, avail.width() - 60)
+        self.resize(min(need_w, limit_w), max(560, min(need_h, limit_h)))
 
     def _nav_button(self, text: str) -> QPushButton:
         button = QPushButton(text)
-        button.setObjectName("secondaryBtn")
+        # 不用 secondaryBtn：它带 6/14px 的 padding，28px 宽的按钮里
+        # 内容区会被挤成 0，文字直接消失
+        button.setObjectName("navBtn")
         button.setFixedSize(28, 26)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         return button
@@ -156,6 +241,7 @@ class StatsDialog(QDialog):
         events = self._events()
         self._fill_grid(events)
         self._fill_summary(events)
+        self._sync_height()
 
     def _fill_grid(self, events):
         while self.grid.count():
@@ -186,12 +272,17 @@ class StatsDialog(QDialog):
 
         level = stats.heat_level(stat.minutes)
         is_today = stat.day == self._today.date()
-        border = "border: 2px solid #3370FF;" if is_today else "border: 1px solid transparent;"
+        accent = theme.tokens(self._theme)["accent_from"]
+        border = (
+            f"border: 2px solid {accent};"
+            if is_today
+            else "border: 1px solid transparent;"
+        )
         cell.setText(str(stat.day.day))
         cell.setStyleSheet(
             f"background: {self._palette['cell'][level]};"
             f"color: {self._palette['cell_text'][level]};"
-            f"border-radius: 6px; {border}"
+            f"border-radius: 8px; {border}"
         )
         detail = [stat.day.strftime("%m月%d日")]
         if stat.events:
@@ -227,6 +318,9 @@ class StatsDialog(QDialog):
         ]
         for title, value in rows:
             line = QHBoxLayout()
+            # 默认边距 9px，六行叠起来就是 108px 的空白；这里只需要一条
+            # 基线对齐的「标签 —— 数值」行
+            line.setContentsMargins(0, 0, 0, 0)
             name = QLabel(title)
             name.setStyleSheet(self._palette["muted"])
             text = QLabel(value)
@@ -263,11 +357,11 @@ class StatsDialog(QDialog):
             value.setStyleSheet(self._palette["muted"])
 
             bar = QFrame()
-            bar.setFixedWidth(34)
-            bar.setFixedHeight(max(3, int(48 * minutes / peak)) if minutes else 3)
+            bar.setFixedWidth(26)
+            bar.setFixedHeight(max(3, int(64 * minutes / peak)) if minutes else 3)
             bar.setStyleSheet(
-                f"background: {self._palette['bar'] if minutes else self._palette['cell'][0]};"
-                "border-radius: 3px;"
+                f"background: {self._palette['bar_grad'] if minutes else self._palette['cell'][0]};"
+                "border-radius: 4px;"
             )
             bar_holder = QWidget()
             bar_layout = QVBoxLayout(bar_holder)

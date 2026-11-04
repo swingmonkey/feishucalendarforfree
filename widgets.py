@@ -8,8 +8,8 @@ share identical building blocks, mirroring weektodo's component approach.
 import json
 from datetime import datetime
 
-from PySide6.QtCore import QByteArray, QMimeData, QPoint, Qt, Signal
-from PySide6.QtGui import QColor, QDrag, QFont, QPainter
+from PySide6.QtCore import QByteArray, QMimeData, QPoint, QPointF, Qt, Signal
+from PySide6.QtGui import QColor, QDrag, QFont, QLinearGradient, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import theme
 from config import Config
 from models_event import get_event_color, has_recurrence, is_all_day_event, parse_event_time
 
@@ -100,37 +101,78 @@ def parse_event_mime(mime) -> dict | None:
 
 
 class DateCircleLabel(QLabel):
-    """A QLabel that draws a circle around the text (for today's date)."""
+    """今天日号：青蓝渐变圆底 + 深墨数字。
 
-    def __init__(self, text: str, parent=None):
+    原实现是纯色圆（#3370FF）+ 白字。改成渐变后白字在浅青那一端对比不足，
+    所以文字取 ``accent_ink``（深墨）——整颗像一枚发光的小标记，也是整个
+    界面唯一带渐变填充的元素。
+    """
+
+    def __init__(self, text: str, parent=None, dark: bool = True):
         super().__init__(text, parent)
-        self._circle_color = QColor("#3370FF")
-        self._circle_radius = 10
-
-    def set_circle_color(self, color: str):
-        self._circle_color = QColor(color)
-        self.update()
+        self._dark = dark
+        self._circle_radius = 8
 
     def paintEvent(self, ev):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        colors = theme.paint_colors("dark" if self._dark else "light")
+        radius = min(self._circle_radius, self.height() // 2 - 1)
         cx = self.width() // 2
         cy = self.height() // 2
-        radius = min(self._circle_radius, self.height() // 2 - 1)
 
-        painter.setBrush(self._circle_color)
+        grad = QLinearGradient(QPointF(cx - radius, cy - radius), QPointF(cx + radius, cy + radius))
+        grad.setColorAt(0.0, QColor(*colors["beam_from"]))
+        grad.setColorAt(1.0, QColor(*colors["beam_to"]))
+        painter.setBrush(grad)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(cx - radius, cy - radius, radius * 2, radius * 2)
 
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(QColor("#07111f") if self._dark else QColor("#ffffff"))
         font = QFont(self.font())
         font.setBold(True)
-        font.setPointSize(8)
+        font.setPixelSize(10)
         painter.setFont(font)
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
 
         painter.end()
+
+
+class ElidedLabel(QLabel):
+    """单行文本，放不下时尾部省略号，而不是被父容器硬切半个字。
+
+    QLabel 没有自动缩略能力，日程标题一长就会在格子边缘被生硬截断，
+    看起来像渲染 bug。这里在 resize 时按当前宽度重算 elided 文本，
+    完整标题仍由外层 QFrame 的 tooltip 提供。
+    """
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self._full_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def setText(self, text: str):
+        self._full_text = text
+        super().setText(text)
+        self._apply_elide()
+
+    def fullText(self) -> str:
+        return self._full_text
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._apply_elide()
+
+    def _apply_elide(self):
+        width = self.width()
+        if width <= 12:
+            return
+        elided = self.fontMetrics().elidedText(
+            self._full_text, Qt.TextElideMode.ElideRight, width
+        )
+        if elided != super().text():
+            super().setText(elided)
 
 
 class ClickableLabel(QLabel):
@@ -200,7 +242,7 @@ class GridEventLabel(QFrame):
         summary = self.event_data.get("summary", "(无标题)")
         if not isinstance(summary, str):
             summary = str(summary)
-        title_lbl = QLabel(summary)
+        title_lbl = ElidedLabel(summary)
         title_lbl.setObjectName("gridEventTitle")
         layout.addWidget(title_lbl, 1)
 
@@ -321,12 +363,15 @@ class DayCell(QFrame):
         self._refresh_object_name()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(1)
+        # 左右 4px 让日号与格子边缘有点呼吸；上下 3+3 保持
+        # _CELL_CHROME 预算不变（那里按上下边距合计 6px 算可见条数）
+        layout.setContentsMargins(4, 3, 3, 3)
+        layout.setSpacing(2)
         self._layout = layout
 
         if self._is_today:
-            date_lbl = DateCircleLabel(str(self.cell_date.day))
+            dark = not (self._config and self._config.get("theme", "dark") == "light")
+            date_lbl = DateCircleLabel(str(self.cell_date.day), dark=dark)
             date_lbl.setObjectName("dayNumToday")
         elif not self._is_current_month:
             date_lbl = QLabel(str(self.cell_date.day))

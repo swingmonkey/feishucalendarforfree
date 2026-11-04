@@ -4,7 +4,7 @@
   "window_width": 440,
   "window_height": 640,
   "auto_refresh_interval": 300,
-  "theme": "light",
+  "theme": "dark",
   "opacity": 1.0,
   "pin_to_top": true,
   "view_mode": "month",

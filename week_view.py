@@ -278,6 +278,8 @@ class WeekView(QWidget):
 
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
+        # 同 MonthView：容器透明，让 MainWindow 自绘的台面透上来
+        self.setObjectName("weekView")
         self.config = config
         self.anchor_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.events: list[dict] = []
@@ -298,8 +300,8 @@ class WeekView(QWidget):
 
         self.board = QWidget()
         self.board_layout = QHBoxLayout(self.board)
-        self.board_layout.setContentsMargins(4, 4, 4, 4)
-        self.board_layout.setSpacing(2)
+        self.board_layout.setContentsMargins(6, 6, 6, 6)
+        self.board_layout.setSpacing(4)
         layout.addWidget(self.board, 1)
 
     def _week_bounds(self):

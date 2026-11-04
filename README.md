@@ -36,10 +36,10 @@
 - **启动零打扰** - 启动不再弹任何模态框：加载中显示内联骨架面板，未登录显示引导卡片，授权过期才提示重新登录
 - **轻提示替代弹窗** - 增删改结果、导出结果、更新发现等改用窗口底部 Toast 轻提示；删除等不可逆操作才弹飞书风格确认框；表单校验错误在表单内红字提示
 - **精简工具栏** - 头部只保留 月/周 切换、＋、刷新、⋯ 更多菜单（搜索 / 导出 / 置顶 / 主题 / 登录 / 设置）、最小化、关闭
-- **飞书设计语言** - 默认浅色主题，品牌蓝 #3370FF、扁平按钮、下划线式分页、飞书中性色阶与状态色，深浅两套主题统一
+- **深色台面设计** - 默认深色主题：深底 + 右上青蓝光晕与斜向光带（`MainWindow` 自绘）、薄面日格、2px 左色条日程条、等宽数字的日号与时间、下划线式分页；浅色主题同构，只是把墨色反过来
 - **开机启动** - 可设置开机自动运行
 - **系统托盘** - 后台运行，托盘菜单快捷操作
-- **主题切换** - 深色 / 浅色主题（默认浅色）
+- **主题切换** - 深色 / 浅色主题（默认深色）
 - **自动刷新** - 定时自动同步最新日程
 - **授权失效引导** - 检测到授权错误时切换到登录引导面板，重新授权后自动恢复
 - **错误信息可复制** - 错误面板支持选中和复制，方便排查问题
@@ -230,7 +230,7 @@ bash build_macos.sh
 
 - **通用** - 自动刷新间隔（60-3600 秒）、开机启动（Windows 写注册表，macOS 写 LaunchAgent，失败自动回滚）、启动时自动检查更新、**匿名使用统计开关**
 - **账号** - 异步检测 lark-cli 安装与登录状态；打开应用内登录窗口（扫码 / 网页授权，device flow），登录成功自动刷新状态。未安装 lark-cli 时按钮会变成"重新检测"，点了是真的重新检测
-- **外观** - 浅色 / 深色主题（默认浅色）、窗口置顶显示、窗口透明度（20%-100%）、日程字号（月视图 / 周·列表视图各一档，9-24px）
+- **外观** - 浅色 / 深色主题（默认深色）、窗口置顶显示、窗口透明度（20%-100%）、日程字号（月视图 / 周·列表视图各一档，9-24px）
 - **关于** - 版本信息、项目主页、下载最新版、累计独立安装数、近 30 天活跃安装数
 
 ### 关于「地点」字段
@@ -310,7 +310,8 @@ FeishuCalendarDesktop/
 ├── export_dialog.py       # 导出日程到 Excel
 ├── utils.py               # 共享的日期范围计算与日程排序工具
 ├── config.py              # 配置管理（macOS 配置存放在 ~/Library/Application Support）
-├── styles.py              # 主题样式（飞书设计语言，浅色/深色 + 周视图/切换按钮/拖放高亮/Toast/菜单）
+├── theme.py               # 设计令牌单一真源（字体栈 / 圆角 / 间距 / 动效 / 双主题调色板）
+├── styles.py              # QSS：飞书骨架 + 末尾追加的外观覆盖层（_skin_rules）
 ├── requirements.txt       # Python 依赖
 ├── config.example.json    # 配置文件示例
 ├── 启动飞书日程.bat        # Windows 启动脚本
@@ -320,6 +321,7 @@ FeishuCalendarDesktop/
 ├── build_macos.sh         # macOS PyInstaller 打包脚本
 ├── tools/make_ico.py      # 从 PNG 生成 assets/icon.ico（已提交生成结果，无需重复执行）
 ├── tools/ci.py            # 本地 CI 门禁：ruff → compileall → pytest + 覆盖率（可装 pre-push 钩子）
+├── tools/ui_shot.py       # UI 截图验收：灌示例数据后在 offscreen 下截月/周视图（改样式后必跑）
 ├── stats_server/           # 标准库 HTTP + SQLite 匿名统计服务与部署文件
 └── .github/workflows/     # ci.yml（lint + 多版本测试）、release.yml（推送 v* 标签自动打包并上传 Release）
 ```
@@ -340,7 +342,7 @@ FeishuCalendarDesktop/
   "window_width": 440,
   "window_height": 640,
   "auto_refresh_interval": 300,
-  "theme": "light",
+  "theme": "dark",
   "opacity": 1.0,
   "pin_to_top": true,
   "view_mode": "month",

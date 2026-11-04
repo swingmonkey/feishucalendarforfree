@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTime, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -55,13 +55,50 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.setWindowTitle("设置")
-        self.setFixedSize(520, 560)
+        self.setMinimumWidth(520)
         self._status_worker = None
         self._check_worker = None
         self._stats_worker = None
         self._setup_ui()
+        self._fit_to_content()
         self._start_auth_check()
         self._start_stats_load()
+
+    def _fit_to_content(self):
+        """按内容算出窗口尺寸，别把控件压扁。
+
+        这里原本写死 setFixedSize(520, 560)，而「通用」页实际需要
+        约 613×727：五个组框被按比例压缩，复选框和说明文字叠在一起，
+        「定时导出」里的下拉框只剩一条缝。
+
+        QTabWidget.sizeHint() 只算当前页 + 标签栏，不含底部按钮行，
+        直接拿它 resize 仍会差几十像素，所以先摆一次、量出页面之外
+        的真实开销（标签栏 / 按钮行 / 内外边距）再补足。屏幕放不下时
+        才退回可用区，宁可变窄也不让窗口长出屏幕。
+        """
+        pages = [self.tabs.widget(i) for i in range(self.tabs.count())]
+        content_w = max(p.sizeHint().width() for p in pages)
+        content_h = max(p.sizeHint().height() for p in pages)
+
+        self.resize(max(content_w, 520), max(content_h, 560))
+        self.layout().activate()
+        page = self.tabs.currentWidget()
+        if page is not None and page.height() > 0:
+            chrome_w = self.width() - page.width()
+            chrome_h = self.height() - page.height()
+        else:  # 布局没跑起来时退回经验值，别把窗口搞成 0 高
+            chrome_w = 20
+            chrome_h = 110
+
+        width = max(content_w + chrome_w, 520)
+        height = max(content_h + chrome_h, 560)
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            width = min(width, avail.width() - 60)
+            height = min(height, avail.height() - 80)
+        self.setMinimumSize(520, 420)
+        self.resize(width, height)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -454,7 +491,7 @@ class SettingsDialog(QDialog):
         self.theme_group = QButtonGroup(self)
         self.theme_group.addButton(self.light_radio)
         self.theme_group.addButton(self.dark_radio)
-        current_theme = self.config.get("theme", "light")
+        current_theme = self.config.get("theme", "dark")
         self.light_radio.setChecked(current_theme == "light")
         self.dark_radio.setChecked(current_theme == "dark")
         self.light_radio.toggled.connect(self._on_theme_changed)
