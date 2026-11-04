@@ -16,3 +16,4 @@ Instead, use GitHub's private vulnerability reporting feature for this repositor
 - Personal configuration is stored locally and `config.json` is excluded from version control.
 - Release updates are fetched from this repository's GitHub Releases.
 - Update archives are validated before files are copied into the installation directory.
+- Maintainer credentials never live in the repository or in its Git remotes: `git remote` uses a plain HTTPS URL and authentication is delegated to the `gh` credential helper (`gh auth git-credential`). A token pasted into a remote URL ends up in plaintext in `.git/config`, where backups, sync tools and pasted logs pick it up; `tests/test_repo_hygiene.py` fails the build if that happens. Removing a leaked token from the URL is not enough — revoke it on GitHub and issue a new one.

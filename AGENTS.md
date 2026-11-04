@@ -148,6 +148,8 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - ⚠️ 本机 `refs/remotes/origin/main` 显示**不可靠**（曾长期停在旧 commit `2a4f326`，`git status` 也看不出 ahead/behind）。**判断远程真实状态一律以 GitHub 网页 / API 为准**，不要相信本地 remote-tracking ref
 - ⚠️ **禁止在 `C:\Users\77427\feishucalendarforfree` 执行 `git pull` / `git reset --hard origin/main`**：远程曾有被 force push 成残缺版本的先例，pull 会删掉本地 30+ 源文件
 - 需要覆盖远程时用 `git push --force-with-lease=main:<期望的远程sha> origin main`，**先在本地给旧提交建备份分支**（如 `backup/orphan-4df042e`，仅本地不推送）
+- **凭据只走凭据助手，不许拼进 remote URL**：remote 恒为 `https://github.com/swingmonkey/feishucalendarforfree.git`，认证交给全局的 `credential.https://github.com.helper = gh auth git-credential`。2026-11-05 修过一次：URL 里内嵌着 `gho_` 开头的 OAuth 令牌，与 `gh` 钥匙串里那枚同源，而 `.git/config` 是 644——读到配置文件就等于拿到仓库写权限。`tests/test_repo_hygiene.py` 有两条测试守着（remote 不带凭据、被跟踪文件里不出现令牌），pre-push 钩子会连带跑到
+- 令牌一旦明文落过盘（`.git/config`、日志、同步盘）就按**已泄漏**处理：先去 GitHub 撤销再重发，改 URL 只止血不作废
 - 环境：本机 git 直连需 `git -c http.sslVerify=false`（schannel 证书吊销检查失败）；WorkBuddy Bash 的 PATH 被裁，命令前置 `PATH="/usr/bin:/bin:$PATH";`
 
 ### 事故记录：2026-09-19 远程被孤儿提交覆盖
