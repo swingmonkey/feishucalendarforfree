@@ -64,9 +64,11 @@ from PySide6.QtWidgets import (
 )
 
 import cli_installer
+import desktop_widget
 import event_store
 import exporter
 import reminder
+import stats
 import theme
 import widgets
 from add_event_dialog import AddEventDialog
@@ -205,6 +207,7 @@ class MainWindow(QMainWindow):
         self._auth_mode = "welcome"
         self._update_dialog = None
         self._today_bar: TodayBar | None = None
+        self._widget: desktop_widget.DesktopWidget | None = None
         self._resize_handles: dict[str, _CornerResizeHandle] = {}
         self._resize_edges: str | None = None
         self._resize_start: QPoint | None = None
@@ -251,6 +254,7 @@ class MainWindow(QMainWindow):
         self.reminder.tick.connect(self._refresh_ambient)
         self.reminder.start()
         self._apply_today_bar()
+        self._apply_desktop_widget()
         self._setup_export_timer()
 
     # ── Window setup ──
@@ -1146,6 +1150,9 @@ class MainWindow(QMainWindow):
         # 今日条是独立顶层窗口，吃不到 application 级样式表，得单独换肤
         if getattr(self, "_today_bar", None) is not None:
             self._today_bar.apply_theme(theme_name)
+        # 小组件全自绘，连 QSS 都没有，换肤只能通知它重画
+        if getattr(self, "_widget", None) is not None:
+            self._widget.apply_theme(theme_name)
 
     def _toggle_theme(self):
         cur = self.config.get("theme", "dark")
@@ -1193,6 +1200,7 @@ class MainWindow(QMainWindow):
         self._apply_theme()
         self.refresh_timer.setInterval(self.config.get("auto_refresh_interval", 300) * 1000)
         self._apply_today_bar()
+        self._apply_desktop_widget()
         if fonts_changed:
             # 日格行高随字号变化，可容纳的日程条数需重算 → 重建当前视图
             self._render_active_view()
@@ -1233,12 +1241,18 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_ambient(self):
-        """Keep the tray title and today bar current without any I/O beyond SQLite."""
+        """Keep the tray title, today bar and desktop widget current.
+
+        一次 SQLite 读，三个消费端——挂件要的是整月窗口，所以它单独再读一次，
+        今日条和托盘共用今天这一份。
+        """
         now = datetime.now()
         events = self._today_events()
         self.tray_summary_changed.emit(reminder.tray_summary(events, now))
         if self._today_bar is not None and self._today_bar.isVisible():
             self._today_bar.set_events(events, now)
+        if self._widget is not None and self._widget.isVisible():
+            self._widget.set_snapshot(self._widget_snapshot())
 
     def _on_reminder_notified(self, title: str, body: str):
         self.notify_requested.emit(title, body)
@@ -1276,6 +1290,71 @@ class MainWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    # ── Desktop widget ──
+
+    def _widget_events(self) -> list:
+        """小组件的数据窗口比今日条宽：本月 + 往前 7 天。
+
+        往前那 7 天是趋势曲线要的（近 7 天分钟数），不是顺手多拉；再宽就是
+        白读 SQLite。仍然只读本地库，绝不在重绘路径上起 node 进程。
+        """
+        now = datetime.now()
+        month_start, month_end = stats.month_bounds(now.year, now.month)
+        return event_store.read_range(
+            self._store, month_start - timedelta(days=7), month_end
+        )
+
+    def _widget_snapshot(self):
+        return desktop_widget.build_snapshot(
+            self._widget_events(), datetime.now(), event_store.last_synced(self._store)
+        )
+
+    def _apply_desktop_widget(self):
+        if not self.config.get("widget_enabled", False):
+            if self._widget is not None:
+                self._widget.hide()
+            return
+        if self._widget is None:
+            self._widget = desktop_widget.DesktopWidget(
+                size_key=self.config.get("widget_size", "medium"),
+                theme_name=self.config.get("theme", "dark"),
+            )
+            # 「点开挂件 → 打开主窗口」和今日条是同一条通路
+            self._widget.activated.connect(self._show_from_today_bar)
+            self._widget.size_change_requested.connect(self._on_widget_size_changed)
+            self._widget.close_requested.connect(self._on_widget_closed)
+        self._widget.apply_theme(self.config.get("theme", "dark"))
+        self._widget.setSize(self.config.get("widget_size", "medium"))
+        self._widget.set_snapshot(self._widget_snapshot())
+        self._widget.restore_position(
+            int(self.config.get("widget_x", -1)),
+            int(self.config.get("widget_y", -1)),
+        )
+        self._widget.show()
+
+    def _on_widget_size_changed(self, size_key: str):
+        # 先记当前落点：换档后 fixedSize 变了，不重新落位会往右下方向长出去
+        self._save_widget_geometry()
+        self.config.set("widget_size", size_key)
+        if self._widget is not None:
+            self._widget.setSize(size_key)
+            self._widget.restore_position(
+                int(self.config.get("widget_x", -1)),
+                int(self.config.get("widget_y", -1)),
+            )
+
+    def _on_widget_closed(self):
+        # 和今日条同一条语义：关掉挂件 = 关掉这个功能，不是隐藏到下次启动又冒出来
+        self._save_widget_geometry()
+        self.config.set("widget_enabled", False)
+
+    def _save_widget_geometry(self):
+        if self._widget is None:
+            return
+        pos = self._widget.pos()
+        self.config.set("widget_x", pos.x())
+        self.config.set("widget_y", pos.y())
 
 
     # ── Login ──
@@ -1791,6 +1870,9 @@ class MainWindow(QMainWindow):
         if self._today_bar is not None:
             self._today_bar.hide()
             self._today_bar.close()
+        if self._widget is not None:
+            self._widget.hide()
+            self._widget.close()
         if self._owns_store:
             try:
                 self._store.close()
@@ -1801,8 +1883,9 @@ class MainWindow(QMainWindow):
         pos = self.pos()
         self.config.set("window_x", pos.x())
         self.config.set("window_y", pos.y())
-        # 关主窗口是「收到托盘」而不是退出：窄条按设计继续留在桌面上
+        # 关主窗口是「收到托盘」而不是退出：窄条和挂件按设计继续留在桌面上
         self._save_today_bar_geometry()
+        self._save_widget_geometry()
         super().closeEvent(ev)
 
 

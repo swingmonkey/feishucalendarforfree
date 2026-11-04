@@ -398,6 +398,26 @@ def covered_ranges(conn: sqlite3.Connection, calendar_id: str = DEFAULT_CALENDAR
     return [(int(row["range_start"]), int(row["range_end"])) for row in rows]
 
 
+def last_synced_ts(conn: sqlite3.Connection, calendar_id: str = DEFAULT_CALENDAR_ID) -> int | None:
+    """Most recent ``synced_at`` across synced ranges; ``None`` if nothing synced."""
+    row = conn.execute(
+        "SELECT MAX(synced_at) AS ts FROM sync_ranges WHERE calendar_id = ?",
+        (str(calendar_id),),
+    ).fetchone()
+    if not row or row["ts"] is None:
+        return None
+    return int(row["ts"])
+
+
+def last_synced(conn, calendar_id: str = DEFAULT_CALENDAR_ID):
+    """``last_synced_ts`` for UI callers: a broken cache reads as "never synced"."""
+    try:
+        return last_synced_ts(conn, calendar_id)
+    except sqlite3.Error as exc:
+        logger.warning("Local sync timestamp read failed: %s", exc)
+        return None
+
+
 def is_range_covered(
     conn: sqlite3.Connection,
     start: datetime,

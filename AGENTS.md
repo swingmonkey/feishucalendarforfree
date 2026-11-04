@@ -170,3 +170,12 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 生成侧在 CI：`tools/make_delta.py` 通过 API 找上一个带 `.exe` 的正式版作基座；找不到时**以退出码 2 结束**，工作流跳过补丁上传（首个版本会这样，属正常）
 - ⚠️ 改了 `updater.py` 的导入就要同步 `build_windows.ps1` / `build_macos.sh` 的 `--hidden-import` 清单
 - ⚠️ 峰值内存约 2×EXE（基座 + 结果各 ~53 MiB），只在更新时短暂占用
+
+## 桌面小组件（desktop_widget.py，v2.9.0 后）
+- **视觉真源是参考项目的 SwiftUI 实现**（`native/macos/TokenMonitorWidget/Widget*Views.swift`），不是官网 CSS：台面是「近实心纯色 + 一条极淡的斜向渐变（右上→左下）」，无阴影/无 blur/几乎无动画
+- **desktop_widget.py 不许出现写死的颜色或尺寸**（AST 测试守着）：三档尺寸 `theme.WIDGET_SIZES`、字号 `WIDGET_FONT`、布局 `WIDGET_LAYOUT`、双主题色 `widget_tokens(name)`
+- 浮窗共用基类 `widgets.FloatingSurface`：frameless+Tool+置顶，拖拽位移 <4px 视为点击；`restore_position(x,y)`，-1 = 主屏右下自动落位
+- 关闭小组件 = 写 `config.widget_enabled=False`（和今日条同语义：不是隐藏，是关功能）；右键菜单是表面唯一出口
+- `QColor(r,g,b,a_float)` 的第四参要 0-255 整数——传 0-1 浮点会被截成 0，热力格/渐变/分隔线同时消失且不报错；统一走 `desktop_widget._qcolor()`
+- 截图验收：`QT_QPA_PLATFORM=offscreen .venv/bin/python tools/widget_shot.py`（grab 后要合成到中性底色再存，否则透明像素看不出台面）
+- offscreen 下 `QMenu.exec()` 开阻塞事件循环永不返回，测试要打桩

@@ -235,3 +235,112 @@ PAINT = {
 
 def paint_colors(name: str) -> dict:
     return PAINT["light"] if name == "light" else PAINT["dark"]
+
+
+# ── 桌面小组件（desktop_widget.py 专用）───────────────────────────────
+# 数值抄自 token-monitor 的 **SwiftUI 实现**（native/macos/TokenMonitorWidget/），
+# 不是官网 CSS。这个区别很关键：官网那套是高透玻璃（rgba(40,44,52,.42) +
+# backdrop blur），而原生小组件其实是「近实心纯色 + 一条极淡的斜向渐变」
+# 假造质感——没有 vibrancy、没有阴影、没有 inset 高光、几乎没有动画
+# （WidgetKit 靠快照静态渲染）。照抄原生这一版对 Qt 也更友好：QPainter 本来
+# 就能画，不用去追拿不到的壁纸模糊。
+#
+# 参考实现用 .environment(\.colorScheme, .dark) 把小组件写死成深色。我们两套
+# 都做：这个应用有真正的浅色主题，而且「换肤必须真的换肤」已经是项目约定
+# （见 tests/test_skin_surfaces.py），深色专属的小组件会当场违反它。
+WIDGET_SIZES = {
+    # WidgetKit 的真实尺寸（small 是正方形），单位是逻辑点
+    "small": (170, 170),
+    "medium": (364, 170),
+    "large": (364, 382),
+}
+
+WIDGET_SIZE_LABELS = {"small": "小", "medium": "中", "large": "大"}
+
+
+def widget_size_choices() -> list:
+    """``[("small", "小 · 170×170"), ...]``——挂件右键菜单和设置页共用一份。
+
+    两处各写各的标签，早晚会有一处写着「中」另一处写着「Medium」。
+    """
+    return [
+        (key, f"{WIDGET_SIZE_LABELS[key]} · {width}×{height}")
+        for key, (width, height) in WIDGET_SIZES.items()
+    ]
+
+# 字阶同样抄自原生实现。8.5 / 7.5 这两档在桌面尺度上极小，是刻意照抄——
+# 小组件的信息层级靠「大数字 vs 行名 vs 数值」三级拉开，不是靠颜色。
+WIDGET_FONT = {
+    "metric_small": 37,   # small 档大数字
+    "metric": 42,         # medium/large 档大数字
+    "title": 10,          # 模块标题（大写）
+    "row_label": 10,      # 明细行名
+    "value": 8.5,         # 明细行数值
+    "detail": 7.5,        # 辅助说明
+}
+
+WIDGET_LAYOUT = {
+    "radius": 16,          # 系统给 WidgetKit 裁圆角，浮窗要自己画
+    "padding": 12,
+    "gap": 8,
+    "footer_height": 14,   # 底部一行：左更新时间、右次要指标，各档共用
+    "trend_height": 34,    # small 档趋势曲线区
+    "metric_block_height": 76,   # large 档「大数字 + 曲线」区
+    "quota_block_height": 80,    # large 档配额/明细区
+    "heat_week_ratio": 0.44,     # large 档热力图占宽比例
+    "bar_height": 3,
+    "trend_stroke": 1.8,
+    # 热力格子：参考实现给的是 5–9.5px，那是「44% 宽度里要塞 16 周」的产物，
+    # 不是审美上限。我们只画当月（≤6 列），照抄上限会留一大片空白，
+    # 所以这里按「填满可用面积」取，只留一个防呆上限。
+    "heat_cell_min": 5.0,
+    "heat_cell_max": 13.0,
+    "heat_gap": 2.5,
+}
+
+_WIDGET = {
+    "dark": {
+        "base": (9, 11, 14),               # Color(r:.035, g:.043, b:.055)
+        "grad_from": (255, 255, 255, 0.025),   # 右上，几乎看不见的白
+        "grad_to": (91, 157, 255, 0.13),       # 左下，accent 淡染
+        "number": (243, 251, 247),
+        "muted": (163, 173, 187),
+        "chart": (115, 189, 245),
+        "hairline": (255, 255, 255, 0.14),
+        # 热力五档：0 是「空白但不消失」，4 实心。分档阈值用 stats.HEAT_THRESHOLDS
+        "heat": [
+            (255, 255, 255, 0.03),
+            (90, 170, 255, 0.18),
+            (120, 190, 255, 0.45),
+            (150, 210, 255, 0.80),
+            (180, 230, 255, 1.00),
+        ],
+        "track": (255, 255, 255, 0.07),
+        "fill_alpha": 0.82,
+    },
+    "light": {
+        # 浅色不是把深色取反：白底上「白 2.5% 的渐变」等于没画，
+        # 所以渐变改成青蓝淡染压向白，主体仍然是近实心
+        "base": (247, 249, 252),
+        "grad_from": (8, 145, 178, 0.05),
+        "grad_to": (37, 99, 235, 0.10),
+        "number": (12, 16, 22),
+        "muted": (92, 102, 118),
+        "chart": (37, 99, 235),
+        "hairline": (12, 16, 22, 0.12),
+        "heat": [
+            (12, 16, 22, 0.05),
+            (37, 99, 235, 0.18),
+            (37, 99, 235, 0.38),
+            (37, 99, 235, 0.62),
+            (37, 99, 235, 0.88),
+        ],
+        "track": (12, 16, 22, 0.08),
+        "fill_alpha": 0.9,
+    },
+}
+
+
+def widget_tokens(name: str) -> dict:
+    """取一组小组件自绘数值（QPainter 用，全部是 RGBA 元组）。"""
+    return _WIDGET["light"] if name == "light" else _WIDGET["dark"]

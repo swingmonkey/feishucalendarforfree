@@ -86,6 +86,7 @@ $pyiArgs = @(
     "--hidden-import", "context_menu",
     "--hidden-import", "exe_delta",
     "--hidden-import", "event_store",
+    "--hidden-import", "desktop_widget",
     "--hidden-import", "cli_installer",
     "--hidden-import", "cli_install_async",
     "--hidden-import", "reminder",

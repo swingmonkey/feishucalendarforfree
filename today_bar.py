@@ -9,19 +9,18 @@
 
 from datetime import datetime
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
-    QWidget,
 )
 
 import reminder as reminder_module
 import theme
+from widgets import FloatingSurface
 
 
 def _style_for(theme_name: str) -> dict:
@@ -57,22 +56,17 @@ def _style_for(theme_name: str) -> dict:
     }
 
 
-class TodayBar(QWidget):
-    """Frameless always-on-top strip showing what is left of today."""
+class TodayBar(FloatingSurface):
+    """Frameless always-on-top strip showing what is left of today.
 
-    activated = Signal()
-    closed = Signal()
+    拖拽、置顶、位置回落这些行为全在 :class:`widgets.FloatingSurface`，
+    和桌面小组件共用——两处语义必须一致，否则「拖一下算不算点开」
+    会在两个挂件上表现不同。
+    """
 
     def __init__(self, parent=None, dark: bool = False):
         super().__init__(parent)
-        self._drag_offset: QPoint | None = None
         self._theme = "dark" if dark else "light"
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.Tool
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setObjectName("todayBar")
         self._build_ui()
         self.set_dark(dark)
@@ -156,51 +150,7 @@ class TodayBar(QWidget):
         self.detail_label.setText(" · ".join(parts))
         self.detail_label.setVisible(bool(parts))
 
-    # ── Placement ──
-
-    def restore_position(self, x: int, y: int):
-        """Place the bar; ``-1`` means "bottom-right of the primary screen"."""
-        if x >= 0 and y >= 0:
-            self.move(x, y)
-            return
-        screen = self.screen()
-        if screen is None:
-            return
-        area = screen.availableGeometry()
-        self.adjustSize()
-        self.move(area.right() - self.width() - 24, area.bottom() - self.height() - 24)
-
-    # ── Interaction ──
 
     def _on_close(self):
-        self.hide()
-        self.closed.emit()
-
-    def mousePressEvent(self, ev: QMouseEvent):
-        if ev.button() == Qt.MouseButton.LeftButton:
-            self._drag_offset = ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            ev.accept()
-            return
-        super().mousePressEvent(ev)
-
-    def mouseMoveEvent(self, ev: QMouseEvent):
-        if self._drag_offset is not None and ev.buttons() & Qt.MouseButton.LeftButton:
-            self.move(ev.globalPosition().toPoint() - self._drag_offset)
-            ev.accept()
-            return
-        super().mouseMoveEvent(ev)
-
-    def mouseReleaseEvent(self, ev: QMouseEvent):
-        if self._drag_offset is not None:
-            moved = (ev.globalPosition().toPoint() - self.frameGeometry().topLeft()) - self._drag_offset
-            self._drag_offset = None
-            if moved.manhattanLength() < 4:
-                # 没拖动 → 视为「打开主窗口」
-                self.activated.emit()
-            ev.accept()
-            return
-        super().mouseReleaseEvent(ev)
-
-    def mouseDoubleClickEvent(self, ev: QMouseEvent):
-        self.activated.emit()
-        ev.accept()
+        # 保留这个名字：测试和 main_window 都按它接线
+        self.close_surface()

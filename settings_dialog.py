@@ -502,6 +502,14 @@ class SettingsDialog(QDialog):
         self.config.set("today_bar_enabled", state == Qt.CheckState.Checked.value)
         self.settings_changed.emit()
 
+    def _on_widget_toggled(self, state):
+        self.config.set("widget_enabled", state == Qt.CheckState.Checked.value)
+        self.settings_changed.emit()
+
+    def _on_widget_size_changed(self, size_key: str):
+        self.config.set("widget_size", size_key)
+        self.settings_changed.emit()
+
     @staticmethod
     def _dim_when_disabled(widget: QWidget, dimmed: bool):
         """禁用时整块降透明度。
@@ -642,6 +650,35 @@ class SettingsDialog(QDialog):
         self.opacity_label.setObjectName("valueLabel")
         self.opacity_slider.valueChanged.connect(self._on_opacity_changed)
         box.addWidget(self._slider_row("窗口透明度", self.opacity_slider, self.opacity_label))
+        layout.addWidget(group)
+
+        group, box = self._group("桌面挂件")
+        self.widget_check = self._check(
+            "在桌面显示小组件", "常驻桌面的自绘卡片；在挂件上右键可以换尺寸或关掉。"
+        )
+        self.widget_check.setChecked(bool(self.config.get("widget_enabled", False)))
+        self.widget_check.stateChanged.connect(self._on_widget_toggled)
+        box.addWidget(self.widget_check)
+
+        size_row = QWidget()
+        size_row.setObjectName("formRow")
+        size_line = QHBoxLayout(size_row)
+        size_line.setContentsMargins(0, 0, 0, 0)
+        size_line.setSpacing(18)
+        self.widget_size_group = QButtonGroup(self)
+        current_size = self.config.get("widget_size", "medium")
+        for key, label in theme.widget_size_choices():
+            radio = QRadioButton(label)
+            radio.setChecked(current_size == key)
+            # clicked 只在「被选中」时发，toggled 会在取消勾选时也发一次
+            radio.clicked.connect(lambda _=False, k=key: self._on_widget_size_changed(k))
+            self.widget_size_group.addButton(radio)
+            size_line.addWidget(radio)
+        size_line.addStretch()
+        box.addWidget(size_row)
+        box.addWidget(
+            self._hint("三档对应 macOS 小组件的 small / medium / large 尺寸，内容随之增减；换档后挂件会重新落位。")
+        )
         layout.addWidget(group)
 
         group, box = self._group("日程字号")

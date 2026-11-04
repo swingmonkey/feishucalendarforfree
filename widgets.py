@@ -28,6 +28,7 @@ from PySide6.QtGui import (
     QDrag,
     QFont,
     QLinearGradient,
+    QMouseEvent,
     QPainter,
     QPen,
     QRadialGradient,
@@ -809,3 +810,81 @@ class ConnectingOrb(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(grad)
         painter.drawEllipse(center, radius, radius)
+
+
+class FloatingSurface(QWidget):
+    """常驻桌面的浮窗形态基类：无边框、置顶、可拖、位置记得住。
+
+    今日条和桌面小组件共用这套行为。两条语义不是随手写的：
+
+    · **位移小于 4px 视为点击而不是拖拽**——这类挂件没有按钮，点开主窗口
+      是它的主要出口；不区分就会在每次拖拽结束时弹出一个窗口。
+    · **位置存 -1 表示「用户没手动摆过」**，回落到主屏右下角而不是 (0,0)。
+      负坐标的副屏上会退回默认位置，这是已知限制，不要当成 bug 改。
+
+    窗口标志用 ``Tool``：它不进 Mission Control、不占 Dock，正是桌面挂件
+    该有的形态。代价是 ``Tool`` 窗口只跟当前 Space——真跨 Space 要设
+    ``NSWindow.collectionBehavior``，那需要 ObjC 桥，本项目不引新依赖所以没做。
+    """
+
+    activated = Signal()
+    closed = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._drag_offset: QPoint | None = None
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+    # ── Placement ──
+
+    def restore_position(self, x: int, y: int):
+        """Place the surface; ``-1`` means "bottom-right of the primary screen"."""
+        if x >= 0 and y >= 0:
+            self.move(x, y)
+            return
+        screen = self.screen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        self.adjustSize()
+        self.move(area.right() - self.width() - 24, area.bottom() - self.height() - 24)
+
+    # ── Interaction ──
+
+    def close_surface(self):
+        self.hide()
+        self.closed.emit()
+
+    def mousePressEvent(self, ev: QMouseEvent):
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev: QMouseEvent):
+        if self._drag_offset is not None and ev.buttons() & Qt.MouseButton.LeftButton:
+            self.move(ev.globalPosition().toPoint() - self._drag_offset)
+            ev.accept()
+            return
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev: QMouseEvent):
+        if self._drag_offset is not None:
+            moved = (ev.globalPosition().toPoint() - self.frameGeometry().topLeft()) - self._drag_offset
+            self._drag_offset = None
+            if moved.manhattanLength() < 4:
+                # 没拖动 → 视为「打开主窗口」
+                self.activated.emit()
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
+
+    def mouseDoubleClickEvent(self, ev: QMouseEvent):
+        self.activated.emit()
+        ev.accept()

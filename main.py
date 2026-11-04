@@ -271,6 +271,7 @@ class TrayApp(QApplication):
         self.config.set("window_width", self.widget.width())
         self.config.set("window_height", self.widget.height())
         self.widget._save_today_bar_geometry()
+        self.widget._save_widget_geometry()
         self.tray.hide()
         self.quit()
 

@@ -75,6 +75,11 @@ class Config:
         "today_bar_enabled": False,
         "today_bar_x": -1,
         "today_bar_y": -1,
+        # 桌面小组件：三档自绘卡片（small/medium/large），形态与今日条同类
+        "widget_enabled": False,
+        "widget_size": "medium",
+        "widget_x": -1,
+        "widget_y": -1,
         # ── 定时导出（Phase 3）──
         # off / daily / weekly：把滚动窗口内的日程写成 JSON + CSV 到 export_dir
         "export_schedule": "off",
@@ -92,6 +97,7 @@ class Config:
         "theme": {"dark", "light"},
         "view_mode": {"month", "week"},
         "export_schedule": {"off", "daily", "weekly"},
+        "widget_size": {"small", "medium", "large"},
     }
     # 提醒相关的数值区间：(下限, 上限)。超出即夹紧，非法值回退默认。
     _RANGED_INT_KEYS = {
@@ -112,6 +118,7 @@ class Config:
         "overload_alert_enabled",
         "quiet_hours_enabled",
         "today_bar_enabled",
+        "widget_enabled",
     }
 
     @staticmethod
@@ -190,7 +197,7 @@ class Config:
                     value = min(high, float(value))
             elif key in {"quiet_start", "quiet_end"}:
                 value = cls._valid_hhmm(value, default)
-            elif key in {"today_bar_x", "today_bar_y"}:
+            elif key in {"today_bar_x", "today_bar_y", "widget_x", "widget_y"}:
                 if isinstance(value, bool) or not isinstance(value, int):
                     value = default
             elif key in cls._BOOL_KEYS:
