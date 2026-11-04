@@ -4,9 +4,8 @@
 签名校验不退出会打出一个打不开的包，版本号写错会让发版基线看歪。
 """
 
+import re
 from pathlib import Path
-
-from __version__ import APP_VERSION
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -32,7 +31,13 @@ def test_build_script_exits_on_codesign_failure():
     assert "exit 1" in tail[:300]
 
 
-def test_agents_md_documents_current_version():
-    """版本真源说明必须与实际 APP_VERSION 一致，否则发版会照着旧基线 bump。"""
+def test_agents_md_points_at_version_source_without_hardcoding():
+    """文档里写死版本号必然过时——这是它当初停在 2.9.0 的根本原因。
+
+    所以这里不比对具体数字（那样每次 bump 都要改一次测试），
+    而是要求：指向 __version__.py，且不出现「当前 `x.y.z`」这种写法。
+    """
     text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    assert f"当前 `{APP_VERSION}`" in text
+    assert "__version__.py" in text
+    assert "APP_VERSION" in text
+    assert not re.search(r"当前 `\d+\.\d+\.\d+`", text)

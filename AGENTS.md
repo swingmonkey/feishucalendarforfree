@@ -144,7 +144,7 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 新增模块后记得同步 `build_windows.ps1` 与 `build_macos.sh` 的 `--hidden-import` 清单（仓库里的 `*.spec` 被 gitignore，是本地构建产物，不用管）
 
 ## Git 仓库：状态判定铁律（接手必读）
-- **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.11.2`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag
+- **版本真源**是 `__version__.py` 的 `APP_VERSION`，关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag。⚠️ **不要在任何文档里写死当前版本号**——这里曾经写着 `2.9.0` 而实际已到 `2.11.x`，发版基线就是这么看歪的
 - ⚠️ 本机 `refs/remotes/origin/main` 显示**不可靠**（曾长期停在旧 commit `2a4f326`，`git status` 也看不出 ahead/behind）。**判断远程真实状态一律以 GitHub 网页 / API 为准**，不要相信本地 remote-tracking ref
 - ⚠️ **禁止在 `C:\Users\77427\feishucalendarforfree` 执行 `git pull` / `git reset --hard origin/main`**：远程曾有被 force push 成残缺版本的先例，pull 会删掉本地 30+ 源文件
 - 需要覆盖远程时用 `git push --force-with-lease=main:<期望的远程sha> origin main`，**先在本地给旧提交建备份分支**（如 `backup/orphan-4df042e`，仅本地不推送）
