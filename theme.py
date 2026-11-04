@@ -114,6 +114,9 @@ _DARK = {
     "glass": "rgba(48,52,56,0.68)",
     "glass_strong": "rgba(48,52,56,0.80)",
     "glass_border": "rgba(232,238,244,0.22)",
+    # 悬停信息弹层（hover_popover）：token-monitor 弹层表面
+    # rgba(48,52,56,0.76) 的同款；Qt 无 backdrop-filter，半透明直接透底
+    "popover_bg": "rgba(48,52,56,0.92)",
     "glass_border_soft": "rgba(232,238,244,0.14)",
     # 主按钮：应用本体不是纯白，是 accent 淡染 + accent 描边 + accent 文字
     # （styles.css .sync-content-dialog button.sync-content-primary）
@@ -173,6 +176,8 @@ _LIGHT = {
     "glass": "rgba(255,255,255,0.72)",
     "glass_strong": "rgba(255,255,255,0.86)",
     "glass_border": "rgba(20,26,32,0.12)",
+    # 亮色弹层：白玻璃（token-monitor 亮色是 JS 翻转 RGB 的同构白）
+    "popover_bg": "rgba(250,251,252,0.95)",
     "glass_border_soft": "rgba(20,26,32,0.08)",
     "btn_primary_bg": "rgba(46,125,95,0.12)",
     "btn_primary_fg": "#256a50",

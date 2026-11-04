@@ -13,6 +13,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -200,6 +201,83 @@ class AuthStatusWorker(QThread):
         self.checked.emit(cli_installed, authed)
 
 
+# ── 首次配置引导（lark-cli 未初始化时自动发起 config init）────────────────
+
+_INIT_URL_RE = re.compile(r"https://open\.feishu\.cn/page/cli\?\S+")
+
+
+def _is_not_configured(output: str) -> bool:
+    """识别 lark-cli 的「未初始化」错误（config init 前一切授权都会被拒）。
+
+    lark-cli 的错误是 JSON（error.subtype == "not_configured"），但 stderr
+    可能混入 node 等其他行，JSON 解析失败时按字符串兜底。
+    """
+    text = output or ""
+    try:
+        data = json.loads(text)
+        err = data.get("error") if isinstance(data, dict) else None
+        if isinstance(err, dict) and err.get("subtype") == "not_configured":
+            return True
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return "not_configured" in text
+
+
+def extract_init_url(line: str) -> str | None:
+    """从 config init 的输出行里抓授权链接（进程会阻塞等用户完成）。"""
+    m = _INIT_URL_RE.search(line or "")
+    if not m:
+        return None
+    url = m.group(0).rstrip("\uff0c\u3002\u3001)\uff09\"\u300b\u3009")  # 防中文标点粘尾
+    return url
+
+
+class _ConfigInitWorker(QThread):
+    """后台执行 `lark-cli config init --new` 并流式抓取授权链接。
+
+    该命令会阻塞直到用户在浏览器完成应用创建（可能几分钟），所以
+    绝不能走 _lark_cli（有 timeout）。逐行读 stdout，一拿到链接就发
+    url_found——二维码可以先画出来，不必等进程结束。
+    """
+
+    url_found = Signal(str)
+    finished_rc = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._proc: subprocess.Popen | None = None
+
+    def run(self):
+        prefix = _resolve_lark_cmd()
+        if not prefix:
+            self.finished_rc.emit(-1)
+            return
+        try:
+            self._proc = subprocess.Popen(
+                prefix + ["config", "init", "--new", "--lang", "zh"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except Exception:  # noqa: BLE001 - 启动失败按非零退出处理
+            self.finished_rc.emit(-1)
+            return
+        assert self._proc.stdout is not None
+        for line in self._proc.stdout:
+            url = extract_init_url(line)
+            if url:
+                self.url_found.emit(url)
+        rc = self._proc.wait()
+        self.finished_rc.emit(rc)
+
+    def stop(self):
+        """对话框关闭时终止 init 进程（用户可能中途放弃）。"""
+        if self._proc is not None and self._proc.poll() is None:
+            self._proc.terminate()
+
+
 class _DeviceCodeWorker(QThread):
     """后台轮询 device-code 授权结果，用户在手机上确认后自动成功。"""
 
@@ -252,6 +330,7 @@ class LoginDialog(QDialog):
         self._device_code = None
         self._verification_url = None
         self._worker = None
+        self._init_worker: _ConfigInitWorker | None = None
         self._setup_ui()
         self._start_login()
 
@@ -356,6 +435,13 @@ class LoginDialog(QDialog):
         args = ["auth", "login", "--no-wait", "--json", "--scope", " ".join(LOGIN_SCOPES)]
         rc, out, err = _lark_cli(args, timeout=30)
         if rc != 0:
+            combined = f"{out}\n{err}"
+            if _is_not_configured(combined):
+                # lark-cli 装了但没绑定应用：自动发起 config init，把
+                # 「跑命令、抓链接、画二维码」整个流程收进应用内，
+                # 首次用户不需要开终端（2026-11-04 v2.10.1 真机踩坑）。
+                self._enter_init_mode()
+                return
             self._fail(f"发起登录失败：{err or out}")
             return
         try:
@@ -378,6 +464,40 @@ class LoginDialog(QDialog):
             "授权成功后窗口会自动关闭，链接 10 分钟内有效。"
         )
         self._start_polling()
+
+    def _enter_init_mode(self):
+        """首次配置：后台跑 config init，授权链接直接画成二维码。"""
+        self.qr_label.setText("正在准备首次配置…")
+        self.status_label.setText(
+            "lark-cli 还没有绑定飞书应用。\n"
+            "已自动发起首次配置：请扫描二维码或打开链接，\n"
+            "按页面引导创建应用（自动授予日历权限），完成后会自动继续登录。"
+        )
+        set_message_kind(self.status_label, "info")
+        self.copy_btn.setEnabled(False)
+        self.open_btn.setEnabled(False)
+
+        self._init_worker = _ConfigInitWorker()
+        self._init_worker.url_found.connect(self._on_init_url)
+        self._init_worker.finished_rc.connect(self._on_init_done)
+        self._init_worker.start()
+
+    def _on_init_url(self, url: str):
+        self._verification_url = url
+        self._generate_qrcode(url)
+        self.copy_btn.setEnabled(True)
+        self.open_btn.setEnabled(True)
+
+    def _on_init_done(self, rc: int):
+        if rc == 0:
+            self._verification_url = None
+            self.status_label.setText("首次配置完成，正在发起登录…")
+            set_message_kind(self.status_label, "info")
+            self._start_login()
+        else:
+            self._fail(
+                "首次配置未完成（已取消或失败）。\n点击「重新生成二维码」可再次发起。"
+            )
 
     def _start_polling(self):
         # 不设置 parent：对话框若提前关闭，线程仍可安全跑完并自行注销
@@ -442,4 +562,6 @@ class LoginDialog(QDialog):
         if self._worker is not None and self._worker.isRunning():
             self._worker.requestInterruption()
             self._worker.quit()
+        if self._init_worker is not None:
+            self._init_worker.stop()
         super().closeEvent(ev)

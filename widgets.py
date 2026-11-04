@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import hover_popover
 import theme
 from config import Config
 from models_event import get_event_color, has_recurrence, is_all_day_event, parse_event_time
@@ -301,6 +302,21 @@ class GridEventLabel(QFrame):
         self.context_menu_requested.emit(self.event_data, ev.globalPos())
         ev.accept()
 
+    def _theme_name(self) -> str:
+        return (self._config.get("theme", "dark") if self._config else "dark")
+
+    def enterEvent(self, ev):
+        hover_popover.show_for(
+            self,
+            hover_popover.event_detail_widget(self.event_data, self._theme_name()),
+            self._theme_name(),
+        )
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev):
+        hover_popover.schedule_close()
+        super().leaveEvent(ev)
+
     def _is_recurring(self) -> bool:
         return bool(
             self.event_data.get("_is_recurring_instance") or has_recurrence(self.event_data)
@@ -555,16 +571,35 @@ class DayCell(QFrame):
             return
         self._rebuild_event_area()
 
+    def _theme_name(self) -> str:
+        return (self._config.get("theme", "dark") if self._config else "dark")
+
+    def _day_events(self) -> list[dict]:
+        """_events 里混着 (event, is_cont) 元组，摘要只要 dict。"""
+        return [
+            (item[0] if isinstance(item, tuple) else item)
+            for item in self._events
+        ]
+
     def enterEvent(self, ev):
-        """Highlight cell on hover."""
+        """Highlight cell on hover; 350ms 后弹出当天日程摘要（防扫过误触）。"""
         self._hover = True
         self._refresh_object_name()
+        hover_popover.show_for(
+            self,
+            hover_popover.day_summary_widget(
+                self.cell_date, self._day_events(), self._theme_name()
+            ),
+            self._theme_name(),
+            delay_ms=350,
+        )
         super().enterEvent(ev)
 
     def leaveEvent(self, ev):
         """Restore cell appearance when mouse leaves."""
         self._hover = False
         self._refresh_object_name()
+        hover_popover.schedule_close()
         super().leaveEvent(ev)
 
 

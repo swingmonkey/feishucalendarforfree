@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+import hover_popover
 from config import Config
 from models_event import (
     get_event_color,
@@ -221,6 +222,23 @@ class EventCard(QFrame):
     def contextMenuEvent(self, ev: QMouseEvent):
         self.context_menu_requested.emit(self.event_data, ev.globalPos())
         ev.accept()
+
+    # ── Hover detail popover ──
+
+    def _theme_name(self) -> str:
+        return (self._config.get("theme", "dark") if self._config else "dark")
+
+    def enterEvent(self, ev):
+        hover_popover.show_for(
+            self,
+            hover_popover.event_detail_widget(self.event_data, self._theme_name()),
+            self._theme_name(),
+        )
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev):
+        hover_popover.schedule_close()
+        super().leaveEvent(ev)
 
     def refresh_status(self):
         """Re-evaluate and refresh the card's time status."""

@@ -48,14 +48,20 @@ from PySide6.QtGui import (
     QShortcut,
 )
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
+    QComboBox,
+    QDateTimeEdit,
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QListWidget,
     QMainWindow,
     QMenu,
     QPushButton,
+    QSpinBox,
     QStackedWidget,
     QTextEdit,
     QToolButton,
@@ -172,6 +178,25 @@ class _CornerResizeHandle(QWidget):
             ev.accept()
             return
         super().mouseReleaseEvent(ev)
+
+
+# 顶栏拖动判定：命中这些交互控件时放行（它们自己吃掉 press、不传播到
+# 窗口），其余——布局背板 QWidget、QLabel、控件之间的空隙——一律当
+# 拖动把手。原先「childAt is None 才拖」在顶栏几乎永远不成立（背板
+# 也是 childAt 的命中结果），窗口实际拖不动（2026-11-04 用户反馈）。
+# 语义对齐 token-monitor 的 titlebar：整条可拖 + 交互控件挖 no-drag 岛。
+_NON_DRAG_TYPES: tuple = (
+    QAbstractButton,
+    QLineEdit,
+    QComboBox,
+    QSpinBox,
+    QDateTimeEdit,
+    QListWidget,
+)
+
+
+def _is_interactive_child(child) -> bool:
+    return isinstance(child, _NON_DRAG_TYPES)
 
 
 class MainWindow(QMainWindow):
@@ -1800,8 +1825,11 @@ class MainWindow(QMainWindow):
                 return
             # 顶栏 0-56px 是标题区，56-90px 是「‹ 2026年08月 › 今天」这一条。
             # 早先按 y<=78 一刀切，导致 ‹ / › / 今天 这三个按钮的上半部分会
-            # 拖动窗口、下半部分才正常点击。改为只认「没有子控件的空白处」。
-            if pos.y() <= 90 and self.childAt(pos.toPoint()) is None:
+            # 拖动窗口、下半部分才正常点击；后来改认「没有子控件的空白处」，
+            # 但布局背板/标签也是 childAt 的命中结果，条件几乎永远不成立，
+            # 窗口实际拖不动。最终方案见 _is_interactive_child：交互控件放行，
+            # 其余全当拖动把手（对齐 token-monitor titlebar 语义）。
+            if pos.y() <= 90 and not _is_interactive_child(self.childAt(pos.toPoint())):
                 self._drag_offset = ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
                 ev.accept()
 

@@ -1550,25 +1550,31 @@ QProgressBar::chunk {{
 def _extra_rules(name: str) -> str:
     """Additional QSS for the week planner (columns, drag highlight)."""
     dark = name != "light"
+    # 强调色走主题令牌：今天列 / 拖放高亮是「交互强调」，用薄荷绿；
+    # 原来写死飞书蓝 #3370FF，落在石墨台面上是外来补丁。
+    t = theme.tokens(name)
+    accent = t["accent"]
+    accent_soft = t["accent_soft"]
+    accent_hover = theme.alpha(t["accent"], 0.85) if dark else t["accent"]
     if dark:
         col_bg = "#26292E"
         col_border = "rgba(255,255,255,0.08)"
-        col_today_border = "#3370FF"
-        drop_bg = "rgba(51,112,255,0.16)"
-        drop_border = "#3370FF"
+        col_today_border = accent
+        drop_bg = accent_soft
+        drop_border = accent
         date_color = "#E5E6EB"
         add_color = "#8F959E"
-        add_hover = "#4E83FD"
+        add_hover = accent_hover
         range_color = "#8F959E"
     else:
         col_bg = "#FFFFFF"
         col_border = "#EBEDF0"
-        col_today_border = "#3370FF"
-        drop_bg = "rgba(51,112,255,0.10)"
-        drop_border = "#3370FF"
+        col_today_border = accent
+        drop_bg = accent_soft
+        drop_border = accent
         date_color = "#1F2329"
         add_color = "#8F959E"
-        add_hover = "#3370FF"
+        add_hover = accent
         range_color = "#646A73"
 
     return f"""
@@ -1680,6 +1686,49 @@ QLabel#eventTimeCurrent {{ font-size: {list_sub}px; color: {c["list_time_current
 QLabel#eventTitle {{ font-size: {list_font}px; color: {c["list_title"]}; font-weight: 500; }}
 QLabel#eventTitlePast {{ font-size: {list_font}px; color: {c["list_title_past"]}; font-weight: 500; }}
 QLabel#eventMeta {{ font-size: {list_sub}px; color: {c["list_meta"]}; }}
+"""
+
+
+def _popover_rules(name: str) -> str:
+    """悬停信息弹层（hover_popover）的内容排版。
+
+    弹层表面（背景/边框/圆角）由 HoverPopover.paintEvent 自绘——它有
+    WA_TranslucentBackground，QSS 的 background 会画成不透明方块。
+    这里只管弹层内部的文字层级，对齐 settings-help-popover 的语言：
+    标题 12px/700，键 10.5px muted，值 11px 正文色，底注 muted。
+    """
+    t = theme.tokens(name)
+    return f"""
+/* === Hover popover 内容 === */
+QFrame#popoverBody {{ background: transparent; }}
+QLabel#popoverTitle {{
+    font-size: 12px;
+    font-weight: 700;
+    color: {t["text_strong"]};
+}}
+QLabel#popoverKey {{
+    font-size: 10.5px;
+    font-weight: 600;
+    color: {t["muted"]};
+}}
+QLabel#popoverValue {{
+    font-size: 11px;
+    color: {t["text"]};
+}}
+QLabel#popoverDesc {{
+    font-size: 10.5px;
+    color: {t["muted"]};
+    padding-top: 4px;
+    border-top: 1px solid {t["line_soft"]};
+}}
+QLabel#popoverMuted {{
+    font-size: 10.5px;
+    color: {t["muted"]};
+}}
+QLabel#popoverDot {{
+    font-size: 8px;
+    color: {t["accent"]};
+}}
 """
 
 
@@ -2883,6 +2932,7 @@ def get_theme(
         + _menu_dialog_rules(name)
         + _extra_rules(name)
         + _event_font_rules(name, grid_font, list_font)
+        + _popover_rules(name)
         # 外观层放最后：同特异性下后定义者生效，这是整套换肤的落点。
         # 它只覆盖颜色/边框/圆角/字族，字号仍由上面的 _event_font_rules
         # 按用户配置决定。
