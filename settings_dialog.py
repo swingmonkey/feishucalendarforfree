@@ -23,12 +23,15 @@ from PySide6.QtWidgets import (
     QDialog,
     QDoubleSpinBox,
     QFileDialog,
-    QFormLayout,
+    QFrame,
+    QGraphicsOpacityEffect,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QRadioButton,
+    QScrollArea,
+    QSizePolicy,
     QSlider,
     QSpinBox,
     QTabWidget,
@@ -37,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import theme
 import updater
 import usage_stats
 from config import Config
@@ -55,57 +59,69 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.setWindowTitle("设置")
-        self.setMinimumWidth(520)
         self._status_worker = None
         self._check_worker = None
         self._stats_worker = None
+        self._fitted = False
         self._setup_ui()
-        self._fit_to_content()
+        self.resize(560, 640)
         self._start_auth_check()
         self._start_stats_load()
 
+    def showEvent(self, ev):
+        """首次显示后再量尺寸：构造期子控件还没 polish，量出来的是初值。"""
+        super().showEvent(ev)
+        if not self._fitted:
+            self._fitted = True
+            self._fit_to_content()
+
     def _fit_to_content(self):
-        """按内容算出窗口尺寸，别把控件压扁。
+        """按内容定窗口尺寸，别把控件压扁。
 
         这里原本写死 setFixedSize(520, 560)，而「通用」页实际需要
-        约 613×727：五个组框被按比例压缩，复选框和说明文字叠在一起，
+        600×700 上下：组框被按比例压缩，复选框和说明文字叠在一起，
         「定时导出」里的下拉框只剩一条缝。
 
-        QTabWidget.sizeHint() 只算当前页 + 标签栏，不含底部按钮行，
-        直接拿它 resize 仍会差几十像素，所以先摆一次、量出页面之外
-        的真实开销（标签栏 / 按钮行 / 内外边距）再补足。屏幕放不下时
-        才退回可用区，宁可变窄也不让窗口长出屏幕。
+        尺寸一次性算出来，不靠「先 resize 再量差值」：那种做法依赖布局
+        是否已经跑完，offscreen 下会得到 windows 高度忽大忽小（同一份
+        代码量出 560 和 668 两种结果）。标签栏、底栏、页边距都是固定
+        开销，直接加。内容再多就交给滚动条，不让窗口长出屏幕。
         """
-        pages = [self.tabs.widget(i) for i in range(self.tabs.count())]
-        content_w = max(p.sizeHint().width() for p in pages)
-        content_h = max(p.sizeHint().height() for p in pages)
+        need_h = 0
+        need_w = 0
+        for i in range(self.tabs.count()):
+            page = self.tabs.widget(i)
+            inner = page.widget() if isinstance(page, QScrollArea) else page
+            layout = inner.layout() if inner is not None else None
+            if layout is None:
+                continue
+            hint = layout.totalSizeHint()
+            need_h = max(need_h, hint.height())
+            need_w = max(need_w, hint.width())
 
-        self.resize(max(content_w, 520), max(content_h, 560))
-        self.layout().activate()
-        page = self.tabs.currentWidget()
-        if page is not None and page.height() > 0:
-            chrome_w = self.width() - page.width()
-            chrome_h = self.height() - page.height()
-        else:  # 布局没跑起来时退回经验值，别把窗口搞成 0 高
-            chrome_w = 20
-            chrome_h = 110
+        bar = self.tabs.tabBar().sizeHint().height()
+        # 顶边距 10 + 标签栏 + 分隔线 1 + 底栏（上 10 + 按钮 36 + 下 12）
+        chrome_h = 10 + bar + 1 + 10 + 36 + 12
+        # 滚动区两侧 2px 边框 + 页面左右各 18px
+        chrome_w = 4 + 36
 
-        width = max(content_w + chrome_w, 520)
-        height = max(content_h + chrome_h, 560)
+        width = max(need_w + chrome_w, 560)
+        height = max(need_h + chrome_h, 520)
         screen = self.screen() or QGuiApplication.primaryScreen()
         if screen is not None:
             avail = screen.availableGeometry()
             width = min(width, avail.width() - 60)
-            height = min(height, avail.height() - 80)
-        self.setMinimumSize(520, 420)
+            height = min(height, avail.height() - 100)
+        self.setMinimumSize(min(width, 560), 420)
         self.resize(width, height)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 12, 0, 0)
+        layout.setContentsMargins(0, 10, 0, 0)
         layout.setSpacing(0)
 
         self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
         self.tabs.addTab(self._build_general_tab(), "通用")
         self.tabs.addTab(self._build_reminder_tab(), "提醒")
         self.tabs.addTab(self._build_connection_tab(), "账号")
@@ -113,8 +129,15 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self._build_about_tab(), "关于")
         layout.addWidget(self.tabs, 1)
 
-        # Bottom close button
+        rule = QFrame()
+        rule.setObjectName("dialogRule")
+        rule.setFrameShape(QFrame.Shape.HLine)
+        rule.setFixedHeight(1)
+        layout.addWidget(rule)
+
         bottom = QHBoxLayout()
+        bottom.setContentsMargins(18, 10, 18, 12)
+        bottom.setSpacing(8)
         bottom.addStretch()
         close_btn = QPushButton("关闭")
         close_btn.setObjectName("secondaryBtn")
@@ -122,19 +145,109 @@ class SettingsDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         bottom.addWidget(close_btn)
         layout.addLayout(bottom)
-        layout.setContentsMargins(0, 12, 16, 16)
+
+    # ── 表单骨架 ──
+    #
+    # 五个页面原先各写各的：QFormLayout 与 QVBoxLayout 混用，控件宽度全由
+    # 各自 sizeHint 决定（提前量下拉框拉到 382px，刷新间隔数字框只有 102px），
+    # 组框内边距也没统一，看着像五个人拼出来的。这里收成一套骨架：页面边距、
+    # 组框内边距、「字段名 + 控件」行都只定义一次，各页只描述内容。
+
+    FIELD_W = 150  # 单行输入控件的统一宽度
+    CAP_W = 76  # 左侧字段名的统一宽度
+    VALUE_W = 44  # 滑块右侧数值的宽度
+
+    def _page(self):
+        """滚动容器 + 内层页面。
+
+        内容比窗口高时滚动，而不是让 QVBoxLayout 去压控件——前两版把
+        组框压到低于 sizeHint，复选框和说明文字直接叠在一起。
+        """
+        inner = QWidget()
+        inner.setObjectName("settingsPage")
+        layout = QVBoxLayout(inner)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(10)
+        scroll = QScrollArea()
+        scroll.setObjectName("settingsScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(inner)
+        return scroll, layout
+
+    @staticmethod
+    def _group(title: str):
+        box = QGroupBox(title)
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(14, 10, 14, 12)
+        layout.setSpacing(7)
+        return box, layout
+
+    @staticmethod
+    def _field_label(caption: str) -> QLabel:
+        label = QLabel(caption)
+        label.setObjectName("fieldCap")
+        return label
+
+    def _row(self, caption, widget, width: int | None = FIELD_W, trailing=None):
+        """「字段名 + 控件」一行：字段名定宽，控件定宽，剩余空间留给尾部内容。"""
+        row = QWidget()
+        row.setObjectName("formRow")
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(10)
+
+        label = self._field_label(caption)
+        label.setFixedWidth(self.CAP_W)
+        line.addWidget(label)
+        if width:
+            widget.setFixedWidth(width)
+        elif widget.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored:
+            widget.setMinimumWidth(120)
+        line.addWidget(widget)
+        if trailing is not None:
+            line.addWidget(trailing, 1)
+        else:
+            line.addStretch()
+        return row
+
+    @staticmethod
+    def _hint(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("detailLabel")
+        label.setWordWrap(True)
+        return label
+
+    @staticmethod
+    def _check(text: str, tooltip: str | None = None) -> QCheckBox:
+        box = QCheckBox(text)
+        if tooltip:
+            box.setToolTip(tooltip)
+        return box
+
+    def _slider_row(self, caption, slider, value_label) -> QWidget:
+        row = QWidget()
+        row.setObjectName("formRow")
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(10)
+
+        label = self._field_label(caption)
+        label.setFixedWidth(96)
+        line.addWidget(label)
+        line.addWidget(slider, 1)
+        value_label.setFixedWidth(self.VALUE_W)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        line.addWidget(value_label)
+        return row
 
     # ── General tab ──
 
     def _build_general_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
+        scroll, layout = self._page()
 
-        refresh_group = QGroupBox("自动刷新")
-        refresh_layout = QFormLayout(refresh_group)
-        interval_row = QHBoxLayout()
+        group, box = self._group("刷新")
         self.interval_spin = QSpinBox()
         self.interval_spin.setRange(60, 3600)
         self.interval_spin.setSingleStep(60)
@@ -142,127 +255,117 @@ class SettingsDialog(QDialog):
         self.interval_spin.setSuffix(" 秒")
         self.interval_spin.setToolTip("后台自动重新拉取日程的间隔，60-3600 秒。")
         self.interval_spin.valueChanged.connect(self._on_interval_changed)
-        interval_row.addWidget(self.interval_spin)
-        interval_row.addStretch()
-        refresh_layout.addRow("刷新间隔：", self._wrap_row(interval_row))
-        layout.addWidget(refresh_group)
+        box.addWidget(self._row("刷新间隔", self.interval_spin))
+        box.addWidget(self._hint("后台定时重新拉取飞书日程。60 秒到 1 小时，太短会频繁请求接口。"))
+        layout.addWidget(group)
 
-        startup_group = QGroupBox("开机启动")
-        startup_layout = QVBoxLayout(startup_group)
-        self.auto_start_check = QCheckBox("开机时自动启动飞书日程")
-        self.auto_start_check.setToolTip("修改 Windows 启动项 / macOS LaunchAgent，失败时会自动回滚。")
+        group, box = self._group("启动与更新")
+        self.auto_start_check = self._check(
+            "开机时自动启动飞书日程",
+            "修改 Windows 启动项 / macOS LaunchAgent，失败时会自动回滚。",
+        )
         self.auto_start_check.setChecked(self.config.get("auto_start", False))
         self.auto_start_check.stateChanged.connect(self._on_auto_start_changed)
-        startup_layout.addWidget(self.auto_start_check)
+        box.addWidget(self.auto_start_check)
+
         self.startup_message = QLabel("")
         self.startup_message.setObjectName("formError")
         self.startup_message.setWordWrap(True)
         self.startup_message.setVisible(False)
-        startup_layout.addWidget(self.startup_message)
-        layout.addWidget(startup_group)
+        box.addWidget(self.startup_message)
 
-        update_group = QGroupBox("版本更新")
-        update_layout = QVBoxLayout(update_group)
-        self.update_check = QCheckBox("启动时自动检查更新")
-        self.update_check.setToolTip("启动 4 秒后静默检查一次 GitHub Release。")
+        self.update_check = self._check(
+            "启动时自动检查更新", "启动 4 秒后静默检查一次 GitHub Release。"
+        )
         self.update_check.setChecked(self.config.get("check_update_on_start", True))
         self.update_check.stateChanged.connect(self._on_update_check_changed)
-        update_layout.addWidget(self.update_check)
-        check_row = QHBoxLayout()
+        update_row = QHBoxLayout()
+        update_row.setContentsMargins(0, 0, 0, 0)
+        update_row.setSpacing(10)
+        update_row.addWidget(self.update_check, 1)
         self.check_update_btn = QPushButton("检查更新")
         self.check_update_btn.setObjectName("secondaryBtn")
         self.check_update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.check_update_btn.clicked.connect(self._on_check_update)
-        check_row.addWidget(self.check_update_btn)
+        update_row.addWidget(self.check_update_btn)
+        box.addLayout(update_row)
+
         self.update_result_label = QLabel("")
         self.update_result_label.setObjectName("detailLabel")
         self.update_result_label.setWordWrap(True)
-        check_row.addWidget(self.update_result_label, 1)
-        update_layout.addLayout(check_row)
-        layout.addWidget(update_group)
+        self.update_result_label.setVisible(False)
+        box.addWidget(self.update_result_label)
+        layout.addWidget(group)
 
         # 匿名统计：默认开启，但必须让用户能一键关掉
-        stats_group = QGroupBox("匿名统计")
-        stats_layout = QVBoxLayout(stats_group)
-        self.stats_check = QCheckBox("发送匿名使用统计")
-        self.stats_check.setToolTip(
+        group, box = self._group("匿名统计")
+        self.stats_check = self._check(
+            "发送匿名使用统计",
             "仅上报一个随机安装标识、版本号和操作系统，用于统计使用人数。\n"
-            "不包含飞书账号、日程内容或设备信息。关闭后会清除已生成的随机标识。"
+            "不包含飞书账号、日程内容或设备信息。关闭后会清除已生成的随机标识。",
         )
         self.stats_check.setChecked(self.config.get("usage_stats_enabled", True))
         self.stats_check.stateChanged.connect(self._on_usage_stats_changed)
-        stats_layout.addWidget(self.stats_check)
-        stats_hint = QLabel(
-            "启动后约 6 秒发送一次心跳到开发者自建的统计服务"
-            f"（{usage_stats.STATS_BASE_URL}）。\n"
-            "日程数据始终通过飞书官方 lark-cli 直连读取，不经过该服务。"
+        box.addWidget(self.stats_check)
+        box.addWidget(
+            self._hint(
+                "启动后向开发者自建服务发送一次心跳，只含随机安装标识、版本号与系统类型。\n"
+                "日程数据始终通过飞书官方 lark-cli 直连读取，不经过该服务。"
+            )
         )
-        stats_hint.setObjectName("detailLabel")
-        stats_hint.setWordWrap(True)
-        stats_layout.addWidget(stats_hint)
-        layout.addWidget(stats_group)
+        layout.addWidget(group)
 
-        export_group = QGroupBox("定时导出")
-        export_layout = QVBoxLayout(export_group)
-        export_layout.setSpacing(8)
-
-        schedule_row = QHBoxLayout()
-        schedule_row.addWidget(QLabel("频率："))
+        group, box = self._group("定时导出")
         self.export_combo = QComboBox()
         for label, value in (("关闭", "off"), ("每天一次", "daily"), ("每周一次", "weekly")):
             self.export_combo.addItem(label, value)
         index = self.export_combo.findData(str(self.config.get("export_schedule", "off")))
         self.export_combo.setCurrentIndex(index if index >= 0 else 0)
         self.export_combo.currentIndexChanged.connect(self._on_export_schedule_changed)
-        schedule_row.addWidget(self.export_combo)
-        schedule_row.addStretch()
-        export_layout.addLayout(schedule_row)
+        box.addWidget(self._row("导出频率", self.export_combo))
 
-        dir_row = QHBoxLayout()
+        dir_row = QWidget()
+        dir_row.setObjectName("formRow")
+        dir_line = QHBoxLayout(dir_row)
+        dir_line.setContentsMargins(0, 0, 0, 0)
+        dir_line.setSpacing(10)
+        dir_cap = self._field_label("导出目录")
+        dir_cap.setFixedWidth(self.CAP_W)
+        dir_line.addWidget(dir_cap)
         self.export_dir_btn = QPushButton("选择目录…")
         self.export_dir_btn.setObjectName("secondaryBtn")
         self.export_dir_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.export_dir_btn.clicked.connect(self._on_pick_export_dir)
-        dir_row.addWidget(self.export_dir_btn)
+        dir_line.addWidget(self.export_dir_btn)
         self.export_dir_label = QLabel(self._export_dir_text())
         self.export_dir_label.setObjectName("detailLabel")
         self.export_dir_label.setWordWrap(True)
-        dir_row.addWidget(self.export_dir_label, 1)
-        export_layout.addLayout(dir_row)
+        dir_line.addWidget(self.export_dir_label, 1)
+        box.addWidget(dir_row)
 
-        export_hint = QLabel(
-            "每次写出 events-YYYYMMDD.json 和 .csv（回看 7 天 / 前瞻 30 天），"
-            "可被表格、脚本或笔记工具直接读取。写盘失败只记日志，不会打断使用。"
+        box.addWidget(
+            self._hint(
+                "写出 events-YYYYMMDD.json 与 .csv（回看 7 天 / 前瞻 30 天），"
+                "可直接被表格或脚本读取；写盘失败只记日志，不打断使用。"
+            )
         )
-        export_hint.setObjectName("detailLabel")
-        export_hint.setWordWrap(True)
-        export_layout.addWidget(export_hint)
-        layout.addWidget(export_group)
+        layout.addWidget(group)
 
         layout.addStretch()
-        return tab
-
-    def _wrap_row(self, row_layout):
-        w = QWidget()
-        w.setStyleSheet("background: transparent;")
-        w.setLayout(row_layout)
-        return w
+        return scroll
 
     # ── Reminder tab ──
 
     def _build_reminder_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
+        scroll, layout = self._page()
 
-        remind_group = QGroupBox("会前提醒")
-        remind_form = QFormLayout(remind_group)
-        self.reminder_check = QCheckBox("日程开始前提醒我")
-        self.reminder_check.setToolTip("通过系统通知提醒，同一场日程只提醒一次。")
+        group, box = self._group("会前提醒")
+        self.reminder_check = self._check(
+            "日程开始前提醒我", "通过系统通知提醒，同一场日程只提醒一次。"
+        )
         self.reminder_check.setChecked(bool(self.config.get("reminder_enabled", True)))
         self.reminder_check.stateChanged.connect(self._on_reminder_toggled)
-        remind_form.addRow(self.reminder_check)
+        box.addWidget(self.reminder_check)
 
         self.lead_combo = QComboBox()
         for minutes in (0, 5, 10, 15, 30, 60):
@@ -273,21 +376,20 @@ class SettingsDialog(QDialog):
         self.lead_combo.setCurrentIndex(index if index >= 0 else 2)
         self.lead_combo.setEnabled(self.reminder_check.isChecked())
         self.lead_combo.currentIndexChanged.connect(self._on_lead_changed)
-        remind_form.addRow("提前量：", self.lead_combo)
-        layout.addWidget(remind_group)
+        box.addWidget(self._row("提前量", self.lead_combo))
+        layout.addWidget(group)
 
-        alert_group = QGroupBox("自动告警")
-        alert_layout = QVBoxLayout(alert_group)
-        alert_layout.setSpacing(6)
-        self.conflict_check = QCheckBox("日程时间冲突时提醒（每天一次）")
+        group, box = self._group("自动告警")
+        self.conflict_check = self._check("日程时间冲突时提醒（每天一次）")
         self.conflict_check.setChecked(bool(self.config.get("conflict_alert_enabled", True)))
         self.conflict_check.stateChanged.connect(self._on_conflict_toggled)
-        alert_layout.addWidget(self.conflict_check)
+        box.addWidget(self.conflict_check)
 
-        overload_row = QHBoxLayout()
-        self.overload_check = QCheckBox("单日会议总时长超过")
+        self.overload_check = self._check("单日会议总时长过载时提醒")
         self.overload_check.setChecked(bool(self.config.get("overload_alert_enabled", True)))
         self.overload_check.stateChanged.connect(self._on_overload_toggled)
+        box.addWidget(self.overload_check)
+
         self.overload_spin = QDoubleSpinBox()
         self.overload_spin.setRange(1.0, 16.0)
         self.overload_spin.setSingleStep(0.5)
@@ -296,24 +398,16 @@ class SettingsDialog(QDialog):
         self.overload_spin.setValue(float(self.config.get("overload_threshold_hours", 6)))
         self.overload_spin.setEnabled(self.overload_check.isChecked())
         self.overload_spin.valueChanged.connect(self._on_overload_changed)
-        overload_row.addWidget(self.overload_check)
-        overload_row.addWidget(self.overload_spin)
-        overload_row.addStretch()
-        alert_layout.addLayout(overload_row)
-        overload_hint = QLabel("全天日程不计入时长；告警每天最多一次，不重复打扰。")
-        overload_hint.setObjectName("detailLabel")
-        overload_hint.setWordWrap(True)
-        alert_layout.addWidget(overload_hint)
-        layout.addWidget(alert_group)
+        box.addWidget(self._row("告警阈值", self.overload_spin))
+        box.addWidget(self._hint("全天日程不计入时长；告警每天最多一次，不重复打扰。"))
+        layout.addWidget(group)
 
-        quiet_group = QGroupBox("免打扰")
-        quiet_form = QFormLayout(quiet_group)
-        self.quiet_check = QCheckBox("在以下时段不发送任何提醒")
+        group, box = self._group("免打扰")
+        self.quiet_check = self._check("在以下时段不发送任何提醒")
         self.quiet_check.setChecked(bool(self.config.get("quiet_hours_enabled", False)))
         self.quiet_check.stateChanged.connect(self._on_quiet_toggled)
-        quiet_form.addRow(self.quiet_check)
+        box.addWidget(self.quiet_check)
 
-        quiet_row = QHBoxLayout()
         self.quiet_start_edit = QTimeEdit()
         self.quiet_start_edit.setDisplayFormat("HH:mm")
         self.quiet_start_edit.setTime(self._parse_time(self.config.get("quiet_start", "22:00")))
@@ -324,27 +418,37 @@ class SettingsDialog(QDialog):
         self.quiet_end_edit.timeChanged.connect(self._on_quiet_time_changed)
         for widget in (self.quiet_start_edit, self.quiet_end_edit):
             widget.setEnabled(self.quiet_check.isChecked())
-        quiet_row.addWidget(self.quiet_start_edit)
-        quiet_row.addWidget(QLabel("至"))
-        quiet_row.addWidget(self.quiet_end_edit)
-        quiet_row.addStretch()
-        quiet_form.addRow("时段：", self._wrap_row(quiet_row))
-        layout.addWidget(quiet_group)
 
-        bar_group = QGroupBox("今日条")
-        bar_layout = QVBoxLayout(bar_group)
-        self.today_bar_check = QCheckBox("在桌面显示今日日程窄条")
+        span_row = QWidget()
+        span_row.setObjectName("formRow")
+        span_line = QHBoxLayout(span_row)
+        span_line.setContentsMargins(0, 0, 0, 0)
+        span_line.setSpacing(10)
+        span_cap = self._field_label("时段")
+        span_cap.setFixedWidth(self.CAP_W)
+        span_line.addWidget(span_cap)
+        for widget in (self.quiet_start_edit, self.quiet_end_edit):
+            widget.setFixedWidth(104)
+            span_line.addWidget(widget)
+            if widget is self.quiet_start_edit:
+                span_line.addWidget(QLabel("至"))
+        span_line.addStretch()
+        self.quiet_span = span_row
+        box.addWidget(span_row)
+        self._dim_when_disabled(span_row, not self.quiet_check.isChecked())
+        box.addWidget(self._hint("跨零点也生效，例如 22:00 至次日 08:00。"))
+        layout.addWidget(group)
+
+        group, box = self._group("今日条")
+        self.today_bar_check = self._check("在桌面显示今日日程窄条")
         self.today_bar_check.setChecked(bool(self.config.get("today_bar_enabled", False)))
         self.today_bar_check.stateChanged.connect(self._on_today_bar_toggled)
-        bar_layout.addWidget(self.today_bar_check)
-        bar_hint = QLabel("无边框置顶，可拖动到任意位置；点击窄条打开主窗口。")
-        bar_hint.setObjectName("detailLabel")
-        bar_hint.setWordWrap(True)
-        bar_layout.addWidget(bar_hint)
-        layout.addWidget(bar_group)
+        box.addWidget(self.today_bar_check)
+        box.addWidget(self._hint("无边框置顶，可拖动到任意位置；点击窄条打开主窗口。"))
+        layout.addWidget(group)
 
         layout.addStretch()
-        return tab
+        return scroll
 
     @staticmethod
     def _parse_time(value: str) -> QTime:
@@ -386,6 +490,7 @@ class SettingsDialog(QDialog):
         self.config.set("quiet_hours_enabled", enabled)
         self.quiet_start_edit.setEnabled(enabled)
         self.quiet_end_edit.setEnabled(enabled)
+        self._dim_when_disabled(self.quiet_span, not enabled)
         self.settings_changed.emit()
 
     def _on_quiet_time_changed(self, _time):
@@ -397,43 +502,60 @@ class SettingsDialog(QDialog):
         self.config.set("today_bar_enabled", state == Qt.CheckState.Checked.value)
         self.settings_changed.emit()
 
+    @staticmethod
+    def _dim_when_disabled(widget: QWidget, dimmed: bool):
+        """禁用时整块降透明度。
+
+        QSS 的 :disabled 能把底色改暗，但改不了 QAbstractSpinBox 内部
+        编辑区的文字：QTimeEdit 禁用后底色变黑了，数字还是亮白的，
+        看着比可用时更醒目。用图形效果降透明度最直接。
+        """
+        if dimmed:
+            effect = QGraphicsOpacityEffect(widget)
+            effect.setOpacity(0.42)
+            widget.setGraphicsEffect(effect)
+        else:
+            widget.setGraphicsEffect(None)
+
     # ── Connection tab ──
 
     def _build_connection_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
+        scroll, layout = self._page()
 
-        auth_group = QGroupBox("飞书账号")
-        auth_layout = QVBoxLayout(auth_group)
-        auth_layout.setSpacing(8)
-
+        group, box = self._group("飞书账号")
         self.auth_status_label = QLabel("正在检测登录状态…")
         self.auth_status_label.setObjectName("detailValue")
-        auth_layout.addWidget(self.auth_status_label)
-
-        hint = QLabel(
-            "登录凭据由 lark-cli 全局保存，重启应用、重启电脑都无需重新登录；\n"
-            "仅当授权过期或在其他设备上被撤销时才需要重新扫码。"
+        box.addWidget(self.auth_status_label)
+        box.addWidget(
+            self._hint(
+                "登录凭据由 lark-cli 全局保存，重启应用、重启电脑都无需重新登录；\n"
+                "仅当授权过期或在其他设备上被撤销时才需要重新扫码。"
+            )
         )
-        hint.setObjectName("detailLabel")
-        hint.setWordWrap(True)
-        auth_layout.addWidget(hint)
 
         self.login_btn = QPushButton("登录飞书账号")
         self.login_btn.setObjectName("primaryBtn")
         self.login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.login_btn.clicked.connect(self._on_login)
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_row.addWidget(self.login_btn)
-        btn_row.addStretch()
-        auth_layout.addLayout(btn_row)
-        layout.addWidget(auth_group)
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(0, 2, 0, 0)
+        button_row.addWidget(self.login_btn)
+        button_row.addStretch()
+        box.addLayout(button_row)
+        layout.addWidget(group)
+
+        group, box = self._group("数据来源")
+        box.addWidget(
+            self._hint(
+                "日程通过飞书官方 lark-cli 直连读取，不经过任何中间服务。\n"
+                "本地只保存颜色标记、提醒记录和界面偏好。"
+            )
+        )
+        box.addWidget(self._row("数据目录", self._data_dir_value(), width=None))
+        layout.addWidget(group)
 
         layout.addStretch()
-        return tab
+        return scroll
 
     def _start_auth_check(self):
         self.auth_status_label.setText("正在检测登录状态…")
@@ -445,19 +567,20 @@ class SettingsDialog(QDialog):
 
     def _on_auth_status(self, cli_installed: bool, authed: bool):
         self.login_btn.setEnabled(True)
+        colors = theme.tokens(self.config.get("theme", "dark"))
         if not cli_installed:
             self.auth_status_label.setText("● 未检测到 lark-cli，请先安装：npm install -g @larksuite/cli")
-            self.auth_status_label.setStyleSheet("color: #FF8800;")
+            self.auth_status_label.setStyleSheet(f"color: {colors['warn']};")
             # 此前这里文案写「重新检测」却仍连着 _on_login，点了只会打开登录框。
             # 按钮行为必须跟着文案走。
             self._retarget_login_btn("重新检测", self._start_auth_check)
         elif authed:
             self.auth_status_label.setText("● 已登录（重启应用无需重新登录）")
-            self.auth_status_label.setStyleSheet("color: #2EA121;")
+            self.auth_status_label.setStyleSheet(f"color: {colors['success']};")
             self._retarget_login_btn("重新登录", self._on_login)
         else:
             self.auth_status_label.setText("○ 未登录")
-            self.auth_status_label.setStyleSheet("color: #F54A45;")
+            self.auth_status_label.setStyleSheet(f"color: {colors['danger']};")
             self._retarget_login_btn("登录飞书账号", self._on_login)
 
     def _retarget_login_btn(self, text: str, handler):
@@ -479,14 +602,15 @@ class SettingsDialog(QDialog):
     # ── Appearance tab ──
 
     def _build_appearance_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
+        scroll, layout = self._page()
 
-        theme_group = QGroupBox("主题")
-        theme_layout = QVBoxLayout(theme_group)
-        self.light_radio = QRadioButton("浅色（飞书默认）")
+        group, box = self._group("主题")
+        theme_row = QWidget()
+        theme_row.setObjectName("formRow")
+        theme_line = QHBoxLayout(theme_row)
+        theme_line.setContentsMargins(0, 0, 0, 0)
+        theme_line.setSpacing(24)
+        self.light_radio = QRadioButton("浅色")
         self.dark_radio = QRadioButton("深色")
         self.theme_group = QButtonGroup(self)
         self.theme_group.addButton(self.light_radio)
@@ -495,20 +619,19 @@ class SettingsDialog(QDialog):
         self.light_radio.setChecked(current_theme == "light")
         self.dark_radio.setChecked(current_theme == "dark")
         self.light_radio.toggled.connect(self._on_theme_changed)
-        theme_layout.addWidget(self.light_radio)
-        theme_layout.addWidget(self.dark_radio)
-        layout.addWidget(theme_group)
+        theme_line.addWidget(self.light_radio)
+        theme_line.addWidget(self.dark_radio)
+        theme_line.addStretch()
+        box.addWidget(theme_row)
+        box.addWidget(self._hint("切换后立即生效，日格、周视图、统计窗跟着一起换。"))
+        layout.addWidget(group)
 
-        behavior_group = QGroupBox("窗口行为")
-        behavior_layout = QVBoxLayout(behavior_group)
-        self.pin_check = QCheckBox("窗口置顶显示")
+        group, box = self._group("窗口")
+        self.pin_check = self._check("窗口置顶显示")
         self.pin_check.setChecked(self.config.get("pin_to_top", True))
         self.pin_check.stateChanged.connect(self._on_pin_changed)
-        behavior_layout.addWidget(self.pin_check)
-        layout.addWidget(behavior_group)
+        box.addWidget(self.pin_check)
 
-        opacity_group = QGroupBox("窗口透明度")
-        opacity_layout = QVBoxLayout(opacity_group)
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         # 下限与 config._validated 的 clamp（0.2）对齐，否则手改过 config.json 的
         # 数值会被滑块夹到 50%，出现「界面 50% / 磁盘 0.33」长期不一致
@@ -516,46 +639,34 @@ class SettingsDialog(QDialog):
         self.opacity_slider.setToolTip("窗口透明度 20%-100%。")
         self.opacity_slider.setValue(int(float(self.config.get("opacity", 1.0)) * 100))
         self.opacity_label = QLabel(f"{self.opacity_slider.value()}%")
+        self.opacity_label.setObjectName("valueLabel")
         self.opacity_slider.valueChanged.connect(self._on_opacity_changed)
-        opacity_layout.addWidget(self.opacity_slider)
-        opacity_layout.addWidget(self.opacity_label)
-        layout.addWidget(opacity_group)
+        box.addWidget(self._slider_row("窗口透明度", self.opacity_slider, self.opacity_label))
+        layout.addWidget(group)
 
-        font_group = QGroupBox("日程字号")
-        font_layout = QVBoxLayout(font_group)
+        group, box = self._group("日程字号")
         self.grid_font_slider, self.grid_font_label = self._build_font_row(
-            font_layout, "月视图日程", "grid_font_size", 10, self._on_grid_font_changed
+            box, "月视图日程", "grid_font_size", 10, self._on_grid_font_changed
         )
         self.list_font_slider, self.list_font_label = self._build_font_row(
-            font_layout, "周 / 列表视图日程", "list_font_size", 13, self._on_list_font_changed
+            box, "周 / 列表视图", "list_font_size", 13, self._on_list_font_changed
         )
-        layout.addWidget(font_group)
+        box.addWidget(self._hint("月视图给的是日格内日程条的字号，周视图与列表视图单独一套。"))
+        layout.addWidget(group)
 
         layout.addStretch()
-        return tab
+        return scroll
 
     def _build_font_row(self, parent_layout, title: str, key: str, default: int, callback):
-        """字号调节行：标题 + 滑块 + 实时数值（9-24px）。"""
-        row = QWidget()
-        row_layout = QVBoxLayout(row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(4)
-
-        head = QHBoxLayout()
-        head.addWidget(QLabel(title))
-        head.addStretch()
-        value = int(self.config.get(key, default))
-        label = QLabel(f"{value}px")
-        head.addWidget(label)
-        row_layout.addLayout(head)
-
+        """字号调节行：字段名 + 滑块 + 实时数值（9-24px）。"""
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(9, 24)
+        value = int(self.config.get(key, default))
         slider.setValue(value)
         slider.valueChanged.connect(callback)
-        row_layout.addWidget(slider)
-
-        parent_layout.addWidget(row)
+        label = QLabel(f"{value}px")
+        label.setObjectName("valueLabel")
+        parent_layout.addWidget(self._slider_row(title, slider, label))
         return slider, label
 
     def _on_grid_font_changed(self, value: int):
@@ -571,33 +682,39 @@ class SettingsDialog(QDialog):
     # ── About tab ──
 
     def _build_about_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(10)
-
-        title = QLabel("飞书日程")
-        title.setObjectName("detailTitle")
-        title.setStyleSheet("font-size: 18px;")
-        layout.addWidget(title)
+        scroll, layout = self._page()
 
         from __version__ import APP_VERSION as __version__
 
+        head = QWidget()
+        head.setObjectName("formRow")
+        head_line = QHBoxLayout(head)
+        head_line.setContentsMargins(2, 2, 2, 0)
+        head_line.setSpacing(10)
+
+        text_box = QVBoxLayout()
+        text_box.setSpacing(2)
+        title = QLabel("飞书日程")
+        title.setObjectName("aboutTitle")
+        text_box.addWidget(title)
         version_label = QLabel(f"版本 {__version__}")
         version_label.setObjectName("detailLabel")
-        layout.addWidget(version_label)
+        text_box.addWidget(version_label)
+        head_line.addLayout(text_box)
+        head_line.addStretch()
+        layout.addWidget(head)
 
-        desc = QLabel(
-            "飞书日历桌面小工具，支持月视图 / 周视图、拖拽改期、"
-            "本地颜色标记、Excel 导出、全局搜索、开机自启。\n"
-            "日程数据通过飞书官方 lark-cli 直连读取；"
-            "唯一的数据外发是启动时的一次匿名统计心跳，可在「通用」页关闭。"
+        desc = self._hint(
+            "飞书日历桌面小工具：月视图 / 周视图、拖拽改期、本地颜色标记、"
+            "Excel 导出、全局搜索、开机自启。\n"
+            "日程数据通过飞书官方 lark-cli 直连读取；唯一的数据外发是启动时的"
+            "一次匿名统计心跳，可在「通用」页关闭。"
         )
-        desc.setObjectName("detailLabel")
-        desc.setWordWrap(True)
         layout.addWidget(desc)
 
         link_row = QHBoxLayout()
+        link_row.setContentsMargins(0, 0, 0, 0)
+        link_row.setSpacing(8)
         self.repo_btn = QPushButton("项目主页")
         self.repo_btn.setObjectName("linkBtn")
         self.repo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -612,8 +729,7 @@ class SettingsDialog(QDialog):
         link_row.addStretch()
         layout.addLayout(link_row)
 
-        usage_group = QGroupBox("使用情况")
-        usage_layout = QVBoxLayout(usage_group)
+        group, box = self._group("使用情况")
         self.usage_total_label = QLabel("正在获取使用数据…")
         self.usage_total_label.setObjectName("detailValue")
         self.usage_active_label = QLabel("")
@@ -624,13 +740,45 @@ class SettingsDialog(QDialog):
         )
         self.usage_status_label.setObjectName("detailLabel")
         self.usage_status_label.setWordWrap(True)
-        usage_layout.addWidget(self.usage_total_label)
-        usage_layout.addWidget(self.usage_active_label)
-        usage_layout.addWidget(self.usage_status_label)
-        layout.addWidget(usage_group)
+        box.addWidget(self.usage_total_label)
+        box.addWidget(self.usage_active_label)
+        box.addWidget(self.usage_status_label)
+        layout.addWidget(group)
+
+        group, box = self._group("运行环境")
+        box.addWidget(self._row("数据目录", self._data_dir_value(), width=None))
+        box.addWidget(self._row("运行库", self._runtime_value(), width=None))
+        layout.addWidget(group)
 
         layout.addStretch()
-        return tab
+        return scroll
+
+    def _data_dir_value(self) -> QLabel:
+        """数据目录：路径可能很长，尾部省略，完整值放进 tooltip。
+
+        直接用 QLabel 会把窗口撑宽——sizeHint 是整条路径的宽度，
+        而 macOS 的临时目录动辄六七十个字符。
+        """
+        from config import get_app_dir
+        from widgets import ElidedLabel
+
+        path = str(get_app_dir())
+        label = ElidedLabel(path)
+        label.setObjectName("detailValue")
+        label.setToolTip(path)
+        return label
+
+    @staticmethod
+    def _runtime_value() -> QLabel:
+        import platform
+
+        from PySide6 import __version__ as pyside_version
+
+        label = QLabel(
+            f"Python {platform.python_version()} · Qt {pyside_version} · {platform.system()}"
+        )
+        label.setObjectName("detailValue")
+        return label
 
     def _open_url(self, url: str):
         QDesktopServices.openUrl(QUrl(url))
@@ -730,6 +878,7 @@ class SettingsDialog(QDialog):
         self.settings_changed.emit()
 
     def _on_check_update(self):
+        self.update_result_label.setVisible(True)
         self.update_result_label.setText("正在检查…")
         self.update_result_label.setStyleSheet("color: #8F959E;")
         self.check_update_btn.setEnabled(False)
@@ -739,6 +888,7 @@ class SettingsDialog(QDialog):
 
     def _on_check_result(self, release):
         self.check_update_btn.setEnabled(True)
+        self.update_result_label.setVisible(True)
         if not release:
             self.update_result_label.setText("检查失败：请检查网络后重试")
             self.update_result_label.setStyleSheet("color: #F54A45;")
@@ -781,16 +931,19 @@ class SettingsDialog(QDialog):
         self.settings_changed.emit()
 
     def _start_stats_load(self):
-        self.usage_status_label.setText("正在获取使用数据…")
+        # 别覆盖 usage_status_label：那是隐私说明，覆盖后会与 usage_total_label
+        # 同时显示「正在获取使用数据…」，关于页出现两行一样的字。
+        self.usage_total_label.setText("正在获取使用数据…")
+        self.usage_active_label.setText("")
+        self.usage_active_label.setVisible(False)
         self._stats_worker = usage_stats.StatsWorker(self)
         self._stats_worker.result.connect(self._on_stats_result)
         self._stats_worker.start()
 
     def _on_stats_result(self, stats):
         if not isinstance(stats, dict):
-            self.usage_total_label.setText("")
+            self.usage_total_label.setText("统计暂不可用")
             self.usage_active_label.setText("")
-            self.usage_status_label.setText("统计暂不可用")
             return
 
         def count(key):
@@ -802,9 +955,9 @@ class SettingsDialog(QDialog):
         self.usage_total_label.setText(
             f"累计使用人数：{count('cumulative_users')} 人"
         )
-        self.usage_active_label.setText(
-            f"近 30 天活跃：{count('active_users_30d')} 人"
-        )
+        active = count("active_users_30d")
+        self.usage_active_label.setVisible(active > 0)
+        self.usage_active_label.setText(f"近 30 天活跃：{active} 人")
         self.usage_status_label.setText(
             "匿名统计：只含随机安装标识、版本号与操作系统，"
             "不含飞书账号、日程内容和设备标识。可在「通用」页关闭。"

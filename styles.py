@@ -1702,6 +1702,12 @@ def _skin_rules(name: str) -> str:
     cell_bg_hover = "rgba(255,255,255,0.085)" if dark else "rgba(12,16,22,0.075)"
     cell_other = "rgba(255,255,255,0.016)" if dark else "rgba(12,16,22,0.022)"
     head_bg = t["nav_bg"]
+    # 下拉箭头要自己给图：QSS 一旦给 ::drop-down 设了宽度，Qt 就不再画
+    # 默认箭头，只留一个空白的右内边距
+    chevron = "assets/chevron-down.svg" if dark else "assets/chevron-down-dark.svg"
+    chevron_up = "assets/chevron-up.svg" if dark else "assets/chevron-up-dark.svg"
+    # 未勾选的方框要在组框表面上看得见轮廓，line_strong 在深色下偏淡
+    box_border = "rgba(255,255,255,0.26)" if dark else "rgba(12,16,22,0.22)"
 
     return f"""
 /* ═══════════════════════════════════════════════════════════
@@ -2558,8 +2564,10 @@ QFrame#dialogSeparator {{
     max-height: 1px;
     min-height: 1px;
 }}
+/* 二维码卡片两套主题都用白底：深浅模块必须有足够对比度，浅色主题下
+   主按钮那种深底会把二维码变成反色，部分手机扫不出来。 */
 QFrame#qrCard {{
-    background-color: {t["btn_primary_bg"]};
+    background-color: #ffffff;
     border: 1px solid {t["line"]};
     border-radius: {theme.RADIUS["md"]}px;
 }}
@@ -2605,6 +2613,168 @@ QPushButton#toastClose {{
 QPushButton#toastClose:hover {{
     background-color: {t["surface_2"]};
     color: {t["text"]};
+}}
+/* ── 设置窗：表单骨架 ──
+   五个页面共用一套「字段名 + 控件」行，控件宽度和高度都统一在这里，
+   代码里不再各写各的。 */
+QScrollArea#settingsScroll, QScrollArea#settingsScroll > QWidget > QWidget,
+QWidget#settingsPage {{
+    background-color: transparent;
+    border: none;
+}}
+/* 基础层把 QWidget 也写进了底色选择器，行容器跟着被刷上窗口底色：
+   浅色主题下每个组框里都多出一块浅灰条，看着像控件没对齐。这里只给
+   行容器去掉底色，别去动组框自己的表面色。 */
+QWidget#formRow {{
+    background-color: transparent;
+}}
+QDialog QCheckBox::indicator, QDialog QRadioButton::indicator {{
+    border: 1px solid {box_border};
+}}
+QDialog QGroupBox::title {{
+    color: {t["text_strong"]};
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0px;
+    padding: 0 7px;
+    left: 12px;
+}}
+QLabel#fieldCap {{
+    color: {t["muted"]};
+    font-size: 12px;
+    background: transparent;
+}}
+QLabel#valueLabel {{
+    color: {t["text_strong"]};
+    font-family: {MONO_STACK};
+    font-size: 12px;
+    background: transparent;
+}}
+QLabel#aboutTitle {{
+    color: {t["text_strong"]};
+    font-size: 18px;
+    font-weight: 700;
+    background: transparent;
+}}
+QFrame#dialogRule {{
+    background-color: {t["line_soft"]};
+    border: none;
+    max-height: 1px;
+    min-height: 1px;
+}}
+/* 输入控件统一高度。原来是 7px 上下内边距 + 13px 字 = 41px，桌面设置窗里
+   偏高，而且 QSpinBox / QComboBox / QTimeEdit 各算各的，行与行对不齐。 */
+QDialog QLineEdit, QDialog QTextEdit, QDialog QPlainTextEdit, QDialog QComboBox,
+QDialog QDateTimeEdit, QDialog QDateEdit, QDialog QTimeEdit,
+QDialog QSpinBox, QDialog QDoubleSpinBox {{
+    padding: 4px 9px;
+    min-height: 22px;
+    border-radius: {theme.RADIUS["sm"]}px;
+}}
+/* 别在这里设 min-width：QStyleSheetStyle 会用 setMinimumWidth 覆盖
+   setFixedWidth 的约束，控件宽度就变成 sizeHint 而不再是代码指定的值
+   （下拉框 150 变成 135，一行里的控件右边界对不齐）。 */
+/* 与数字框同高：spin 因为内部有两个 9px 箭头，sizeHint 天然比 combo 高 4px，
+   同一列里一眼能看出参差。 */
+QDialog QComboBox {{
+    padding-right: 4px;
+    min-height: 26px;
+}}
+QDialog QComboBox::down-arrow {{
+    image: url({chevron});
+    width: 11px;
+    height: 11px;
+}}
+/* 数字框右侧的上下按钮不设样式时会用系统白底，圆角外露出一块直角。
+   一旦定制 ::up-button / ::down-button，Qt 就不再画默认箭头，所以箭头
+   也得自己给图。 */
+QDialog QSpinBox, QDialog QDoubleSpinBox, QDialog QTimeEdit, QDialog QDateEdit,
+QDialog QDateTimeEdit {{
+    padding-right: 20px;
+}}
+QDialog QSpinBox::up-arrow, QDialog QDoubleSpinBox::up-arrow,
+QDialog QTimeEdit::up-arrow, QDialog QDateEdit::up-arrow,
+QDialog QDateTimeEdit::up-arrow {{
+    image: url({chevron_up});
+    width: 9px;
+    height: 9px;
+}}
+QDialog QSpinBox::down-arrow, QDialog QDoubleSpinBox::down-arrow,
+QDialog QTimeEdit::down-arrow, QDialog QDateEdit::down-arrow,
+QDialog QDateTimeEdit::down-arrow {{
+    image: url({chevron});
+    width: 9px;
+    height: 9px;
+}}
+QDialog QSpinBox::up-button, QDialog QDoubleSpinBox::up-button,
+QDialog QTimeEdit::up-button, QDialog QDateEdit::up-button,
+QDialog QDateTimeEdit::up-button {{
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 17px;
+    margin: 1px 1px 0 0;
+    border: none;
+    background: transparent;
+}}
+QDialog QSpinBox::down-button, QDialog QDoubleSpinBox::down-button,
+QDialog QTimeEdit::down-button, QDialog QDateEdit::down-button,
+QDialog QDateTimeEdit::down-button {{
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 17px;
+    margin: 0 1px 1px 0;
+    border: none;
+    background: transparent;
+}}
+/* 基础层是 QDialog QPushButton#secondaryBtn（7px/18px + min-height 18），
+   比外观层不带前缀的那条特异性高，按钮会比输入框高出 3px，同一行里
+   基线不齐。带上前缀重写一遍。 */
+QDialog QPushButton#secondaryBtn, QDialog QPushButton#dangerBtn,
+QDialog QPushButton#linkBtn {{
+    padding: 4px 14px;
+    min-height: 22px;
+}}
+QDialog QPushButton#linkBtn {{
+    padding: 4px 2px;
+    font-weight: 600;
+}}
+QDialog QPushButton#secondaryBtn:disabled, QDialog QPushButton#primaryBtn:disabled {{
+    color: {t["soft"]};
+    background-color: {t["surface"]};
+    border-color: {t["line_soft"]};
+}}
+/* 禁用态要看得出来：只灰一点点在深色底上等于没提示，
+   免打扰时段那两个时间框关闭时几乎和可用时一样。 */
+QDialog QLineEdit:disabled, QDialog QTextEdit:disabled, QDialog QPlainTextEdit:disabled,
+QDialog QComboBox:disabled, QDialog QDateTimeEdit:disabled, QDialog QDateEdit:disabled,
+QDialog QTimeEdit:disabled, QDialog QSpinBox:disabled, QDialog QDoubleSpinBox:disabled {{
+    background-color: {t["stage"]};
+    color: {t["soft"]};
+    border-color: {t["line_soft"]};
+}}
+QDialog QCheckBox:disabled, QDialog QRadioButton:disabled {{
+    color: {t["soft"]};
+}}
+/* QAbstractSpinBox 内部有一层自己的编辑区，外层 :disabled 的 color 到不了
+   文字；可用态也一样，浅色主题下数字框里的字会比同行的标签更灰。 */
+QDialog QSpinBox QLineEdit, QDialog QDoubleSpinBox QLineEdit,
+QDialog QTimeEdit QLineEdit, QDialog QDateEdit QLineEdit,
+QDialog QDateTimeEdit QLineEdit {{
+    color: {t["text"]};
+    background: transparent;
+}}
+QDialog QTimeEdit:disabled, QDialog QDateEdit:disabled, QDialog QDateTimeEdit:disabled,
+QDialog QSpinBox:disabled, QDialog QDoubleSpinBox:disabled {{
+    color: {t["soft"]};
+}}
+QDialog QTimeEdit:disabled QLineEdit, QDialog QSpinBox:disabled QLineEdit,
+QDialog QDoubleSpinBox:disabled QLineEdit {{
+    color: {t["soft"]};
+    background: transparent;
+}}
+QDialog QComboBox::drop-down {{
+    width: 22px;
+    border: none;
 }}
 """
 
