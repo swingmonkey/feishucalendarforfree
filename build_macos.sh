@@ -71,6 +71,24 @@ fi
 # 拷贝 icon.icns 到 .app/Contents/Resources/ 作为 Finder/Dock 图标（PyInstaller 已经做了，双保险）
 cp -f assets/icon.icns "dist/${APP_NAME}.app/Contents/Resources/icon-windowed.icns" 2>/dev/null || true
 
+# 把版本号写进 Info.plist
+# PyInstaller 不读 __version__.py，生成的 CFBundleShortVersionString 恒为 0.0.0，
+# 于是 Finder「显示简介」和系统「关于」里永远是 0.0.0，与 OTA 用的版本号脱节。
+VER="$("$PY" -c 'import __version__; print(__version__.APP_VERSION)')"
+PLIST="dist/${APP_NAME}.app/Contents/Info.plist"
+if [ -n "$VER" ] && [ -f "$PLIST" ]; then
+    for KEY in CFBundleShortVersionString CFBundleVersion; do
+        if /usr/libexec/PlistBuddy -c "Print :$KEY" "$PLIST" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Set :$KEY $VER" "$PLIST"
+        else
+            /usr/libexec/PlistBuddy -c "Add :$KEY string $VER" "$PLIST"
+        fi
+    done
+    echo "bundle 版本写入：$VER"
+else
+    echo "警告：无法写入 bundle 版本（VER='$VER', plist 存在=$( [ -f "$PLIST" ] && echo yes || echo no)）" >&2
+fi
+
 echo ""
 echo "构建完成：dist/${APP_NAME}.app"
 
