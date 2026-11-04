@@ -2,7 +2,7 @@
 
 通过 lark-cli 的 Device Flow 完成授权（全程无需记忆命令）：
 1. 发起 no-wait 登录拿到 verification_url + device_code
-2. 在对话框内显示二维码（lark-cli 生成 PNG）与授权链接
+2. 在对话框内直接画出二维码（本地编码，不依赖 lark-cli 的画图子命令）与授权链接
 3. 用户扫码 / 网页授权后，**后台线程自动轮询完成登录**，
    对话框检测到授权成功会自行关闭，无需再点「我已授权」。
 
@@ -15,12 +15,11 @@ import json
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QPixmap
+from PySide6.QtGui import QColor, QDesktopServices, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -30,6 +29,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
+
+import qrgen
 
 LOGIN_SCOPES = ["calendar:calendar.event:read", "calendar:calendar:read"]
 
@@ -121,6 +122,36 @@ def mark_authed(config):
     """成功登录 / 成功拉取日程后持久化「已完成授权」标记。"""
     if config is not None and not config.get("auth_completed"):
         config.set("auth_completed", True)
+
+
+def _qr_pixmap(matrix, target: int = 248) -> QPixmap:
+    """把模块矩阵画成位图：整数倍缩放 + 4 模块静区，保证边缘锐利。
+
+    二维码做成非整数缩放后模块边缘会糊，手机扫起来时好时坏；这里按
+    整像素对齐，宁可尺寸小一点也不用平滑插值。``target`` 取 248 是为了
+    把 248×248 的二维码卡片填满（37 模块 + 8 静区 = 45，45×5 = 225）。
+    """
+    count = len(matrix)
+    total = count + 8  # 四周各留 4 个模块的静区
+    scale = max(1, target // total)
+    side = total * scale
+    image = QImage(side, side, QImage.Format.Format_ARGB32)
+    image.fill(QColor("#ffffff"))
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#0b0f14"))
+    for row_index, row in enumerate(matrix):
+        for col_index, dark in enumerate(row):
+            if dark:
+                painter.drawRect(
+                    (4 + col_index) * scale,
+                    (4 + row_index) * scale,
+                    scale,
+                    scale,
+                )
+    painter.end()
+    return QPixmap.fromImage(image)
 
 
 class AuthStatusWorker(QThread):
@@ -338,31 +369,19 @@ class LoginDialog(QDialog):
             )
 
     def _generate_qrcode(self, url: str):
+        """本地画二维码，不依赖 `lark-cli auth qrcode`。
+
+        原先是让 lark-cli 生成图片再读回来，命令写的是
+        `auth qrcode <url> --output qr.png --size 256`——`--size` 这个参数
+        lark-cli 根本没有，命令每次都以非零码退出，界面永远停在「二维码
+        不可用」，登录直接卡死。自己画既没有版本差异，也不用起 node 子进程。
+        """
         try:
-            with tempfile.TemporaryDirectory(prefix="feishu-login-") as tmp_dir:
-                out_name = "qr.png"
-                rc, _, _ = _lark_cli(
-                    ["auth", "qrcode", url, "--output", out_name, "--size", "256"],
-                    timeout=30,
-                    cwd=tmp_dir,
-                )
-                if rc == 0:
-                    img_path = Path(tmp_dir) / out_name
-                    if img_path.exists():
-                        pixmap = QPixmap(str(img_path))
-                        if not pixmap.isNull():
-                            self.qr_label.setPixmap(
-                                pixmap.scaled(
-                                    224,
-                                    224,
-                                    Qt.AspectRatioMode.KeepAspectRatio,
-                                    Qt.TransformationMode.SmoothTransformation,
-                                )
-                            )
-                            return
-            self.qr_label.setText("二维码生成失败\n请使用下方链接授权")
+            matrix = qrgen.make_qr(url)
         except Exception as e:  # noqa: BLE001
-            self.qr_label.setText(f"二维码生成失败：{e}")
+            self.qr_label.setText(f"二维码生成失败：{e}\n请使用下方链接授权")
+            return
+        self.qr_label.setPixmap(_qr_pixmap(matrix))
 
     # ------------------------------------------------------------- actions
     def _on_open_url(self):
