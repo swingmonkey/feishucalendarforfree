@@ -179,3 +179,20 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - `QColor(r,g,b,a_float)` 的第四参要 0-255 整数——传 0-1 浮点会被截成 0，热力格/渐变/分隔线同时消失且不报错；统一走 `desktop_widget._qcolor()`
 - 截图验收：`QT_QPA_PLATFORM=offscreen .venv/bin/python tools/widget_shot.py`（grab 后要合成到中性底色再存，否则透明像素看不出台面）
 - offscreen 下 `QMenu.exec()` 开阻塞事件循环永不返回，测试要打桩
+
+## 复刻 token-monitor 应用本体（2026-11-04，调色板换代）
+- **视觉真源从官网 CSS 切换到应用本体**（`src/electron/renderer/styles.css` 的 CSS 变量）：
+  石墨玻璃底 `--glass-rgb 48,52,56`、面板 `--panel-rgb 16,21,30`、凹陷面 `--sunken-rgb 4,8,13`、
+  文字 `#eef5fb`、muted `#a3adbb`、**accent 薄荷绿 #b7ead4**、图表/数据蓝 `#73bdf5`、danger `#f47788`。
+  官网那套青蓝渐变（#22d3ee→#5b9dff）是营销皮，不要再用。
+- 语义分工照参考实现：**交互强调（选中段、主按钮、今天描边、菜单选中）用薄荷绿；
+  日程条、热力图等「数据」用图表蓝**。
+- 主按钮不是纯白：accent 淡染底（12%）+ accent 描边（35%）+ accent 文字，hover 抬到 22%/50%
+  （对应 .sync-content-primary）；`btn_primary_border(_hover)` 是新增令牌。
+- 输入框用凹陷面 `t["sunken"]`（比台面更暗一档），焦点边框统一信息蓝 `t["link"]`。
+- tab 选中下划线用 text 色（不用 accent）——参考实现 displaySettings 的选中态语言。
+- 深色主题勾选标记用 `assets/check-ink.svg`（墨色描边）：薄荷绿底上白勾看不见。
+- 浅色主题是「翻转 RGB」策略的同构版：accent 换压暗薄荷绿 #2e7d5f，数据蓝 #2f7fc4。
+- 主窗口光晕（PAINT.glow）必须比台面亮两档，同色画上去等于没画。
+- 设置窗逐页截图已进 ui_shot（dlg-settings-tab0..4）；**输出目录是第一个位置参数，
+  `ui_shot.py . light` 会把图写到仓库根目录**——别再犯。

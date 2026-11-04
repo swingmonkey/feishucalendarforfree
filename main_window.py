@@ -685,13 +685,11 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         icon = QLabel("!")
-        icon.setObjectName("stateIcon")
+        # 危险语义的圆徽走样式表（skin 层 QLabel#stateIconDanger），
+        # 不再内联写死飞书红——换主题时内联色会原地留在旧配色里
+        icon.setObjectName("stateIconDanger")
         icon.setFixedSize(56, 56)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet(
-            "border-radius: 28px; background-color: rgba(245,74,69,0.12);"
-            "color: #F54A45; font-size: 26px; font-weight: 700;"
-        )
         row = QHBoxLayout()
         row.addStretch()
         row.addWidget(icon)

@@ -31,29 +31,31 @@ _WEEK_HEADERS = stats.WEEKDAY_LABELS
 def _build_palette(name: str) -> dict:
     """热力图与卡片的取色，全部从设计令牌派生。
 
-    热力梯度沿用 token-monitor 的「深蓝 → 亮青」路线：低负荷是冷灰，
-    越忙越往青蓝亮部走。原来这里是飞书蓝（#3370FF）单色系五档，
-    和整套新外观不搭。
+    热力梯度沿用 token-monitor 应用的「低负荷冷灰 → 高负荷图表蓝」路线
+    （--blue #73bdf5 是数据色，交互强调的薄荷绿只给选中态），浅色主题
+    换成同构的压暗蓝。原来这里是飞书蓝（#3370FF）单色系五档。
     """
     t = theme.tokens(name)
     if theme.is_dark(name):
         cells = [
             "rgba(255,255,255,0.05)",
-            "rgba(14,116,144,0.70)",
-            "rgba(8,145,178,0.85)",
-            "rgba(34,211,238,0.90)",
-            "#67e8f9",
+            "rgba(115,189,245,0.28)",
+            "rgba(115,189,245,0.52)",
+            "rgba(115,189,245,0.78)",
+            "#73bdf5",
         ]
-        cell_text = ["#9aa7b8", "#bae6fd", "#e0f2fe", "#07111f", "#07111f"]
+        # 低档格是半透明蓝叠在石墨底上，有效底色仍偏暗 → 浅字；
+        # 最亮两档接近实心蓝 → 换墨字才看得清
+        cell_text = ["#a3adbb", "#eef5fb", "#eef5fb", "#0e1f18", "#0e1f18"]
     else:
         cells = [
-            "rgba(12,16,22,0.05)",
-            "#cffafe",
-            "#7dd3e8",
-            "#22b8d4",
-            "#0e7490",
+            "rgba(20,26,32,0.05)",
+            "rgba(47,127,196,0.24)",
+            "rgba(47,127,196,0.46)",
+            "rgba(47,127,196,0.70)",
+            "#2f7fc4",
         ]
-        cell_text = ["#6b7684", "#0c1016", "#0c1016", "#ffffff", "#ffffff"]
+        cell_text = ["#66707c", "#ffffff", "#ffffff", "#ffffff", "#ffffff"]
     return {
         "cell": cells,
         "cell_text": cell_text,

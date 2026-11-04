@@ -212,6 +212,18 @@ def main() -> int:
             save(dlg, name)
             dlg.deleteLater()
 
+        # 设置窗：逐页截图（按钮/控件样式改动的重灾区，必须每页过目）
+        from settings_dialog import SettingsDialog
+
+        settings = SettingsDialog(win.config, parent=win)
+        settings.show()
+        app.processEvents()
+        for i in range(settings.tabs.count()):
+            settings.tabs.setCurrentIndex(i)
+            app.processEvents()
+            save(settings, f"dlg-settings-tab{i}")
+        settings.deleteLater()
+
         win.dispose()
         app.quit()
 

@@ -1,9 +1,10 @@
 """设计令牌（Design Tokens）—— 界面视觉的单一真源。
 
-体系移植自 Javis603/token-monitor 的 `site/styles/tokens.css`：
-深色玻璃台面、青蓝单向渐变、极细分隔线、等宽数字。原项目是网页，
-这里做的是**令牌层的移植**，不是把网页像素搬进 Qt——日历是功能密集的
-小窗口（440–720px），字号与间距必须按桌面控件的密度重算。
+体系移植自 Javis603/token-monitor 的**应用本体**（Electron 渲染层
+``src/electron/renderer/styles.css`` 的 CSS 变量），不是它的官网 CSS——
+程序真实配色是「石墨玻璃底 #303438 + 薄荷绿强调 #b7ead4 + 图表蓝
+#73bdf5」，官网宣传页的青蓝渐变只是营销皮。交互强调（选中态、主按钮、
+今天描边）用薄荷绿；日程条、图表这类「数据」用图表蓝，语义同参考实现。
 
 三层结构：
     theme.py        令牌（本文件）：颜色、圆角、间距、字阶、动效曲线
@@ -70,58 +71,65 @@ _COMMON = {
 }
 
 _DARK = {
-    # 台面
-    "bg": "#14171c",
-    "stage": "#07080b",
-    "chrome": "#14171c",
-    "nav_bg": "rgba(7,8,11,0.72)",
-    # 文字
-    "text": "#eaf2ff",
-    "text_strong": "#f4f8ff",
-    "muted": "#9aa7b8",
-    "soft": "rgba(234,242,255,0.52)",
-    "eyebrow": "rgba(234,242,255,0.62)",
-    # 强调
-    "accent": "#5b9dff",
-    "accent_from": "#22d3ee",
-    "accent_to": "#5b9dff",
-    "accent_ink": "#07111f",
-    "link": "#7fb0ff",
-    "warn": "#f59e0b",
-    "warn_text": "#fbbf24",
-    "danger": "#ef4444",
+    # 台面（数值抄自 token-monitor 应用本体 styles.css 的 CSS 变量：
+    # --glass-rgb 48,52,56 / --panel-rgb 16,21,30 / --sunken-rgb 4,8,13）
+    "bg": "#303438",
+    "stage": "#212529",
+    "chrome": "#303438",
+    "nav_bg": "rgba(16,21,30,0.72)",
+    "panel": "rgba(16,21,30,0.35)",
+    "sunken": "rgba(4,8,13,0.48)",
+    # 文字（--text / --number / --muted）
+    "text": "#eef5fb",
+    "text_strong": "#f3fbf7",
+    "muted": "#a3adbb",
+    "soft": "rgba(238,245,251,0.52)",
+    "eyebrow": "rgba(238,245,251,0.62)",
+    # 强调（--accent #b7ead4 薄荷绿；数据/图表用 --blue #73bdf5）
+    "accent": "#b7ead4",
+    "accent_from": "#b7ead4",
+    "accent_to": "#73bdf5",
+    "accent_ink": "#0e1f18",
+    "link": "#73bdf5",
+    "warn": "#f4a073",
+    "warn_text": "#f1d973",
+    "danger": "#f47788",
     # danger 在深底上要更亮才读得清（关闭按钮 hover、危险按钮文字），
     # 浅底上反过来要更暗——这两个值不能共用一个 hex
-    "danger_hover": "#fca5a5",
-    "success": "#34d399",
+    "danger_hover": "#f9a0ae",
+    "success": "#b7ead4",
     # 语义色的淡底版本：确认框图标圆徽、Toast 图标这类地方要「有色但不抢」，
     # 直接用纯色会糊成一块。写死 rgba 就又回到改造前那种散落色值的老路。
-    "accent_soft": "rgba(91,157,255,0.16)",
-    "danger_soft": "rgba(239,68,68,0.16)",
-    "success_soft": "rgba(52,211,153,0.16)",
-    "warn_soft": "rgba(245,158,11,0.16)",
-    # 面与线
-    "surface": "rgba(255,255,255,0.05)",
-    "surface_2": "rgba(255,255,255,0.08)",
-    "line": "rgba(255,255,255,0.10)",
-    "line_soft": "rgba(255,255,255,0.06)",
-    "line_strong": "rgba(255,255,255,0.16)",
-    # 玻璃
-    "glass": "rgba(40,44,52,0.42)",
-    "glass_strong": "rgba(40,44,52,0.50)",
-    "glass_border": "rgba(232,238,244,0.24)",
+    "accent_soft": "rgba(183,234,212,0.14)",
+    "danger_soft": "rgba(244,119,136,0.14)",
+    "success_soft": "rgba(183,234,212,0.16)",
+    "warn_soft": "rgba(244,160,115,0.14)",
+    # 面与线（--control-alpha 0.049 / --line-alpha 0.138 / --line-strong-alpha 0.238）
+    "surface": "rgba(255,255,255,0.049)",
+    "surface_2": "rgba(255,255,255,0.072)",
+    "line": "rgba(232,238,244,0.138)",
+    "line_soft": "rgba(232,238,244,0.07)",
+    "line_strong": "rgba(232,238,244,0.238)",
+    # 玻璃（--glass 0.68，弹层/菜单用更实的一档）
+    "glass": "rgba(48,52,56,0.68)",
+    "glass_strong": "rgba(48,52,56,0.80)",
+    "glass_border": "rgba(232,238,244,0.22)",
     "glass_border_soft": "rgba(232,238,244,0.14)",
-    # 主按钮：白底深字（原项目最克制的一笔——强调色只给渐变，主按钮不用）
-    "btn_primary_bg": "#ffffff",
-    "btn_primary_fg": "#14171c",
-    "btn_primary_hover": "#f2f6ff",
-    "on_strong": "#14171c",
-    # 日程配色的底色（左侧色条 + 淡底）
-    "event_ink": "rgba(91,157,255,0.22)",
-    "event_ink_hover": "rgba(91,157,255,0.34)",
+    # 主按钮：应用本体不是纯白，是 accent 淡染 + accent 描边 + accent 文字
+    # （styles.css .sync-content-dialog button.sync-content-primary）
+    "btn_primary_bg": "rgba(183,234,212,0.14)",
+    "btn_primary_fg": "#b7ead4",
+    "btn_primary_hover": "rgba(183,234,212,0.22)",
+    "btn_primary_border": "rgba(183,234,212,0.35)",
+    "btn_primary_border_hover": "rgba(183,234,212,0.50)",
+    "on_strong": "#0e1f18",
+    # 日程配色的底色（左侧色条 + 淡底）：日程是「数据」，用图表蓝而不是
+    # 交互强调的薄荷绿——参考实现里 accent 只给选中态，数据列全是 --blue
+    "event_ink": "rgba(115,189,245,0.18)",
+    "event_ink_hover": "rgba(115,189,245,0.30)",
     # 滚动条
-    "scroll_handle": "rgba(255,255,255,0.14)",
-    "scroll_handle_hover": "rgba(255,255,255,0.24)",
+    "scroll_handle": "rgba(255,255,255,0.16)",
+    "scroll_handle_hover": "rgba(255,255,255,0.26)",
     # 二维码卡片两套主题都固定白底（深浅模块要有足够对比度才扫得出来），
     # 所以卡片里的占位文字必须用墨色而不是 muted——浅色主题的 muted 是灰，
     # 深色主题的 muted 是浅蓝白，后者落在白卡上直接看不见。
@@ -129,48 +137,53 @@ _DARK = {
 }
 
 _LIGHT = {
-    "bg": "#f6f7f9",
-    "stage": "#ffffff",
-    "chrome": "#ffffff",
+    # 浅色是参考实现「翻转 overlay/line/panel 的 RGB」策略的同构版：
+    # 白底上薄荷绿（#b7ead4）对比度不够，accent 换成压暗的薄荷绿
+    "bg": "#e9ebed",
+    "stage": "#f3f4f5",
+    "chrome": "#e9ebed",
     "nav_bg": "rgba(255,255,255,0.78)",
-    "text": "#1a2029",
-    "text_strong": "#0c1016",
-    "muted": "#6b7684",
-    "soft": "rgba(26,32,41,0.52)",
-    "eyebrow": "rgba(26,32,41,0.62)",
-    # 浅色下青蓝要压暗才够对比（#22d3ee 在白底上几乎看不见）
-    "accent": "#2563eb",
-    "accent_from": "#0891b2",
-    "accent_to": "#2563eb",
+    "panel": "rgba(255,255,255,0.60)",
+    "sunken": "rgba(20,26,32,0.06)",
+    "text": "#1f262e",
+    "text_strong": "#12181f",
+    "muted": "#66707c",
+    "soft": "rgba(31,38,46,0.52)",
+    "eyebrow": "rgba(31,38,46,0.62)",
+    "accent": "#2e7d5f",
+    "accent_from": "#2e7d5f",
+    "accent_to": "#2f7fc4",
     "accent_ink": "#ffffff",
-    "link": "#1d5fd0",
-    "warn": "#c2750a",
-    "warn_text": "#a4600a",
-    "danger": "#dc2626",
-    "danger_hover": "#b91c1c",
-    "success": "#0f9d70",
+    "link": "#2f7fc4",
+    "warn": "#b96a3e",
+    "warn_text": "#a25a30",
+    "danger": "#d5485c",
+    "danger_hover": "#b93a4d",
+    "success": "#2e7d5f",
     # 淡底版本（与深色主题同构，alpha 略低——白底上同样的透明度会更显眼）
-    "accent_soft": "rgba(37,99,235,0.10)",
-    "danger_soft": "rgba(220,38,38,0.10)",
-    "success_soft": "rgba(15,157,112,0.10)",
-    "warn_soft": "rgba(194,117,10,0.12)",
-    "surface": "rgba(12,16,22,0.035)",
-    "surface_2": "rgba(12,16,22,0.06)",
-    "line": "rgba(12,16,22,0.10)",
-    "line_soft": "rgba(12,16,22,0.07)",
-    "line_strong": "rgba(12,16,22,0.16)",
+    "accent_soft": "rgba(46,125,95,0.10)",
+    "danger_soft": "rgba(213,72,92,0.10)",
+    "success_soft": "rgba(46,125,95,0.12)",
+    "warn_soft": "rgba(185,106,62,0.12)",
+    "surface": "rgba(20,26,32,0.05)",
+    "surface_2": "rgba(20,26,32,0.08)",
+    "line": "rgba(20,26,32,0.14)",
+    "line_soft": "rgba(20,26,32,0.08)",
+    "line_strong": "rgba(20,26,32,0.22)",
     "glass": "rgba(255,255,255,0.72)",
-    "glass_strong": "rgba(255,255,255,0.88)",
-    "glass_border": "rgba(12,16,22,0.10)",
-    "glass_border_soft": "rgba(12,16,22,0.07)",
-    "btn_primary_bg": "#0c1016",
-    "btn_primary_fg": "#ffffff",
-    "btn_primary_hover": "#1e2630",
+    "glass_strong": "rgba(255,255,255,0.86)",
+    "glass_border": "rgba(20,26,32,0.12)",
+    "glass_border_soft": "rgba(20,26,32,0.08)",
+    "btn_primary_bg": "rgba(46,125,95,0.12)",
+    "btn_primary_fg": "#256a50",
+    "btn_primary_hover": "rgba(46,125,95,0.20)",
+    "btn_primary_border": "rgba(46,125,95,0.40)",
+    "btn_primary_border_hover": "rgba(46,125,95,0.55)",
     "on_strong": "#ffffff",
-    "event_ink": "rgba(37,99,235,0.14)",
-    "event_ink_hover": "rgba(37,99,235,0.24)",
-    "scroll_handle": "rgba(12,16,22,0.16)",
-    "scroll_handle_hover": "rgba(12,16,22,0.28)",
+    "event_ink": "rgba(47,127,196,0.14)",
+    "event_ink_hover": "rgba(47,127,196,0.24)",
+    "scroll_handle": "rgba(20,26,32,0.16)",
+    "scroll_handle_hover": "rgba(20,26,32,0.28)",
     "qr_ink": "#646A73",
 }
 
@@ -210,25 +223,26 @@ def is_dark(name: str) -> bool:
 # RGB + alpha，避免自绘代码里再写死一遍颜色。
 PAINT = {
     "dark": {
-        "glow": (42, 51, 64),
-        "beam_from": (34, 211, 238),
-        "beam_to": (91, 157, 255),
-        "today_ring": (34, 211, 238),
-        "today_ring_alt": (91, 157, 255),
-        "stage": (7, 8, 11),
-        "bg": (20, 23, 28),
+        # 光晕比台面亮两档的石墨（纯同色画上去等于没画）
+        "glow": (96, 104, 112),
+        "beam_from": (183, 234, 212),
+        "beam_to": (115, 189, 245),
+        "today_ring": (183, 234, 212),
+        "today_ring_alt": (115, 189, 245),
+        "stage": (33, 37, 41),
+        "bg": (48, 52, 56),
         # 细轨道的基色：深色主题用白、浅色主题用墨，透明度由调用方给
         "track": (255, 255, 255),
     },
     "light": {
-        "glow": (210, 226, 245),
-        "beam_from": (8, 145, 178),
-        "beam_to": (37, 99, 235),
-        "today_ring": (8, 145, 178),
-        "today_ring_alt": (37, 99, 235),
+        "glow": (208, 214, 220),
+        "beam_from": (46, 125, 95),
+        "beam_to": (47, 127, 196),
+        "today_ring": (46, 125, 95),
+        "today_ring_alt": (47, 127, 196),
         "stage": (255, 255, 255),
-        "bg": (246, 247, 249),
-        "track": (12, 16, 22),
+        "bg": (233, 235, 237),
+        "track": (20, 26, 32),
     },
 }
 

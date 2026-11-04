@@ -1743,12 +1743,12 @@ QDialog {{
     background-color: {t["bg"]};
 }}
 
-/* 焦点环：细一档，用青蓝而不是纯蓝 */
+/* 焦点环：细一档，用信息蓝（参考实现的 focus-visible 语言） */
 QPushButton:focus-visible, QLineEdit:focus-visible, QTextEdit:focus-visible,
 QComboBox:focus-visible, QDateTimeEdit:focus-visible, QSpinBox:focus-visible,
 QCheckBox:focus-visible, QRadioButton:focus-visible, QListWidget:focus-visible,
 QToolButton:focus-visible, QTabWidget:focus-visible {{
-    outline: 2px solid {t["accent"]};
+    outline: 2px solid {t["link"]};
     outline-offset: 1px;
 }}
 
@@ -1796,8 +1796,9 @@ QPushButton#toggleBtn:hover {{
     background-color: {t["surface"]};
 }}
 QPushButton#toggleBtnActive {{
+    /* 分段选中段：参考应用里「选中 = accent 淡染 + accent 文字」 */
     background-color: {t["btn_primary_bg"]};
-    border: none;
+    border: 1px solid {t["btn_primary_border"]};
     border-radius: 8px;
     color: {t["btn_primary_fg"]};
     font-weight: 700;
@@ -1831,19 +1832,21 @@ QPushButton#closeBtn:hover, QToolButton#closeBtn:hover {{
     color: {t["danger_hover"]};
 }}
 
-/* 主操作：纯白（原项目最克制的一笔——强调色只给渐变，主按钮不给） */
+/* 主操作：与设置页主按钮同源（accent 淡染 + 描边） */
 QPushButton#addBtn {{
     background-color: {t["btn_primary_bg"]};
-    border: none;
+    border: 1px solid {t["btn_primary_border"]};
     border-radius: 9px;
     color: {t["btn_primary_fg"]};
     font-weight: 700;
 }}
 QPushButton#addBtn:hover {{
     background-color: {t["btn_primary_hover"]};
+    border-color: {t["btn_primary_border_hover"]};
 }}
 QPushButton#addBtn:pressed {{
     background-color: {t["btn_primary_bg"]};
+    border-color: {t["btn_primary_border"]};
 }}
 QPushButton#todayBtn {{
     background-color: {t["surface"]};
@@ -2106,8 +2109,9 @@ QLabel#weekRangeLabel {{
 }}
 
 /* ── 表单控件 ── */
+/* 输入面用「凹陷色」（参考实现 --sunken-rgb：输入框比台面更暗一档） */
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QDateTimeEdit, QSpinBox {{
-    background-color: {t["surface"]};
+    background-color: {t["sunken"]};
     border: 1px solid {t["line"]};
     border-radius: {theme.RADIUS["sm"]}px;
     padding: 5px 8px;
@@ -2117,8 +2121,9 @@ QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QDateTimeEdit, QSpinBox {{
 }}
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
 QDateTimeEdit:focus, QSpinBox:focus {{
-    border: 1px solid {t["accent"]};
-    background-color: {t["surface_2"]};
+    /* 焦点语言统一是信息蓝（参考实现 rgba(115,189,245,.72)） */
+    border: 1px solid {t["link"]};
+    background-color: {t["sunken"]};
 }}
 QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled,
 QDateTimeEdit:disabled, QSpinBox:disabled {{
@@ -2127,17 +2132,19 @@ QDateTimeEdit:disabled, QSpinBox:disabled {{
 }}
 QComboBox QAbstractItemView {{
     background-color: {t["glass_strong"]};
-    border: 1px solid {t["line"]};
+    border: 1px solid {t["glass_border"]};
     border-radius: 8px;
-    selection-background-color: {t["surface_2"]};
-    selection-color: {t["text_strong"]};
+    selection-background-color: {t["accent_soft"]};
+    selection-color: {t["accent"]};
     outline: none;
 }}
 
 /* ── 按钮体系 ── */
+/* 主按钮：accent 淡染底 + accent 描边 + accent 文字——抄 token-monitor
+   应用本体（.sync-content-primary），不是官网那套纯白。 */
 QPushButton#primaryBtn, QDialogButtonBox QPushButton:default, QMessageBox QPushButton:default {{
     background-color: {t["btn_primary_bg"]};
-    border: none;
+    border: 1px solid {t["btn_primary_border"]};
     border-radius: {theme.RADIUS["sm"]}px;
     color: {t["btn_primary_fg"]};
     font-weight: 700;
@@ -2146,20 +2153,23 @@ QPushButton#primaryBtn, QDialogButtonBox QPushButton:default, QMessageBox QPushB
 QPushButton#primaryBtn:hover, QDialogButtonBox QPushButton:default:hover,
 QMessageBox QPushButton:default:hover {{
     background-color: {t["btn_primary_hover"]};
+    border-color: {t["btn_primary_border_hover"]};
 }}
 QPushButton#primaryBtn:pressed, QDialogButtonBox QPushButton:default:pressed {{
     background-color: {t["btn_primary_bg"]};
+    border-color: {t["btn_primary_border"]};
 }}
 QPushButton#primaryBtn:disabled, QDialogButtonBox QPushButton:default:disabled {{
     background-color: {t["surface_2"]};
+    border-color: transparent;
     color: {t["soft"]};
 }}
 /* 对话框里的主按钮要带 QDialog 前缀重写一遍：基础层的
    QDialog QPushButton#primaryBtn 靠这个前缀压过了上面那条，
-   按钮一直是老的飞书蓝 #3370FF，和青蓝渐变的主色调对不上。 */
+   按钮一直是老的飞书蓝 #3370FF，和新的 accent 主色调对不上。 */
 QDialog QPushButton#primaryBtn {{
     background-color: {t["btn_primary_bg"]};
-    border: 1px solid transparent;
+    border: 1px solid {t["btn_primary_border"]};
     border-radius: {theme.RADIUS["sm"]}px;
     color: {t["btn_primary_fg"]};
     padding: 6px 16px;
@@ -2167,11 +2177,11 @@ QDialog QPushButton#primaryBtn {{
 }}
 QDialog QPushButton#primaryBtn:hover {{
     background-color: {t["btn_primary_hover"]};
-    border-color: transparent;
+    border-color: {t["btn_primary_border_hover"]};
 }}
 QDialog QPushButton#primaryBtn:pressed {{
     background-color: {t["btn_primary_bg"]};
-    border-color: transparent;
+    border-color: {t["btn_primary_border"]};
 }}
 QDialog QPushButton#primaryBtn:disabled {{
     background-color: {t["surface_2"]};
@@ -2288,8 +2298,8 @@ QMenu::item {{
     color: {t["text"]};
 }}
 QMenu::item:selected {{
-    background-color: {t["surface_2"]};
-    color: {t["text_strong"]};
+    background-color: {t["accent_soft"]};
+    color: {t["accent"]};
 }}
 QMenu::item:pressed {{
     background-color: {t["surface"]};
@@ -2324,7 +2334,7 @@ QTabBar::tab:hover:!selected {{
 }}
 QTabBar::tab:selected {{
     color: {t["text_strong"]};
-    border-bottom: 1.5px solid {t["accent"]};
+    border-bottom: 1.5px solid {t["text"]};
 }}
 /* 对话框里的标签页要收窄：基础层给的是 18px 内边距 + 68px 最小宽度，
    五个中文短标签（通用/提醒/账号/外观/关于）在 520px 宽的设置窗里
@@ -2348,7 +2358,7 @@ QDialog QTabBar::tab:hover:!selected {{
 QDialog QTabBar::tab:selected {{
     background-color: transparent;
     color: {t["text_strong"]};
-    border-bottom: 1.5px solid {t["accent"]};
+    border-bottom: 1.5px solid {t["text"]};
 }}
 
 /* ── 提示气泡 ── */
@@ -2385,8 +2395,9 @@ QCheckBox, QRadioButton {{
     spacing: 7px;
 }}
 /* 勾选框只换配色，不动尺寸和勾选标记：基础层用飞书蓝 #3370FF 的老
-   配色，落在青蓝渐变的新台面上像一块外来补丁。background / border 换
-   成令牌，image 仍交给 assets/check.svg（白描边），勾选态照样看得见。 */
+   配色，落在石墨台面上像一块外来补丁。background / border 换成令牌。
+   勾选标记的描边颜色跟主题走：深色主题的 accent 是薄荷绿（亮），
+   白描边会看不见，用墨色 check-ink；浅色主题 accent 压暗了，用白描边。 */
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 16px;
     height: 16px;
@@ -2402,7 +2413,7 @@ QCheckBox::indicator:hover, QRadioButton::indicator:hover {{
 QCheckBox::indicator:checked {{
     background-color: {t["accent"]};
     border-color: {t["accent"]};
-    image: url(assets/check.svg);
+    image: url({"assets/check-ink.svg" if dark else "assets/check.svg"});
 }}
 QRadioButton::indicator {{
     border-radius: 8px;
@@ -2418,6 +2429,8 @@ QRadioButton::indicator:checked {{
 }}
 
 QGroupBox {{
+    /* 分组卡片：面板色（参考实现 --panel-rgb 16,21,30 @0.35），不是台面色 */
+    background-color: {t["panel"]};
     border: 1px solid {t["line_soft"]};
     border-radius: {theme.RADIUS["md"]}px;
     /* 同 QDialog QGroupBox：margin 要小，padding 不要四值 */
@@ -2443,15 +2456,14 @@ QSlider::groove:horizontal {{
     border-radius: 2px;
 }}
 QSlider::handle:horizontal {{
-    width: 14px; height: 14px;
+    width: 13px; height: 13px;
     margin: -5px 0;
     border-radius: 7px;
-    background: {t["btn_primary_bg"]};
-    border: 1px solid {t["line"]};
+    background: {t["accent"]};
+    border: none;
 }}
 QSlider::handle:horizontal:hover {{
-    background: {t["accent"]};
-    border-color: {t["accent"]};
+    background: {t["text_strong"]};
 }}
 QSlider::sub-page:horizontal {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
@@ -2462,6 +2474,14 @@ QSlider::sub-page:horizontal {{
 /* ── 加载 / 授权 / 空态面板 ── */
 QLabel#stateIcon {{
     color: {t["accent"]};
+}}
+/* 错误态圆徽：56px 见方、圆形、危险淡底（原先是内联的飞书红 #F54A45） */
+QLabel#stateIconDanger {{
+    border-radius: 28px;
+    background-color: {t["danger_soft"]};
+    color: {t["danger"]};
+    font-size: 26px;
+    font-weight: 700;
 }}
 QLabel#stateTitle {{
     color: {t["text_strong"]};
