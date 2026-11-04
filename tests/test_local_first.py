@@ -198,3 +198,28 @@ def test_search_dialog_searches_the_local_store_offline(win, store, monkeypatch)
         assert "本地" in dialog.result_label.text()
     finally:
         dialog.close()
+
+
+def test_on_events_fetched_uses_request_range(win, store, monkeypatch):
+    """落库区间必须是「发出请求时」的区间，不是响应到达时的当前视图。
+
+    快速翻页时 11 月的响应会在视图已经切到 12 月之后才到；若按当前视图落库，
+    旧响应会 prune 掉 12 月缓存，还把 12 月误标成已同步，之后不再联网补数据。
+    """
+    captured = {}
+    real = event_store.store_snapshot
+
+    def spy(conn, events, start, end, *a, **kw):
+        captured["start"], captured["end"] = start, end
+        return real(conn, events, start, end, *a, **kw)
+
+    monkeypatch.setattr(event_store, "store_snapshot", spy)
+
+    win.current_date = datetime(2026, 12, 15)  # 视图已经翻到 12 月
+    req_start = datetime(2026, 11, 1)
+    req_end = datetime(2026, 11, 30, 23, 59, 59)
+
+    win._on_events_fetched([], req_start, req_end)
+
+    assert captured["start"] == req_start
+    assert captured["end"] == req_end

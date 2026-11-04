@@ -34,6 +34,8 @@ class LarkCliAsync(QObject):
     """Async wrapper for lark-cli commands using QProcess."""
 
     agenda_fetched = Signal(list)
+    # 附带「发出请求时」的区间：落库必须用它，而不是响应到达时的当前视图
+    agenda_range_fetched = Signal(list, object, object)
     search_fetched = Signal(list)
     fetch_error = Signal(str)
     event_created = Signal(dict)
@@ -209,8 +211,10 @@ class LarkCliAsync(QObject):
             if isinstance(data, list):
                 data.sort(key=event_sort_key)
                 self.agenda_fetched.emit(data)
+                self.agenda_range_fetched.emit(data, start, end)
             else:
                 self.agenda_fetched.emit([])
+                self.agenda_range_fetched.emit([], start, end)
 
         def on_error(msg):
             self.fetch_error.emit(msg)

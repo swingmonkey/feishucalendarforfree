@@ -104,8 +104,10 @@ def build_snapshot(events, now: datetime, synced_ts: int | None = None) -> Widge
     upcoming = [o for o in occurrences_list if o.end >= now][:4]
     snap.rows = [(_hhmm(o.start), o.summary) for o in upcoming]
 
-    # 近 7 天趋势（含今天）
-    trend_days = stats.daily_stats(events, now - timedelta(days=6), day_end)
+    # 近 7 天趋势（含今天）：起点必须是 6 天前的 00:00。
+    # 用 now - 6d 会保留当前时刻，6 天前 00:00–此刻 之间结束的日程被
+    # occurrences.collect 的 end < start 过滤掉，第一个点会偏小。
+    trend_days = stats.daily_stats(events, day_start - timedelta(days=6), day_end)
     snap.trend = [
         trend_days[(now - timedelta(days=i)).date()].minutes for i in range(6, -1, -1)
     ]

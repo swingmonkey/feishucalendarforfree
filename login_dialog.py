@@ -331,6 +331,9 @@ class LoginDialog(QDialog):
         self._verification_url = None
         self._worker = None
         self._init_worker: _ConfigInitWorker | None = None
+        # 关窗只走 closeEvent 是不够的：「稍后再说」连的是 QDialog.reject()，
+        # 它不会触发 closeEvent。用这个标志统一判断窗口是否已收尾。
+        self._closed = False
         self._setup_ui()
         self._start_login()
 
@@ -477,9 +480,15 @@ class LoginDialog(QDialog):
         self.copy_btn.setEnabled(False)
         self.open_btn.setEnabled(False)
 
+        if self._init_worker is not None and self._init_worker.isRunning():
+            # 旧初始化还没退出就换新：QThread 运行中被回收会直接崩进程
+            self._init_worker.stop()
         self._init_worker = _ConfigInitWorker()
         self._init_worker.url_found.connect(self._on_init_url)
         self._init_worker.finished_rc.connect(self._on_init_done)
+        self._init_worker.finished.connect(self._on_worker_finished)
+        # 不设 parent，靠这个列表持住强引用（AGENTS.md 的线程约定）
+        _LIVE_WORKERS.append(self._init_worker)
         self._init_worker.start()
 
     def _on_init_url(self, url: str):
@@ -489,6 +498,9 @@ class LoginDialog(QDialog):
         self.open_btn.setEnabled(True)
 
     def _on_init_done(self, rc: int):
+        # 窗口已经关掉：配置可能刚刚成功，但这里不能再拉起一次登录
+        if self._closed:
+            return
         if rc == 0:
             self._verification_url = None
             self.status_label.setText("首次配置完成，正在发起登录…")
@@ -558,10 +570,19 @@ class LoginDialog(QDialog):
         self.qr_label.setText("二维码不可用")
         self.retry_btn.setVisible(True)
 
-    def closeEvent(self, ev):
+    def reject(self):
+        """「稍后再说」/Esc：reject() 不触发 closeEvent，收尾只能放这里。"""
+        self._teardown_workers()
+        super().reject()
+
+    def _teardown_workers(self):
+        self._closed = True
         if self._worker is not None and self._worker.isRunning():
             self._worker.requestInterruption()
             self._worker.quit()
         if self._init_worker is not None:
             self._init_worker.stop()
+
+    def closeEvent(self, ev):
+        self._teardown_workers()
         super().closeEvent(ev)

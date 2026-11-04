@@ -17,6 +17,41 @@ from config import Config
 app = QApplication.instance() or QApplication(sys.argv[:1])
 
 
+class _FakeSignal:
+    """最小信号替身：只记录槽函数，供测试手动 emit。"""
+
+    def __init__(self):
+        self.slots = []
+
+    def connect(self, fn, *a, **kw):
+        self.slots.append(fn)
+
+    def emit(self, *args):
+        for fn in list(self.slots):
+            fn(*args)
+
+
+class _FakeInitWorker:
+    """_ConfigInitWorker 替身，带真实 QThread 的 finished/isRunning 接口。"""
+
+    def __init__(self, parent=None):
+        self.url_found = _FakeSignal()
+        self.finished_rc = _FakeSignal()
+        self.finished = _FakeSignal()
+        self.stopped = False
+        self._running = False
+
+    def start(self):
+        self._running = True
+
+    def stop(self):
+        self.stopped = True
+        self._running = False
+
+    def isRunning(self):
+        return self._running
+
+
 # ── not_configured 检测 ────────────────────────────────────────────────────
 
 
@@ -89,21 +124,14 @@ def test_login_dialog_enters_init_mode(cfg, monkeypatch):
     )
     started = {}
 
-    class FakeInitWorker:
+    class FakeInitWorker(_FakeInitWorker):
         def __init__(self, parent=None):
+            super().__init__(parent)
             started["created"] = True
-            self.url_found = _FakeSignal()
-            self.finished_rc = _FakeSignal()
 
         def start(self):
+            super().start()
             started["started"] = True
-
-        def stop(self):
-            pass
-
-    class _FakeSignal:
-        def connect(self, *a, **kw):
-            pass
 
     monkeypatch.setattr(ld, "_ConfigInitWorker", FakeInitWorker)
 
@@ -133,23 +161,7 @@ def test_init_success_triggers_relogin(cfg, monkeypatch):
         )
 
     monkeypatch.setattr(ld, "_lark_cli", fake_lark_cli)
-
-    class FakeInitWorker:
-        def __init__(self, parent=None):
-            self.url_found = _FakeSignal()
-            self.finished_rc = _FakeSignal()
-
-        def start(self):
-            pass
-
-        def stop(self):
-            pass
-
-    class _FakeSignal:
-        def connect(self, *a, **kw):
-            pass
-
-    monkeypatch.setattr(ld, "_ConfigInitWorker", FakeInitWorker)
+    monkeypatch.setattr(ld, "_ConfigInitWorker", _FakeInitWorker)
     polled = {}
 
     def fake_start_polling(self):
@@ -163,6 +175,56 @@ def test_init_success_triggers_relogin(cfg, monkeypatch):
         dlg._on_init_done(0)  # 模拟 init 进程成功退出
         assert calls["n"] == 2  # 自动重新发起登录
         assert polled.get("yes")
+    finally:
+        dlg.deleteLater()
+        app.processEvents()
+
+
+# ── 生命周期（v2.11.3）─────────────────────────────────────────────────────
+# AGENTS.md 的约定：线程不设 parent、登记到 _LIVE_WORKERS、finished 后注销；
+# 禁止销毁仍在运行的 QThread。_ConfigInitWorker 此前漏了这套，且「稍后再说」
+# 走 reject() 不触发 closeEvent，config init 子进程会一直挂着。
+
+
+def _enter_init_mode(cfg, monkeypatch):
+    monkeypatch.setattr(
+        ld, "_lark_cli", lambda *a, **kw: (1, "", '{"error": {"subtype": "not_configured"}}')
+    )
+    monkeypatch.setattr(ld, "_ConfigInitWorker", _FakeInitWorker)
+    return ld.LoginDialog(config=cfg)
+
+
+def test_init_worker_is_registered_in_live_workers(cfg, monkeypatch):
+    dlg = _enter_init_mode(cfg, monkeypatch)
+    try:
+        assert dlg._init_worker in ld._LIVE_WORKERS
+    finally:
+        dlg.reject()
+        dlg.deleteLater()
+        app.processEvents()
+
+
+def test_reject_stops_init_worker(cfg, monkeypatch):
+    """「稍后再说」连接的是 reject()，不走 closeEvent，必须自己收尾。"""
+    dlg = _enter_init_mode(cfg, monkeypatch)
+    try:
+        dlg.reject()
+        assert dlg._init_worker.stopped is True
+        assert dlg._closed is True
+    finally:
+        dlg.deleteLater()
+        app.processEvents()
+
+
+def test_init_done_ignored_after_close(cfg, monkeypatch):
+    """窗口已关，init 才返回成功：不得再发起一次登录。"""
+    dlg = _enter_init_mode(cfg, monkeypatch)
+    polled = {}
+    monkeypatch.setattr(ld.LoginDialog, "_start_login", lambda self: polled.setdefault("yes", True))
+    try:
+        dlg.reject()
+        dlg._on_init_done(0)
+        assert not polled
     finally:
         dlg.deleteLater()
         app.processEvents()

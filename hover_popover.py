@@ -83,6 +83,20 @@ def _anchor_global_rect(anchor: QWidget) -> QRect:
     return QRect(top_left, anchor.size())
 
 
+def _is_alive(widget: QWidget) -> bool:
+    """触发器是否还活着且可见。
+
+    PySide6 的包装对象在 C++ 侧被销毁后仍持有 Python 引用，
+    直接调方法会抛 ``RuntimeError: Internal C++ object already deleted``。
+    """
+    try:
+        import shiboken6
+
+        return shiboken6.isValid(widget) and widget.isVisible()
+    except RuntimeError:
+        return False
+
+
 def cancel_close() -> None:
     """移回触发器/弹层：撤销待执行的关闭。"""
     global _CLOSE_TIMER  # noqa: PLW0603
@@ -93,8 +107,13 @@ def cancel_close() -> None:
 
 def schedule_close(delay_ms: int = CLOSE_DELAY_MS) -> None:
     """离开触发器/弹层：延迟关闭，期间移回即取消。"""
-    global _CLOSE_TIMER  # noqa: PLW0603
+    global _CLOSE_TIMER, _OPEN_TIMER  # noqa: PLW0603
     cancel_close()
+    # 还没打开的要一并撤销：延迟期内鼠标已经离开，若任由计时器触发，
+    # 弹层会在无人悬停时弹出，而此时没有 leave 事件再来关它。
+    if _OPEN_TIMER is not None:
+        _OPEN_TIMER.stop()
+        _OPEN_TIMER = None
     if _ACTIVE is None:
         return
     timer = QTimer()
@@ -184,7 +203,7 @@ def show_for(
             _ACTIVE = None
             old.close()
             old.deleteLater()
-        if not anchor.isVisible():
+        if not _is_alive(anchor):
             return
         pop = HoverPopover(theme_name, content, width)
         # 触发器销毁（换页/重建格子）时弹层必须跟着关

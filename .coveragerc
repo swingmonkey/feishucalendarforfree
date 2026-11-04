@@ -22,7 +22,7 @@ exclude_lines =
     pragma: no cover
     if __name__ == .__main__.:
     raise NotImplementedError
-    \.\.\.
+    ^\s*\.\.\.\s*$
 show_missing = False
 skip_covered = True
 # 残留路径不值得让整份报告刷屏：omit 之外偶尔仍会漏进一两行警告。

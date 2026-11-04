@@ -260,3 +260,19 @@ def test_lark_wraps_failures_as_backend_error():
 
     with pytest.raises(backends.BackendError):
         backends.LarkCliBackend(Boom()).fetch_range(datetime.now(), datetime.now())
+
+
+def test_utc_timestamp_has_no_subsecond_drift():
+    """UTC 结尾的 ICS 时间必须整分落地。
+
+    旧实现用 ``datetime.now() - datetime.utcnow()``（两次读时钟），差值比真实
+    偏移小几微秒，08:00Z 会变成 15:59:59.99998，输出成「15:59」。
+    """
+    from datetime import timezone
+
+    parsed, all_day = backends._parse_dt("20261103T080000Z", [])
+    assert not all_day
+    assert parsed.second == 0
+    assert parsed.microsecond == 0
+    expected = datetime(2026, 11, 3, 8, tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+    assert parsed == expected

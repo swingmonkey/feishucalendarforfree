@@ -96,7 +96,13 @@ fi
 # 二进制强制校验签名，失效的包双击直接「已损坏，无法打开」——这一步漏了就是
 # 打出一个永远打不开的包。放在 zip 之前，保证发出去的 zip 里也是有效签名。
 codesign --force --deep --sign - "dist/${APP_NAME}.app"
-codesign --verify --deep --strict "dist/${APP_NAME}.app" && echo "签名校验通过（adhoc）"
+# 注意：不能写成 `codesign --verify ... && echo ...`——那是 && 列表，
+# set -e 拦不住前一条失败，签名坏了照样打包，产出的正是上面说的死包。
+if ! codesign --verify --deep --strict "dist/${APP_NAME}.app"; then
+    echo "错误：签名校验失败，已中止打包" >&2
+    exit 1
+fi
+echo "签名校验通过（adhoc）"
 
 echo ""
 echo "构建完成：dist/${APP_NAME}.app"

@@ -246,3 +246,37 @@ def test_schedule_close_then_cancel():
     finally:
         a.deleteLater()
         app.processEvents()
+
+
+# ── 打开延迟计时器（v2.11.3 回归）───────────────────────────────────────────
+# 用户报告：快速划过月历时弹层会凭空出现且关不掉。
+
+
+def test_schedule_close_cancels_pending_open():
+    """延迟期内鼠标已离开：待触发的打开计时器必须撤销。
+
+    否则弹层在鼠标离开后才弹出，而此时鼠标不在弹层上，不会再有 leave
+    事件来关闭它——弹层会一直挂着。
+    """
+    from PySide6.QtWidgets import QWidget
+
+    anchor = QWidget()
+    anchor.show()
+    hp.show_for(anchor, QLabel("内容"), "dark", delay_ms=5000)
+    assert hp._OPEN_TIMER is not None
+    hp.schedule_close()
+    assert hp._OPEN_TIMER is None
+    hp.cancel_close()
+    anchor.deleteLater()
+
+
+def test_is_alive_false_after_anchor_destroyed():
+    """延迟期间日格被重建销毁：_open 不得再访问已删除的 C++ 对象。"""
+    import shiboken6
+    from PySide6.QtWidgets import QWidget
+
+    anchor = QWidget()
+    anchor.show()
+    assert hp._is_alive(anchor) is True
+    shiboken6.delete(anchor)
+    assert hp._is_alive(anchor) is False

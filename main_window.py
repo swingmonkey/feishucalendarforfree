@@ -251,7 +251,7 @@ class MainWindow(QMainWindow):
         self._geometry_save_timer.timeout.connect(self._persist_geometry)
 
         # Connect async signals
-        self.lark_cli.agenda_fetched.connect(self._on_events_fetched)
+        self.lark_cli.agenda_range_fetched.connect(self._on_events_fetched)
         self.lark_cli.fetch_error.connect(self._on_fetch_error)
         self.lark_cli.event_deleted.connect(self._on_deleted)
         self.lark_cli.delete_error.connect(self._on_delete_error)
@@ -1436,15 +1436,20 @@ class MainWindow(QMainWindow):
             view_mode=self._view_mode,
         )
 
-    def _on_events_fetched(self, events: list):
+    def _on_events_fetched(self, events: list, req_start=None, req_end=None):
         self._first_load_done = True
         # 能成功拉取日程即说明授权有效，持久化登录态，重启不再引导登录
         mark_authed(self.config)
 
-        start, end = self._fetch_window()
-        event_store.store_snapshot(self._store, events, start, end)
+        # 落库用「发出请求时」的区间。若这里重新算 _fetch_window()，快速翻页
+        # 时迟到的旧响应会按新窗口落库：prune 掉新窗口的缓存，还把它标记成
+        # 已同步，切回来时不再联网补数据。
+        if req_start is None or req_end is None:
+            req_start, req_end = self._fetch_window()
+        event_store.store_snapshot(self._store, events, req_start, req_end)
         # 一律回读 store：这样"上游删掉的日程"会同步消失，
-        # 也保证界面渲染的永远是同一个事实源。
+        # 也保证界面渲染的永远是同一个事实源。渲染仍按当前窗口取。
+        start, end = self._fetch_window()
         stored = event_store.read_range(self._store, start, end)
         self.events = stored if (stored or not events) else list(events)
 

@@ -85,3 +85,22 @@ def test_no_argv_settles_immediately():
     ok, message, _ = _wait(worker, timeout_ms=3000)
     assert ok is False
     assert "npm" in message
+
+
+def test_timeout_message_survives_finish_callback():
+    """超时提示不能被 npm 尾部输出顶掉。
+
+    ``cancel()`` 里 kill + waitForFinished 会**同步**触发 finished，进而进
+    ``_on_finished``；若先 cancel 后报超时，用户看到的是「安装失败」加 npm
+    日志，真正原因（超时）被吞掉。
+    """
+    worker = InstallWorker(argv=["true"], npm=None, verifier=lambda code: False)
+    got = []
+    worker.finished.connect(lambda ok, msg: got.append(msg))
+    # 模拟 cancel() 同步触发 finished
+    worker.cancel = lambda: worker._on_finished(1, None)
+
+    worker._on_timeout()
+
+    assert len(got) == 1
+    assert "秒仍未完成" in got[0]

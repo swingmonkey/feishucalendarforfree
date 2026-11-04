@@ -114,13 +114,22 @@ def connect(db_path=None) -> sqlite3.Connection:
     raising: the app must always start, and the next sync re-fills the cache.
     """
     path = Path(db_path) if db_path is not None else default_db_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return _open(path)
+    except (sqlite3.DatabaseError, OSError) as exc:
+        logger.warning("Event store at %s is unusable (%s); rebuilding", path, exc)
+    # 只有文件确实存在（坏了）才隔离；目录不可写时文件根本建不出来，
+    # 不该去动它——那种情况要做的是退回内存库，而不是在这里抛异常。
+    if path.exists():
+        _quarantine(path)
     try:
         return _open(path)
-    except sqlite3.DatabaseError as exc:
-        logger.warning("Event store at %s is unusable (%s); rebuilding", path, exc)
-    _quarantine(path)
-    return _open(path)
+    except (sqlite3.DatabaseError, OSError) as exc:
+        # 目录不可写 / 权限不足：本次运行退回内存库，只是不落盘，
+        # 但绝不能因为缓存问题让整个应用起不来。
+        logger.error("Event store unavailable at %s (%s); using in-memory store", path, exc)
+        return _open(Path(":memory:"))
 
 
 # ── Normalisation ────────────────────────────────────────────────────────────
@@ -261,17 +270,21 @@ def upsert_many(
                     "INSERT OR IGNORE INTO temp._sync_ids (event_id) VALUES (?)",
                     [(r[0],) for r in rows],
                 )
+            # +agenda 不带 --calendar-id，返回的是账号下所有日历的合并结果
+            # （见 lark_cli_args.agenda_args）。所以默认 calendar_id 表示
+            # 「全量快照」，清理必须跨日历；显式指定日历时仍只清理该日历。
+            all_calendars = calendar_id == DEFAULT_CALENDAR_ID
             conn.execute(
                 """
                 DELETE FROM events
-                WHERE calendar_id = ?
+                WHERE (? OR calendar_id = ?)
                   AND event_id NOT IN (SELECT event_id FROM temp._sync_ids)
                   AND (
                         (end_ts >= ? AND start_ts <= ?)
                      OR (rrule != '' AND start_ts <= ?)
                   )
                 """,
-                (calendar_id, start_ts, end_ts, end_ts),
+                (1 if all_calendars else 0, calendar_id, start_ts, end_ts, end_ts),
             )
             conn.execute("DROP TABLE temp._sync_ids")
 

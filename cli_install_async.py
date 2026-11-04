@@ -86,12 +86,15 @@ class InstallWorker(QObject):
             self._settle(False, f"无法启动 {self._argv[0]}，请确认 Node.js 安装完整。")
 
     def _on_timeout(self):
-        self.cancel()
+        # 先落超时结论再 cancel：cancel() 里的 kill + waitForFinished 会
+        # **同步**触发 finished → _on_finished → _settle(explain_failure(...))，
+        # 抢先占位后超时原因就被 npm 尾部输出顶掉了。
         self._settle(
             False,
             f"安装超过 {cli_installer.INSTALL_TIMEOUT_S} 秒仍未完成，已中止。\n"
             "网络慢的话可以换镜像后重试：npm config set registry https://registry.npmmirror.com",
         )
+        self.cancel()
 
     def _on_finished(self, code, _status):
         self._drain()

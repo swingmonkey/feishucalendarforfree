@@ -310,3 +310,56 @@ def test_prune_drops_rows_older_than_retention(tmp_path):
     event_store.enforce_retention(connection, days=370)
     assert [e["event_id"] for e in event_store.query_range(connection, at(1), at(30))] == ["fresh"]
     connection.close()
+
+
+# ── v2.11.3：启动容错与跨日历清理 ──────────────────────────────────────────
+# 用户报告的两个真实故障：数据目录不可写时整个应用起不来；其他日历上被
+# 上游删除的日程永久残留在缓存里（+agenda 不带 --calendar-id，返回的是
+# 账号下所有日历的合并结果）。
+
+
+def test_connect_falls_back_to_memory_when_directory_unwritable(tmp_path):
+    """数据目录只读时不能抛异常：退回内存库，本次运行照常可用。"""
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    blocked.chmod(0o500)  # r-x：不可写
+    try:
+        conn = event_store.connect(blocked / "events.db")
+        assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0
+        conn.close()
+    finally:
+        blocked.chmod(0o700)
+
+
+def test_prune_with_default_calendar_covers_all_calendars(conn):
+    """默认 calendar_id 表示「所有日历的合并快照」，清理要跨日历。"""
+    start, end = datetime(2026, 11, 1), datetime(2026, 11, 30, 23, 59, 59)
+    primary = ev("a", at(4), at(4, 11), calendar_id="primary")
+    other = ev("b", at(5), at(5, 11), calendar_id="work-cal")
+
+    event_store.store_snapshot(conn, [primary, other], start, end)
+    assert {e["event_id"] for e in event_store.read_range(conn, start, end)} == {"a", "b"}
+
+    # 上游删掉了 b：第二次快照只剩 a，b 必须一起消失
+    event_store.store_snapshot(conn, [primary], start, end)
+    ids = {e["event_id"] for e in event_store.read_range(conn, start, end)}
+    assert "a" in ids
+    assert "b" not in ids
+
+
+def test_prune_with_explicit_calendar_only_touches_that_calendar(conn):
+    """显式指定日历时不越界：另一本日历的行不受影响。
+
+    注意 ``"primary"`` 本身就是 DEFAULT_CALENDAR_ID，用它当「显式指定」
+    区分不出两条路径；这里必须用一本非默认日历。
+    """
+    start, end = datetime(2026, 11, 1), datetime(2026, 11, 30, 23, 59, 59)
+    primary = ev("a", at(4), at(4, 11), calendar_id="primary")
+    other = ev("b", at(5), at(5, 11), calendar_id="work-cal")
+    event_store.store_snapshot(conn, [primary, other], start, end)
+
+    # 只同步 work-cal 且结果为空：只能删 work-cal 的行
+    event_store.store_snapshot(conn, [], start, end, calendar_id="work-cal")
+    ids = {e["event_id"] for e in event_store.read_range(conn, start, end)}
+    assert "b" not in ids
+    assert "a" in ids

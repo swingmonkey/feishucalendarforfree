@@ -302,3 +302,35 @@ def test_desktop_widget_carries_no_literal_colors():
                 continue
             found += _HEX.findall(node.value)
     assert found == []
+
+
+def test_trend_window_starts_at_midnight(monkeypatch):
+    """趋势窗口起点必须归零到 00:00。
+
+    用 ``now - 6d`` 会保留当前时刻（如 10:30），6 天前 00:00–10:30 之间
+    结束的日程被 ``occ.end < start`` 过滤掉，曲线第一个点偏小。
+    """
+    import desktop_widget as dw
+
+    captured = []
+    real = dw.stats.daily_stats
+
+    def spy(events, start, end):
+        captured.append(start)
+        return real(events, start, end)
+
+    monkeypatch.setattr(dw.stats, "daily_stats", spy)
+    # 必须给至少一条事件：build_snapshot 对空列表走的是空态早退，不会算趋势
+    sample = {
+        "event_id": "e1",
+        "summary": "会议",
+        "organizer_calendar_id": "primary",
+        "event_organizer": {"display_name": "张三"},
+        "start_time": {"datetime": "2026-11-04T09:00:00+08:00"},
+        "end_time": {"datetime": "2026-11-04T10:00:00+08:00"},
+    }
+    dw.build_snapshot([sample], datetime(2026, 11, 4, 10, 30))
+
+    # build_snapshot 里 daily_stats 不止一处调用（趋势 + 热力等），
+    # 断言「有一次」的起点是 6 天前的 00:00
+    assert datetime(2026, 10, 29, 0, 0) in captured

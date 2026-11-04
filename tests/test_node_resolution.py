@@ -185,3 +185,26 @@ def test_extend_path_covers_version_manager_dirs(monkeypatch, tmp_path):
     # fallback 常量（~/.npm-global 等）在 import 时已按真实 home 展开，
     # 这里只验证「动态扫描的版本目录」进入 PATH；fallback 顺序无断言价值。
     assert parts[:2] == ["/usr/bin", "/bin"]  # 原 PATH 没被破坏
+
+
+def test_extend_path_dedupes_existing_directories(tmp_path, monkeypatch):
+    """已在 PATH 里的目录不能重复追加。
+
+    旧实现拿 ``Path`` 和 ``str`` 列表比 ``in``，恒为假，于是每次启动都会把
+    同一批目录再追加一遍——PATH 越来越长，且每次 split 的线性开销叠着涨。
+    """
+    import shutil
+
+    import main
+
+    vendor = tmp_path / "vendor-bin"
+    vendor.mkdir()
+    monkeypatch.setenv("PATH", f"{vendor}{os.pathsep}/usr/bin")
+    monkeypatch.setattr(ci, "candidate_bin_dirs", lambda: [vendor])
+    # 跳过「找不到 CLI 就问 npm」的分支，避免真的起子进程
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/lark-cli")
+
+    main._extend_path_for_app_bundle()
+
+    parts = os.environ["PATH"].split(os.pathsep)
+    assert parts.count(str(vendor)) == 1

@@ -109,8 +109,11 @@ def _extend_path_for_app_bundle():
     current = os.environ.get("PATH", "")
     parts = [p for p in current.split(os.pathsep) if p]
     for d in cli_installer.candidate_bin_dirs():
-        if d not in parts and d.is_dir():
-            parts.append(str(d))
+        # parts 是 str 列表，d 是 Path——直接 `d not in parts` 恒为真，
+        # 已在 PATH 里的目录会被重复追加。先转字符串再比。
+        entry = str(d)
+        if entry not in parts and d.is_dir():
+            parts.append(entry)
     os.environ["PATH"] = os.pathsep.join(parts)
 
     # 还有一类更常见的情况：用户明明在终端里装过 lark-cli，.app 却说找不到，

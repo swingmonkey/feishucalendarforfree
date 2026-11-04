@@ -162,3 +162,21 @@ def test_visible_event_count_never_below_one():
         assert visible_event_count(size) >= 1
     # 非法输入回退到默认 10px（行高 18px）
     assert visible_event_count("bad") == visible_event_count(10)
+
+
+# ── 字号层的颜色归属（v2.11.3）──────────────────────────────────────────────
+# v2.11.2 把字号层挪到外观层之后，层里写死的十六进制色值因此获得最高优先级，
+# 盖掉了 _skin_rules 从令牌取的颜色。字号层只该管字号。
+
+
+def test_event_font_rules_use_theme_tokens():
+    for name in ("dark", "light"):
+        t = theme.tokens(name)
+        rule = styles._event_font_rules(name, 10, 13)
+        # 标题走 text，进行中走 success
+        assert t["text"] in rule
+        assert t["success"] in rule
+        # 旧的硬编码色值必须消失，否则改令牌这批文字不跟随
+        assert "#34d399" not in rule
+        assert "#0f9d70" not in rule
+        assert "#eaf2ff" not in rule

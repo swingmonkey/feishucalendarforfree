@@ -222,6 +222,9 @@ class GridEventLabel(QFrame):
         super().__init__(parent)
         # Don't use self.event — it shadows QObject.event()
         self.event_data = event
+        # 悬停弹层要按当前主题取色，_theme_name() 读的就是这个引用；
+        # 只传给 _apply_color 而不存下来会让每次 enterEvent 抛 AttributeError。
+        self._config = config
         self._is_continuation = is_continuation
         self._press_pos: QPoint | None = None
         self._dragging = False
@@ -868,6 +871,9 @@ class FloatingSurface(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._drag_offset: QPoint | None = None
+        # 按下时的全局坐标：判断「拖动还是点击」必须比较按下点与松手点，
+        # 不能比较松手点与窗口位置——窗口在 mouseMoveEvent 里已经被移过去了。
+        self._press_global: QPoint | None = None
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.Tool
@@ -897,7 +903,8 @@ class FloatingSurface(QWidget):
 
     def mousePressEvent(self, ev: QMouseEvent):
         if ev.button() == Qt.MouseButton.LeftButton:
-            self._drag_offset = ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._press_global = ev.globalPosition().toPoint()
+            self._drag_offset = self._press_global - self.frameGeometry().topLeft()
             ev.accept()
             return
         super().mousePressEvent(ev)
@@ -911,8 +918,11 @@ class FloatingSurface(QWidget):
 
     def mouseReleaseEvent(self, ev: QMouseEvent):
         if self._drag_offset is not None:
-            moved = (ev.globalPosition().toPoint() - self.frameGeometry().topLeft()) - self._drag_offset
+            released = ev.globalPosition().toPoint()
+            origin = self._press_global if self._press_global is not None else released
+            moved = released - origin
             self._drag_offset = None
+            self._press_global = None
             if moved.manhattanLength() < 4:
                 # 没拖动 → 视为「打开主窗口」
                 self.activated.emit()

@@ -138,3 +138,24 @@ class TestGetEventArgs:
         e_idx = args.index("--event-id")
         assert args[c_idx + 1] == "cal_789"
         assert args[e_idx + 1] == "evt_000"
+
+
+def test_fetch_agenda_emits_request_range():
+    """拉取结果必须带上「发出请求时」的区间。
+
+    区间若在响应到达时才重新计算，快速翻页会让旧月份的数据按新月份的区间
+    落库，进而 prune 掉新窗口的缓存并把它误标为已同步。
+    """
+    import lark_cli_async
+
+    cli = lark_cli_async.LarkCliAsync(config=None)
+    got = []
+    cli.agenda_range_fetched.connect(lambda evs, s, e: got.append((evs, s, e)))
+    cli._start_process = lambda args, ok, err: ok([])
+
+    cli.fetch_agenda(datetime(2026, 11, 4), monthly=True)
+
+    assert len(got) == 1
+    _events, start, end = got[0]
+    assert (start.year, start.month, start.day) == (2026, 11, 1)
+    assert (end.year, end.month, end.day) == (2026, 11, 30)

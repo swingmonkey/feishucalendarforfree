@@ -1620,31 +1620,6 @@ DEFAULT_GRID_FONT = 10
 DEFAULT_LIST_FONT = 13
 _FONT_RANGE = (9, 24)
 
-_EVENT_FONT_COLORS = {
-    "dark": {
-        "grid_time": "#9aa7b8",
-        "grid_title": "#eaf2ff",
-        "more": "#9aa7b8",
-        "list_time": "#9aa7b8",
-        "list_time_past": "rgba(234,242,255,0.52)",
-        "list_time_current": "#34d399",
-        "list_title": "#eaf2ff",
-        "list_title_past": "#9aa7b8",
-        "list_meta": "#9aa7b8",
-    },
-    "light": {
-        "grid_time": "#6b7684",
-        "grid_title": "#1a2029",
-        "more": "#6b7684",
-        "list_time": "#6b7684",
-        "list_time_past": "rgba(26,32,41,0.52)",
-        "list_time_current": "#0f9d70",
-        "list_title": "#1a2029",
-        "list_title_past": "#6b7684",
-        "list_meta": "#6b7684",
-    },
-}
-
 
 def _clamp_font(value, fallback: int) -> int:
     try:
@@ -1676,7 +1651,20 @@ def _event_font_rules(
     day_num = max(10, grid_font + 1)
     # 周视图列头日期跟周视图字号走（默认 13px → 11px，与写死值一致）
     week_col_date = max(11, list_font - 2)
-    c = _EVENT_FONT_COLORS["light" if name == "light" else "dark"]
+    # 颜色一律取令牌：本层只负责字号。写死十六进制会盖掉 _skin_rules 里
+    # 从 tokens 取的同名属性——v2.11.2 把本层移到外观层之后就出过这个回归。
+    t = theme.tokens(name)
+    c = {
+        "grid_time": t["muted"],
+        "grid_title": t["text"],
+        "more": t["muted"],
+        "list_time": t["muted"],
+        "list_time_past": t["soft"],
+        "list_time_current": t["success"],
+        "list_title": t["text"],
+        "list_title_past": t["muted"],
+        "list_meta": t["muted"],
+    }
     return f"""
 /* ── 日程字号（用户可调）── */
 QFrame#gridEvent, QFrame#gridEventMultiDay {{

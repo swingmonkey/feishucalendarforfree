@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -101,6 +102,14 @@ def refresh_path(*dirs: str | Path | None) -> list[str]:
     return added
 
 
+def _version_key(path: Path) -> tuple:
+    """目录名的数字元组，用于版本降序（v22.11.0 > v9.11.0）。
+
+    纯数字目录名（fnm 的 ``v22.11.0``）和带前缀的都适用；没有数字的排最后。
+    """
+    return tuple(int(n) for n in re.findall(r"\d+", path.name))
+
+
 def _version_manager_bin_dirs(home: Path) -> list[Path]:
     """扫描各版本管理器的 node bin 目录，最新的排最前。
 
@@ -119,7 +128,9 @@ def _version_manager_bin_dirs(home: Path) -> list[Path]:
     for root, tail in layouts:
         if not root.is_dir():
             continue
-        for version_dir in sorted(root.iterdir(), reverse=True)[:3]:
+        # 目录名是 vX.Y.Z，按字典序 v9 会排在 v22 前面，取「前 3 个」
+        # 反而可能拿到旧版 node。按名称里的数字元组降序才是真·最新优先。
+        for version_dir in sorted(root.iterdir(), key=_version_key, reverse=True)[:3]:
             if not version_dir.is_dir():
                 continue
             bin_dir = version_dir.joinpath(*tail)

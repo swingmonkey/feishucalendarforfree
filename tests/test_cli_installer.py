@@ -127,3 +127,13 @@ def test_explain_unknown_keeps_tail():
 
 def test_explain_empty_output():
     assert ci.explain_failure("") == "安装失败，未拿到任何输出。"
+
+
+def test_version_dirs_sorted_by_number_not_string(tmp_path):
+    """v9.11.0 按字典序会排在 v22.11.0 前面，取「前 3 个」就漏掉最新版。"""
+    nvm = tmp_path / ".nvm" / "versions" / "node"
+    for version in ("v9.11.0", "v22.11.0", "v10.0.1", "v8.0.0"):
+        (nvm / version / "bin").mkdir(parents=True)
+
+    dirs = ci._version_manager_bin_dirs(tmp_path)
+    assert [d.parent.name for d in dirs] == ["v22.11.0", "v10.0.1", "v9.11.0"]

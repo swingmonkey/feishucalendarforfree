@@ -21,7 +21,7 @@ today, and is the seam a future async backend (or a second remote) plugs into.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Protocol, runtime_checkable
 
 import event_store
@@ -278,8 +278,11 @@ def _parse_dt(value: str, params: list):
         except ValueError:
             continue
         if fmt.endswith("Z"):
-            # UTC → 本地，否则跨时区会议会显示成错误的时间
-            parsed = parsed.replace(tzinfo=None) + (datetime.now() - datetime.utcnow())
+            # UTC → 本地，否则跨时区会议会显示成错误的时间。
+            # 必须带上 UTC 时区再 astimezone：用 now()-utcnow() 两次读时钟会
+            # 差出几微秒（08:00Z 显示成 15:59），且取的是「现在」的偏移，
+            # 跨 DST 的事件会差一小时。utcnow() 在 3.12 起也已弃用。
+            parsed = parsed.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
         return parsed, False
     return None, False
 

@@ -228,3 +228,12 @@ def test_dialog_tab_bar_uses_muted_strong():
         idx = rule.find("QDialog QTabBar::tab {")
         assert idx >= 0
         assert t["muted_strong"] in rule[idx:idx + 300]
+
+
+def test_light_muted_meets_body_text_contrast():
+    """浅色 muted 用在 detailLabel / stateMessage 等 10–12px 正文上。
+
+    原值 #66707c 对 bg 只有约 4.21:1，达不到正文 4.5:1 的门槛。
+    """
+    t = theme.tokens("light")
+    assert _contrast(t["muted"], t["bg"]) >= 4.5
