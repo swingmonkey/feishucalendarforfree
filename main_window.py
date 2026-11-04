@@ -55,7 +55,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMenu,
-    QProgressBar,
     QPushButton,
     QStackedWidget,
     QTextEdit,
@@ -69,6 +68,7 @@ import event_store
 import exporter
 import reminder
 import theme
+import widgets
 from add_event_dialog import AddEventDialog
 from app_icon import create_app_icon, create_app_logo_pixmap
 from cli_install_async import InstallWorker
@@ -568,20 +568,25 @@ class MainWindow(QMainWindow):
     # ── State panels (loading / login guidance / error) ──
 
     def _build_loading_panel(self) -> QWidget:
+        """加载态：一颗转动的光弧 + 两行说明。
+
+        原先这里是一根 ``QProgressBar(range 0, 0)``——系统那种来回扫的灰条。
+        拉一次日程要几秒到几十秒，真实进度既拿不到也不可信，所以这里不给
+        百分比，只传达「它在动、没卡死」；但「在动」也得动得跟这套深色台面
+        说得上话，于是换成自绘光弧（见 ``widgets.ConnectingOrb``）。
+        """
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
-        layout.addStretch()
+        layout.addStretch(3)
 
-        self.loading_bar = QProgressBar()
-        self.loading_bar.setRange(0, 0)  # 不确定进度（忙碌指示）
-        self.loading_bar.setFixedWidth(160)
-        row = QHBoxLayout()
-        row.addStretch()
-        row.addWidget(self.loading_bar)
-        row.addStretch()
-        layout.addLayout(row)
+        self.loading_orb = widgets.ConnectingOrb(dark=theme.is_dark(self._theme_name))
+        orb_row = QHBoxLayout()
+        orb_row.addStretch()
+        orb_row.addWidget(self.loading_orb)
+        orb_row.addStretch()
+        layout.addLayout(orb_row)
 
         title = QLabel("正在连接飞书")
         title.setObjectName("stateTitle")
@@ -591,7 +596,7 @@ class MainWindow(QMainWindow):
         msg.setObjectName("stateMessage")
         msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(msg)
-        layout.addStretch(2)
+        layout.addStretch(4)
         return panel
 
     def _build_auth_panel(self) -> QWidget:
@@ -1135,6 +1140,9 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(qss)
         if hasattr(self, "more_btn"):
             self.more_btn.setIcon(_create_more_icon(theme_name))
+        # 自绘控件吃不到 QSS，换肤得单独通知
+        if getattr(self, "loading_orb", None) is not None:
+            self.loading_orb.set_dark(theme.is_dark(theme_name))
         # 今日条是独立顶层窗口，吃不到 application 级样式表，得单独换肤
         if getattr(self, "_today_bar", None) is not None:
             self._today_bar.apply_theme(theme_name)

@@ -120,11 +120,28 @@ def main() -> int:
         path = out_dir / f"week-{theme_name}.png"
         win.grab().save(str(path))
         print("saved", path, path.stat().st_size)
+
+        # 「正在连接飞书」是自绘动效，静态断言看不出来，必须留一张实拍。
+        # 光弧转到哪个角度取决于等了多久，所以取两帧，好确认它真的在转。
+        win._show_loading()
+        app.processEvents()
+        QTimer.singleShot(400, shoot_loading)
+        QTimer.singleShot(700, shoot_loading_moved)
+
+    def shoot_loading() -> None:
+        path = out_dir / f"loading-{theme_name}.png"
+        win.grab().save(str(path))
+        print("saved", path, path.stat().st_size)
+
+    def shoot_loading_moved() -> None:
+        path = out_dir / f"loading-{theme_name}-b.png"
+        win.grab().save(str(path))
+        print("saved", path, path.stat().st_size)
         win.dispose()
         app.quit()
 
     QTimer.singleShot(2200, shoot)
-    QTimer.singleShot(12000, app.quit)
+    QTimer.singleShot(16000, app.quit)
     app.exec()
     return 0
 

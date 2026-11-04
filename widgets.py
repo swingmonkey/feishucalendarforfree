@@ -6,10 +6,32 @@ share identical building blocks, mirroring weektodo's component approach.
 """
 
 import json
+import math
 from datetime import datetime
 
-from PySide6.QtCore import QByteArray, QMimeData, QPoint, QPointF, Qt, Signal
-from PySide6.QtGui import QColor, QDrag, QFont, QLinearGradient, QPainter
+from PySide6.QtCore import (
+    Property,
+    QByteArray,
+    QEasingCurve,
+    QMimeData,
+    QPoint,
+    QPointF,
+    QPropertyAnimation,
+    QRectF,
+    Qt,
+    Signal,
+)
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QConicalGradient,
+    QDrag,
+    QFont,
+    QLinearGradient,
+    QPainter,
+    QPen,
+    QRadialGradient,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -543,3 +565,247 @@ class DayCell(QFrame):
         self._hover = False
         self._refresh_object_name()
         super().leaveEvent(ev)
+
+
+class ConnectingOrb(QWidget):
+    """等待动效：一圈青蓝渐变光弧沿着细轨道转。
+
+    为什么换掉系统 ``QProgressBar``：那种「不确定进度」是一根来回扫的灰条，
+    与这套「深色台面 + 青蓝光晕 + 极细线」的设计语言毫无关系，而且它只有
+    一维的往返，看两秒就像卡住了。
+
+    这里让三件事同时动，周期互不成整数倍，肉眼抓不到重复的「节拍」：
+
+    ==========  =======  ======================================
+    角度 spin    1500ms   光弧匀速转圈（匀速才不会每次过同一角度就顿一下）
+    角宽 sweep   2600ms   张开 78°→158°→78°，像在「吸气吐气」
+    呼吸 breath  2100ms   外圈光晕的透明度随之起伏
+    ==========  =======  ======================================
+
+    另外两层静态层负责质感：轨道（细，低透明度）和中心的一点微光核心。
+    弧的头端额外补一团径向光斑——没有它，圆头笔帽在深色底上会显得「切断」，
+    有它才像一道光真的在扫过。
+
+    隐藏即停：这是个常驻桌面的小挂件，面板切走后继续 60fps 重绘纯属浪费电。
+    """
+
+    SIDE = 96  # 控件边长：轨道直径 66 + 两侧各 15 的光晕余量
+    _SPIN_MS = 1500
+    _SWEEP_MS = 2600
+    _BREATH_MS = 2100
+    _TRACK_PEN = 1.2
+    _ARC_PEN = 3.4
+
+    def __init__(self, parent=None, dark: bool = True):
+        super().__init__(parent)
+        self._dark = bool(dark)
+        self._spin = 0.0
+        self._sweep = 118.0
+        self._breath = 0.0
+        self.setFixedSize(self.SIDE, self.SIDE)
+        # 透明底 + 不吃鼠标：气泡只负责发光，别把父级的点击挡掉
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        self._spin_anim = self._loop(b"spin", self._SPIN_MS, [(0.0, 0.0), (1.0, 360.0)], linear=True)
+        self._sweep_anim = self._loop(b"sweep", self._SWEEP_MS, [(0.0, 78.0), (0.5, 158.0), (1.0, 78.0)])
+        self._breath_anim = self._loop(b"breath", self._BREATH_MS, [(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)])
+
+    # ── 动画属性 ──────────────────────────────────────────────────
+    # QPropertyAnimation 只认 Qt 属性，所以这三个值要走 Property 暴露。
+
+    def _get_spin(self) -> float:
+        return self._spin
+
+    def _set_spin(self, value: float):
+        self._spin = float(value)
+        self.update()
+
+    def _get_sweep(self) -> float:
+        return self._sweep
+
+    def _set_sweep(self, value: float):
+        self._sweep = float(value)
+        self.update()
+
+    def _get_breath(self) -> float:
+        return self._breath
+
+    def _set_breath(self, value: float):
+        self._breath = float(value)
+        self.update()
+
+    spin = Property(float, _get_spin, _set_spin)
+    sweep = Property(float, _get_sweep, _set_sweep)
+    breath = Property(float, _get_breath, _set_breath)
+
+    # ── 生命周期 ──────────────────────────────────────────────────
+
+    def _loop(
+        self,
+        prop: bytes,
+        duration: int,
+        stops: list[tuple[float, float]],
+        linear: bool = False,
+    ) -> QPropertyAnimation:
+        anim = QPropertyAnimation(self, prop, self)
+        anim.setDuration(duration)
+        anim.setLoopCount(-1)  # 无限循环
+        # 转圈必须匀速：用任何缓动，每一圈都会在同一个角度慢下来，
+        # 变成肉眼可见的「顿一下」。呼吸类才需要缓动。
+        anim.setEasingCurve(
+            QEasingCurve.Type.Linear if linear else QEasingCurve.Type.InOutSine
+        )
+        for at, value in stops:
+            anim.setKeyValueAt(at, value)
+        return anim
+
+    def _animations(self) -> tuple[QPropertyAnimation, ...]:
+        return (self._spin_anim, self._sweep_anim, self._breath_anim)
+
+    def is_spinning(self) -> bool:
+        return self._spin_anim.state() == QPropertyAnimation.State.Running
+
+    def start(self):
+        for anim in self._animations():
+            if anim.state() != QPropertyAnimation.State.Running:
+                anim.start()
+        self.update()
+
+    def stop(self):
+        for anim in self._animations():
+            anim.stop()
+
+    def set_dark(self, dark: bool):
+        dark = bool(dark)
+        if dark == self._dark:
+            return
+        self._dark = dark
+        self.update()
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        self.start()
+
+    def hideEvent(self, ev):
+        self.stop()
+        super().hideEvent(ev)
+
+    # ── 自绘 ──────────────────────────────────────────────────────
+
+    def paintEvent(self, ev):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        colors = theme.paint_colors("dark" if self._dark else "light")
+        beam_from = QColor(*colors["beam_from"])
+        beam_to = QColor(*colors["beam_to"])
+        dark = self._dark
+
+        center = QPointF(self.width() / 2.0, self.height() / 2.0)
+        half = min(self.width(), self.height()) / 2.0
+        ring_r = half * 0.69  # 66px 直径，两侧留出光晕的溢出空间
+
+        self._paint_halo(painter, center, half, beam_to, dark)
+        self._paint_track(painter, center, ring_r, colors, dark)
+        self._paint_arc(painter, center, ring_r, beam_from, beam_to, dark)
+        self._paint_tip(painter, center, ring_r, beam_from, dark)
+        self._paint_core(painter, center, beam_from, beam_to)
+        painter.end()
+
+    def _paint_halo(self, painter: QPainter, center: QPointF, halo_r: float, color: QColor, dark: bool):
+        """环状光晕：亮度峰值压在轨道上，不是压在圆心。
+
+        圆心亮起来会变成一块「蓝色圆饼」；峰值在轨道半径上才像真的在发光。
+        透明度随 breath 起伏，是「它在工作」最便宜的暗示。
+        """
+        peak = int((44 if dark else 16) + (18 if dark else 7) * self._breath)
+        grad = QRadialGradient(center, halo_r)
+        for pos, alpha in ((0.0, 0), (0.32, int(peak * 0.30)), (0.70, peak), (1.0, 0)):
+            tint = QColor(color)
+            tint.setAlpha(alpha)
+            grad.setColorAt(pos, tint)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(grad)
+        painter.drawEllipse(center, halo_r, halo_r)
+
+    def _paint_track(self, painter: QPainter, center: QPointF, ring_r: float, colors: dict, dark: bool):
+        track = QColor(*colors["track"])
+        track.setAlpha(40 if dark else 34)
+        pen = QPen(track)
+        pen.setWidthF(self._TRACK_PEN)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(center, ring_r, ring_r)
+
+    def _head_angle(self) -> float:
+        """弧头所在角度（度，3 点方向起逆时针为正）。
+
+        取 ``-spin``：spin 随时间递增，取负号后弧头角度递减，看上去就是
+        顺时针转——和系统里绝大多数加载指示器一致。逆时针看着「有道理」，
+        用久了总觉得反着来。
+        """
+        return -self._spin
+
+    def _paint_arc(
+        self,
+        painter: QPainter,
+        center: QPointF,
+        ring_r: float,
+        beam_from: QColor,
+        beam_to: QColor,
+        dark: bool,
+    ):
+        """主光弧：锥形渐变，弧尾淡出到全透明，弧头最亮。
+
+        只做「从弧头逆时针画到弧尾」这一种画法：视觉上的顺/逆时针交给
+        弧头角度本身（见 ``_head_angle``）去决定，跨度符号始终为正。
+        混着用会让渐变方向和实际弧段对不上——那是这张图最容易踩的坑。
+        """
+        rect = QRectF(center.x() - ring_r, center.y() - ring_r, ring_r * 2, ring_r * 2)
+        span = max(2.0, min(360.0, self._sweep))
+        frac = span / 360.0
+        head = self._head_angle()
+
+        # 锥形渐变的角度是「3 点方向起、逆时针」递增，弧也是逆时针画，
+        # 所以把渐变原点定在弧头上，位置 0 就是弧头、位置 frac 就是弧尾。
+        grad = QConicalGradient(center, head)
+        mid = 148 if dark else 205
+        for pos, color, alpha in ((0.00, beam_to, 255), (0.46, beam_from, mid), (1.00, beam_from, 0)):
+            tint = QColor(color)
+            tint.setAlpha(alpha)
+            grad.setColorAt(pos * frac, tint)
+
+        pen = QPen(QBrush(grad), self._ARC_PEN)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawArc(rect, int(head * 16), int(span * 16))
+
+    def _paint_tip(self, painter: QPainter, center: QPointF, ring_r: float, color: QColor, dark: bool):
+        """弧头的一小团光斑：让弧的起点像「光」，而不像一条被剪断的线。"""
+        rad = math.radians(self._head_angle())
+        tip = QPointF(center.x() + ring_r * math.cos(rad), center.y() - ring_r * math.sin(rad))
+        radius = self._ARC_PEN * 2.2
+        grad = QRadialGradient(tip, radius)
+        for pos, alpha in ((0.0, 168 if dark else 150), (0.55, 58 if dark else 44), (1.0, 0)):
+            tint = QColor(color)
+            tint.setAlpha(alpha)
+            grad.setColorAt(pos, tint)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(grad)
+        painter.drawEllipse(tip, radius, radius)
+
+    def _paint_core(self, painter: QPainter, center: QPointF, beam_from: QColor, beam_to: QColor):
+        """圆心一点微光，跟着呼吸缩放。"""
+        radius = 2.0 + 1.2 * self._breath
+        grad = QRadialGradient(center, radius)
+        head = QColor(beam_from)
+        head.setAlpha(235)
+        tail = QColor(beam_to)
+        tail.setAlpha(90)
+        grad.setColorAt(0.0, head)
+        grad.setColorAt(1.0, tail)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(grad)
+        painter.drawEllipse(center, radius, radius)

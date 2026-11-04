@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication
 
 import login_dialog
 import settings_dialog
+import widgets
 from config import Config
 from main_window import MainWindow, _is_auth_error
 from ui_common import ConfirmDialog
@@ -96,6 +97,22 @@ def test_month_bar_has_no_login_button(w):
 def test_startup_shows_inline_loading_panel_not_login_dialog(w):
     # stack: 0=month 1=week 2=loading 3=auth 4=error
     assert w.stack.currentIndex() == 2
+
+
+def test_loading_panel_uses_the_orb_not_a_progress_bar(w):
+    """系统忙碌条（来回扫的灰条）已经换成自绘光弧。"""
+    assert not hasattr(w, "loading_bar"), "系统 QProgressBar 应该被移除"
+    assert isinstance(w.loading_orb, widgets.ConnectingOrb)
+
+
+def test_loading_orb_spins_only_while_the_loading_panel_is_current(w):
+    w.show()
+    app.processEvents()
+    assert w.loading_orb.is_spinning()
+
+    w._on_events_fetched([])
+    app.processEvents()
+    assert not w.loading_orb.is_spinning(), "切回日历后动效必须停掉，不然一直在空转"
 
 
 def test_successful_fetch_persists_auth_and_shows_calendar(w, cfg):
@@ -308,7 +325,10 @@ def test_settings_about_handles_stats_unavailable(monkeypatch, cfg):
     )
     dlg = settings_dialog.SettingsDialog(cfg)
     app.processEvents()
-    assert "暂不可用" in dlg.usage_status_label.text()
+    # 状态落在 usage_total_label 上：usage_status_label 是隐私说明那一条，
+    # 被数据状态覆盖后会和 usage_total_label 显示同一句话。
+    assert "暂不可用" in dlg.usage_total_label.text()
+    assert "关闭" in dlg.usage_status_label.text(), "统计不可用时也不能吞掉隐私说明"
     dlg.close()
 
 # ---------------------------------------------------------------------------
