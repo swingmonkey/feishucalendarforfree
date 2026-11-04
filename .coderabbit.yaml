@@ -1,0 +1,167 @@
+# .coderabbit.yaml — 飞书日程（PySide6 桌面应用）评审配置
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: zh-CN
+
+tone_instructions: >
+  直接给结论和可直接替换的代码，不写客套话。
+  优先级：崩溃/数据丢失 > 安全 > 逻辑错误 > 跨平台兼容 > 性能 > 风格。
+  格式问题交给 ruff，不要挑。用中文回复。
+
+early_access: true
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_title_keywords:
+      - WIP
+      - bump version
+
+  path_filters:
+    - "!dist/**"
+    - "!build/**"
+    - "!**/__pycache__/**"
+    - "!**/*.db"
+    - "!**/*.db-wal"
+    - "!**/*.zip"
+    - "!assets/**"
+    - "!**/*.png"
+    - "!**/*.icns"
+    - "!**/*.ico"
+
+  path_instructions:
+    - path: "theme.py"
+      instructions: |
+        设计令牌唯一真源，评审重点：
+        - 色值只允许在这里定义，禁止在其它模块硬编码（发现泄漏要指出正确令牌名）
+        - 深浅两套（_DARK / _LIGHT）必须成对新增，任何单边新增都是 bug
+        - 语义分工：accent（薄荷绿）只给交互强调，图表/数据用图表蓝；不要混用
+        - 对比度：正文文字对背景至少 4.5:1，新增 muted 类令牌要算一遍
+        - QColor 的 alpha 是 0-1 浮点还是 0-255 整数，转换处要一致（曾有浮点被截成 0 的事故）
+
+    - path: "styles.py"
+      instructions: |
+        QSS 由 f-string 生成，评审重点：
+        - QSS 里的字面量花括号必须写成 {{ }}，遗漏会导致 f-string 报错或样式丢失
+        - 所有色值/圆角/字体必须取自 theme 令牌，不要新写十六进制
+        - 层序：外观层（_skin_rules）在最后，字号层（_event_font_rules）必须排在它之后，
+          否则外观层里写死的 font-size 会盖掉用户字号配置（这是修过的真实 bug）
+        - 同名选择器后定义者生效，改规则时确认没有更早的重复定义仍生效
+
+    - path: "lark_cli*.py"
+      instructions: |
+        子进程调用 lark-cli，评审重点：
+        - 从 Finder/launchd 启动时 PATH 是最小集（不含 nvm/fnm/homebrew），
+          必须走 cli_installer.candidate_bin_dirs() 解析绝对路径，禁止裸调 "node"/"lark-cli"
+        - node 与 run.js 都用绝对路径；lark-cli 本体是指向 run.js 的 symlink，
+          包在 prefix/lib/node_modules 下（不是 bin/node_modules）
+        - subprocess 必须显式指定 encoding='utf-8'、errors 处理，并设超时
+        - 输出解析要能容忍 CLI 版本差异，不要假设字段一定存在
+
+    - path: "cli_install*.py"
+      instructions: |
+        CLI 安装/探测流程，评审重点：
+        - 候选目录扫描要覆盖 nvm、fnm、~/.workbuddy/binaries 三类版本化路径
+        - 网络安装步骤要有失败回滚与错误提示，不能静默失败
+        - 下载的二进制要校验（版本固定 + 校验和），不要 curl | bash
+
+    - path: "main.py"
+      instructions: |
+        应用入口，评审重点：
+        - macOS .app bundle 启动时需扩展 PATH（复用 candidate_bin_dirs，不要复制一份逻辑）
+        - 单实例、异常兜底、退出时清理线程/托盘，缺一不可
+
+    - path: "main_window.py"
+      instructions: |
+        主窗口，评审重点：
+        - 无边框窗口的拖动逻辑不要拦截子控件交互（_is_interactive_child 的判定范围要覆盖新增控件类型）
+        - 网络/子进程调用必须在 QThread 里，主线程不得阻塞
+        - 弹层/popover 定位要做水平与垂直双向出屏夹取
+        - 主题切换后要重新应用 QSS，并确保字号配置仍然生效
+
+    - path: "widgets.py"
+      instructions: |
+        自定义控件，评审重点：
+        - Qt 对象生命周期：parent 归属明确，避免悬空指针与重复 deleteLater
+        - 事件处理（enterEvent/leaveEvent/resizeEvent）要考虑 null 与越界
+        - popover 相关要复用 hover_popover 的单例与延迟关闭机制，不要各自造计时器
+
+    - path: "hover_popover.py"
+      instructions: |
+        悬停弹层，评审重点：
+        - 弹层必须单例 + 延迟关闭（移回取消），不能每次悬停都新建窗口
+        - 定位算法要同时夹取水平与垂直，贴屏幕边不能被裁
+        - 日期/时间格式化统一走 models_event.format_date_cn，
+          跨天区间两端要么都带年份要么都不带，禁止一端带一端不带
+
+    - path: "models_event.py"
+      instructions: |
+        数据模型与格式化，评审重点：
+        - 时间解析要兼容 date / dateTime / 时区（+08:00）三种形态，解析失败不得静默回落到当前时间
+        - 全天日程的 end 语义要与 occurrences.py 的展开逻辑一致（含/不含结束当天不能混）
+        - format_date_cn 是全局日期格式单一真源，新增日期展示必须复用它
+
+    - path: "event_store.py"
+      instructions: |
+        SQLite 事实层，评审重点：
+        - 写操作必须走事务，批量写入失败要整体回滚
+        - 参数化查询，禁止字符串拼接 SQL
+        - 句柄要保证关闭（含异常路径），WAL 文件遗留要处理
+
+    - path: "config.py"
+      instructions: |
+        配置管理，评审重点：
+        - 新增键必须同时给默认值 + 类型校验 + 非法值回退到默认
+        - get_app_dir() 是测试隔离的接缝，逻辑里不要绕过它直接拼用户目录
+        - 写盘要原子（临时文件 + rename），避免崩溃留下半截 JSON
+
+    - path: "tests/**"
+      instructions: |
+        测试，评审重点：
+        - 绝对禁止读写真实用户配置：必须 monkeypatch config.get_app_dir 指向 tmp_path
+          （曾有离屏渲染脚本把用户 theme 覆写掉的事故）
+        - GUI 测试统一 QT_QPA_PLATFORM=offscreen，且要 show() 后 processEvents 再断言
+        - 断言应描述用户可见行为，不要断言私有实现细节
+        - 时间相关断言不得依赖当前系统时间，必须固定基准日期
+
+    - path: "tools/**"
+      instructions: |
+        门禁与工具脚本，评审重点：
+        - ci.py 必须覆盖 ruff + compileall + pytest + coverage 四项，任一项失败要非零退出
+        - 截图脚本等有副作用的工具，路径参数要显式且不默认写仓库根目录
+
+    - path: "build_*.sh"
+      instructions: |
+        构建脚本，评审重点：set -euo pipefail、路径加引号、失败要明确退出码。
+
+    - path: ".github/workflows/**"
+      instructions: |
+        CI，评审重点：权限最小化（permissions 显式声明）、密钥只从 secrets 注入、pin 版本。
+
+  tools:
+    ruff:
+      enabled: true
+    gitleaks:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "docs/**/*.md"
