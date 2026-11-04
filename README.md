@@ -32,8 +32,8 @@
 - **匿名使用统计** - 「关于」页展示累计独立安装数和近 30 天活跃安装数；仅使用随机安装 ID，不采集账号、日程或设备信息
 - **设置面板** - 5 个分页（通用 / 提醒 / 账号 / 外观 / 关于），配置登录、开机启动、提醒与免打扰、透明度、刷新间隔、主题
 - **桌面快捷方式** - 首次运行自动在桌面创建快捷方式（Windows .lnk / macOS symlink），仅创建一次
-- **扫码登录一次即可** - 应用内扫码 / 网页授权（device flow），授权成功后登录窗口自动关闭；凭据由 lark-cli 全局持久化，重启应用无需重复登录
-- **启动零打扰** - 启动不再弹任何模态框：加载中显示内联骨架面板，未登录显示引导卡片，授权过期才提示重新登录
+- **扫码登录一次即可** - 应用内扫码 / 网页授权（device flow），授权成功后登录窗口自动关闭；二维码由应用本地绘制（`qrgen.py`，不依赖 lark-cli 的绘图子命令，也不引入第三方库）。凭据由 lark-cli 全局持久化，重启应用无需重复登录
+- **启动零打扰** - 启动不再弹任何模态框：加载中显示内联面板（自绘青蓝光弧动效，隐藏即停），未登录显示引导卡片，授权过期才提示重新登录
 - **轻提示替代弹窗** - 增删改结果、导出结果、更新发现等改用窗口底部 Toast 轻提示；删除等不可逆操作才弹飞书风格确认框；表单校验错误在表单内红字提示
 - **精简工具栏** - 头部只保留 月/周 切换、＋、刷新、⋯ 更多菜单（搜索 / 导出 / 置顶 / 主题 / 登录 / 设置）、最小化、关闭
 - **深色台面设计** - 默认深色主题：深底 + 右上青蓝光晕与斜向光带（`MainWindow` 自绘）、薄面日格、2px 左色条日程条、等宽数字的日号与时间、下划线式分页；浅色主题同构，只是把墨色反过来
@@ -284,7 +284,7 @@ FeishuCalendarDesktop/
 ├── ui_common.py           # 通用 UI：Toast 轻提示、飞书风格 ConfirmDialog 确认框
 ├── month_view.py          # 月历网格视图组件
 ├── week_view.py           # 周计划视图组件（weektodo 风格 7 列）
-├── widgets.py             # 共享小组件：日期徽标、可点击标签、紧凑日程标签（拖拽源）、日格（放置目标）
+├── widgets.py             # 共享小组件：日期徽标、可点击标签、紧凑日程标签（拖拽源）、日格（放置目标）、加载光弧（ConnectingOrb 自绘）
 ├── models_event.py        # 事件模型：时间解析、重复展开、Markdown→HTML、颜色/子任务工具
 ├── occurrences.py         # 具体发生（重复规则展开结果），无 Qt 依赖，供提醒/统计/命令行共用
 ├── event_store.py         # 本地事实层：SQLite 缓存、区间查询、同步区间记录、提醒去重
@@ -304,9 +304,10 @@ FeishuCalendarDesktop/
 ├── add_event_dialog.py    # 添加日程对话框（颜色 + 重复规则）
 ├── event_detail_dialog.py # 日程详情对话框（Markdown / 子任务 / 颜色 / 重复）
 ├── login_dialog.py        # 应用内扫码/网页登录（lark-cli device flow，后台线程自动轮询，成功自动关闭）
+├── qrgen.py               # 二维码编码器：Byte 模式 + 纠错等级 M，版本 1–10，纯标准库，本地画登录二维码
 ├── lark_cli.py            # lark-cli 同步封装（备用）
 ├── lark_cli_async.py      # lark-cli 异步封装（QProcess；Windows 优先 node 直调，避免 cmd/PowerShell 拆解参数）
-├── settings_dialog.py     # 设置对话框（通用/账号/外观/关于 4 个分页，登录态与更新检查均为异步）
+├── settings_dialog.py     # 设置对话框（通用/提醒/账号/外观/关于 5 个分页，统一表单骨架，登录态与更新检查均为异步）
 ├── export_dialog.py       # 导出日程到 Excel
 ├── utils.py               # 共享的日期范围计算与日程排序工具
 ├── config.py              # 配置管理（macOS 配置存放在 ~/Library/Application Support）
@@ -321,7 +322,7 @@ FeishuCalendarDesktop/
 ├── build_macos.sh         # macOS PyInstaller 打包脚本
 ├── tools/make_ico.py      # 从 PNG 生成 assets/icon.ico（已提交生成结果，无需重复执行）
 ├── tools/ci.py            # 本地 CI 门禁：ruff → compileall → pytest + 覆盖率（可装 pre-push 钩子）
-├── tools/ui_shot.py       # UI 截图验收：灌示例数据后在 offscreen 下截月/周视图（改样式后必跑）
+├── tools/ui_shot.py       # UI 截图验收：灌示例数据后在 offscreen 下截月/周/加载态（改样式后必跑，加载态连拍两帧看动效）
 ├── stats_server/           # 标准库 HTTP + SQLite 匿名统计服务与部署文件
 └── .github/workflows/     # ci.yml（lint + 多版本测试）、release.yml（推送 v* 标签自动打包并上传 Release）
 ```
@@ -412,6 +413,14 @@ FeishuCalendarDesktop/
 - **PyInstaller** - 打包为独立 EXE（Windows） / .app（macOS）
 
 ## 开发笔记
+
+### 登录二维码是本地产的（v2.9.0）
+
+登录窗口原先让 `lark-cli auth qrcode` 生成图片再读回来，命令写的是 `auth qrcode <url> --output qr.png --size 256`——**`--size` 这个参数 lark-cli 根本没有**，命令每次非零退出，界面永远停在「二维码不可用」。也就是说这个功能从上线起就没成功过一次。
+
+现在由 `qrgen.py` 自己编码、`login_dialog._qr_pixmap()` 自己绘制：Byte 模式 + 纠错等级 M、版本 1–10 自动选、Reed-Solomon 分块交织、8 种掩码按标准罚分规则挑最优。不引入第三方库的原因很实在——为一张固定内容的图改两个打包脚本的 `--hidden-import` 清单不划算，而且自绘不依赖 cli 版本、不起子进程、不落临时文件。
+
+三条给后来者的话：① 数据放置前必须先用掩码 0 把格式信息区占住，否则数据整体前移 15 位；② 格式信息有两份副本，第 8 列的副本要跳过第 6 行（定位图案占位），第 8 行的副本在 i≥8 时列号从 7 跳回（`14 - i`）；③ 这两处肉眼完全看不出错，必须靠解码验证——`tests/test_qrgen.py` 有一条固定向量和一条 OpenCV 端到端解码（`pytest.importorskip`，没装 OpenCV 就跳过，不进 `requirements.txt`）。
 
 ### Windows 上的关键技术要点
 

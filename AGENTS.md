@@ -33,10 +33,11 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - `main.py` 入口+托盘（托盘菜单精简）；`main_window.py` 主窗口：QStackedWidget 状态机（索引 0 月视图 / 1 周视图 / 2 加载 / 3 登录引导 / 4 错误）、头部溢出菜单（more_btn+QMenu）、Toast、拖拽改期/持久化
 - `ui_common.py` 通用 UI：`Toast`（主窗口底部胶囊轻提示，info/success/warning/error + 可选动作按钮）与 `ConfirmDialog`（飞书风格确认框，danger=True 红色按钮，静态 `ask()`）；新增弹窗优先用这两者，不要重新引入 QMessageBox
 - `login_dialog.py` device flow：`_DeviceCodeWorker` 线程自动轮询、成功自动关窗；线程不设 parent 并登记到模块级 `_LIVE_WORKERS`，finished 后自行注销（对话框可能先关闭，禁止销毁运行中的 QThread）；`AuthStatusWorker` 供设置页异步检测；`mark_authed(config)` 写 `auth_completed/auth_user`
+- **`qrgen.py` 是登录二维码的唯一来源（v2.9.0）**：Byte 模式 + 纠错等级 M、版本 1–10、Reed-Solomon 分块交织、8 掩码按 4 条罚分规则择优，**纯标准库**。以前让 `lark-cli auth qrcode ... --size 256` 出图，而 cli 根本没有 `--size`，命令每次非零退出，二维码从上线起就没显示过——**不要再把绘制交给外部命令**。改这个文件必须跑 `tests/test_qrgen.py`：固定向量防漂移，OpenCV 解码（`importorskip`）才是唯一能证明「扫得出来」的门禁。渲染在 `login_dialog._qr_pixmap()`，整数倍缩放 + 4 模块静区，禁用平滑插值。
 - 启动认证判定：成功拉取日程即 mark_authed；错误文本命中授权类关键词（scope/auth/unauthorized/token/credential/login/授权/登录/登陆/认证/身份）走 auth 面板（未登录过 welcome、登录过 expired），未装 lark-cli 走 no_cli 安装引导，其余错误走 error 面板；已成功加载后的后台刷新失败只发 Toast，不抢占视图
 - `month_view.py` 月历网格组件；`week_view.py` 周计划组件（weektodo 风格 7 列，顶部有独立「全天」条，跨天延续日显示 `↳`）
 - `context_menu.py` 右键菜单构造（事件 / 日格 / 窗口空白三处共用，措辞与危险项位置保持一致）；各视图只负责把 `event_context_menu` / `day_background_menu` 信号转发给主窗口
-- `widgets.py` 共享小组件（日期徽标 / 可点击标签 / 紧凑日程标签=拖拽源 / 日格=放置目标）；`models_event.py` 事件模型（时间解析、重复展开 RFC5545、Markdown→HTML、颜色/子任务工具、`RECURRENCE_CHOICES` 重复规则真源）
+- `widgets.py` 共享小组件（日期徽标 / 可点击标签 / 紧凑日程标签=拖拽源 / 日格=放置目标 / `ConnectingOrb` 首页等待光弧）；**自绘动画控件一律 `showEvent` 起、`hideEvent` 停**（`ConnectingOrb` 是范例）——这是常驻桌面的挂件，面板切走后还跑 60fps 重绘就是白烧电。光弧的绘制还有两条容易写反的规则：视觉方向由「弧头角度」决定（`_head_angle()` 取 `-spin` 才是顺时针），跨度符号恒为正；`QConicalGradient` 的原点必须定在**弧头**，定错半圈就会画出一段几乎全透明的弧。`models_event.py` 事件模型（时间解析、重复展开 RFC5545、Markdown→HTML、颜色/子任务工具、`RECURRENCE_CHOICES` 重复规则真源）
 - `event_card.py` 日程卡片（颜色条 / ♻ 徽标 / 拖拽源 / ↳ 延续）；`day_detail_dialog.py` + `search_dialog.py` 由旧 calendar_widget.py 拆分而出
 - `lark_cli_async.py` 异步封装（QProcess）；**Windows 必须 node 直调 run.js**（cmd/PowerShell 会拆解 `--data` JSON 的双引号和 URL 的 `&`，报 invalid JSON）
 - **`cli_installer.py` 负责装 lark-cli**：纯逻辑（探测 npm/node、构造安装命令、刷新 PATH、翻译 npm 报错），`cli_install_async.py` 是 QProcess 外壳（逐行输出、300 秒超时、可取消）。两条铁律——① 不自动 sudo，全局目录不可写时只给建议；② 装完必须 `refresh_path(npm_bin_dir(npm))`，否则会出现「npm 说装好了、应用还说找不到」，因为 .app 从 Finder 继承的 PATH 里没有 npm 的全局 bin。`main.py:_extend_path_for_app_bundle` 也靠它补 PATH，让终端里装过的用户重启就能被识别
@@ -88,15 +89,24 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
   - 外观层是 `styles._skin_rules(name)`，**追加在 `get_theme()` 最末尾**，靠 QSS「同特异性后定义者生效」压住基础层；它只改颜色/边框/圆角/字族，**刻意不动布局尺寸**（min-height、padding、grid 间距），日历密度是原有功能的一部分
   - 改外观时**先看基础层有没有带前缀的规则**：`QDialog QPushButton#primaryBtn`、`QDialog QTabBar::tab`、`QDialog QGroupBox` 这类带 `QDialog` 前缀的选择器特异性更高，只写 `QPushButton#primaryBtn` 是压不住的（对话框里的主按钮曾经一直是老的飞书蓝就是这个原因）
   - 基础层的飞书蓝 #3370FF 仍留在 `styles.py` 里当兜底，新写控件不要再抄它；要颜色就 `theme.tokens(...)`
+- **定制 QSS 的 `::drop-down` / `::up-button` 就等于关掉 Qt 自绘的箭头**，必须自己给 `image: url(assets/chevron-*.svg)`（深浅各一套）；`QAbstractSpinBox` 的内部编辑区是自绘的，外层 `:disabled { color }` 到不了文字，会出现「禁用后反而更亮」——要么单独写 `QSpinBox QLineEdit`，要么整块挂 `QGraphicsOpacityEffect`（设置窗取后者，见 `SettingsDialog._dim_when_disabled`）；`QSS min-width` 会覆盖 `setFixedWidth`（`QStyleSheetStyle` 用 `setMinimumWidth` 实现），控件宽度对不齐先查这条
 - **QSS 里的 `QWidget` 是个陷阱**：`QMainWindow, QDialog, QWidget { background-color: bg }` 会把 QLabel / QCheckBox 一起刷成窗口底色，落在比背景更亮的组框表面（`surface`）上就是一道道深色横条。底色只给窗口和对话框，字体/文字色另立一条不带 `background` 的 `QWidget` 规则
 - **主窗口台面是自绘的**：`MainWindow.paintEvent` + `_backdrop()` 烘焙 QPixmap 缓存（key = 宽/高/主题名/DPR），画深底 + 右上径向光晕 + 20° 旋转青蓝光带。换肤时必须丢弃缓存（`_apply_theme` 里已做）。QSS 里看不到这一层，改配色要去 `theme.PAINT`
 - **不要用 `setFixedSize` 关住对话框**：`QVBoxLayout` 在空间不够时会把子控件压到低于 sizeHint——标签高度变 0、组框里的控件叠在一起，而且没有任何报错。设置窗和统计窗都栽过（520×560 / 520×620 vs 实际需要 613×727 / 654×860）。做法是让内容决定尺寸（`SettingsDialog._fit_to_content` / `StatsDialog._fit_size`），放不下时滚动（统计窗用 QScrollArea）或退回屏幕可用区
   - 量尺寸要在 `showEvent` 之后：构造期子控件还没被 polish，`sizeHint` 全是初值
   - `QGroupBox` 的 QSS `margin` 不计入 `sizeHint`，四值 `padding` 会同向压缩内容区，所以对话框里的组框用 `margin-top: 8px; padding: 2px 0 0 0`，标题就压在边框线上（Qt 官方示例的做法）
-- **UI 改动必须真的看一眼**：QSS 和自绘都没有单元测试能断言。`tools/ui_shot.py` 灌 18 条中文示例日程，在 `QT_QPA_PLATFORM=offscreen` 下用 `QWidget.grab()` 截月/周视图（这台机器没有屏幕录制权限，`screencapture` 拿不到窗口）。冒烟命令：`QT_QPA_PLATFORM=offscreen .venv/bin/python tools/ui_shot.py .ui_shot dark`（第二参数换成 `light` 出浅色）
+  - **设置窗五页共用一套表单骨架**（`_page` / `_group` / `_field_label` / `_row` / `_hint` / `_check` / `_slider_row`）：字段名 `FIELD_W`=76px、单行控件 `CAP_W`=150px、右侧数值 `VALUE_W`=44px。新增分页照抄这套，不要各写一遍 margins 和宽度——五页宽度对不齐就是这么来的
+  - 行容器一律 `setObjectName("formRow")`：基础层 `QWidget { background-color }` 会把行容器也刷成窗口底色，浅色主题下每个组框里就多出一道浅灰横条（`QWidget#formRow { background-color: transparent }` 压住）
+- **UI 改动必须真的看一眼**：QSS 和自绘都没有单元测试能断言。`tools/ui_shot.py` 灌 18 条中文示例日程，在 `QT_QPA_PLATFORM=offscreen` 下用 `QWidget.grab()` 截月/周/加载态（这台机器没有屏幕录制权限，`screencapture` 拿不到窗口；加载态连拍两帧，用来确认自绘光弧真的在转而不是静止）。冒烟命令：`QT_QPA_PLATFORM=offscreen .venv/bin/python tools/ui_shot.py .ui_shot dark`（第二参数换成 `light` 出浅色）
 - **日程字号可调（v2.1.6）**：`config.grid_font_size`（月视图，默认 10）/ `config.list_font_size`（周·列表视图，默认 13），范围 9-24px，设置页「外观」Tab 两个滑块；实现方式是 `styles._event_font_rules()` 生成覆盖规则**追加在主题 QSS 末尾**（同名选择器后定义者生效），不改两套大模板；时间与次要信息由主字号派生（月视图 -1、列表 -2）。改字号必须同步放开 `QFrame#gridEvent` 的 min/max-height（行高 = 字号 +6/+8），否则大字号会被裁；字号变化后 `MainWindow._on_settings_changed` 会 `_render_active_view()` 重建视图
 
 ## 当前状态
+- **v2.9.0 登录二维码 + 等待动效 + 设置窗（已实现）**：
+  - 修 P0：登录二维码**从上线起就没显示过**（`lark-cli auth qrcode` 没有 `--size`，命令每次非零退出）。改为 `qrgen.py` 本地编码 + `_qr_pixmap()` 自绘，不再起子进程、不落临时文件
+  - 首页「正在连接飞书」的 `QProgressBar(range 0,0)` 换成自绘光弧 `widgets.ConnectingOrb`（三层动画周期互质、隐藏即停、深浅双配色）
+  - 设置窗五页统一表单骨架、组框由 5 组并 4 组、账号页补「数据来源」、关于页补「运行环境」；窗口尺寸改为内容驱动（560×671）+ `QScrollArea` 兜底；补齐下拉框/数字框自绘箭头与禁用态
+  - 测试：`tests/test_loading_orb.py`（6）、`tests/test_qrgen.py`（固定向量 + 结构 + 可选 OpenCV 解码）、`tests/test_login_dialog.py`（3，改为断言「不调 cli 也能出图」）
+  - 全量 **484 例**，`ruff check` 全绿，应用代码覆盖率 **77%**
 - **v2.7.0 后端协议与 headless（已实现）**：新增 `occurrences.py`（Qt-free 具体发生层，reminder/stats/backends 共用）、`backends.py`（`CalendarBackend` 协议 + lark-cli / 本地库 / ICS 三实现）、`headless.py`（`python -m headless today|next|range|search`）；CI 加覆盖率门禁（`--cov-fail-under=70`，本地 75%）
   - 测试：`tests/test_backends.py`（19）、`tests/test_headless.py`（12，含「不得 import PySide6」与 `-m` 入口用例）
   - 全量 **440 例**，`ruff check` 全绿，应用代码覆盖率 75%
@@ -129,7 +139,7 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - 新增模块后记得同步 `build_windows.ps1` 与 `build_macos.sh` 的 `--hidden-import` 清单（仓库里的 `*.spec` 被 gitignore，是本地构建产物，不用管）
 
 ## Git 仓库：状态判定铁律（接手必读）
-- **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.3.0`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag
+- **版本真源**是 `__version__.py` 的 `APP_VERSION`（当前 `2.9.0`），关于页与 OTA 更新器共用；发版只改这一处 + bump Release tag
 - ⚠️ 本机 `refs/remotes/origin/main` 显示**不可靠**（曾长期停在旧 commit `2a4f326`，`git status` 也看不出 ahead/behind）。**判断远程真实状态一律以 GitHub 网页 / API 为准**，不要相信本地 remote-tracking ref
 - ⚠️ **禁止在 `C:\Users\77427\feishucalendarforfree` 执行 `git pull` / `git reset --hard origin/main`**：远程曾有被 force push 成残缺版本的先例，pull 会删掉本地 30+ 源文件
 - 需要覆盖远程时用 `git push --force-with-lease=main:<期望的远程sha> origin main`，**先在本地给旧提交建备份分支**（如 `backup/orphan-4df042e`，仅本地不推送）
