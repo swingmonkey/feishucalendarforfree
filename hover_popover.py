@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 import models_event
 import theme
+from models_event import format_date_cn
 
 POPOVER_WIDTH = 280
 CLOSE_DELAY_MS = 150
@@ -70,6 +71,10 @@ def popup_position(
         top = anchor_rect.top() - gap - size.height()
     else:
         top = anchor_rect.bottom() + gap
+    # 垂直同样夹取（v2.11.1）：上下都放不下时不再越出屏幕——
+    # 之前只有水平 gutter，贴边锚点的弹层会被屏幕边缘裁掉一截
+    top_max = screen_rect.bottom() + 1 - gutter - size.height()
+    top = max(screen_rect.top() + gutter, min(top, top_max))
     return QPoint(left, top), opens_above
 
 
@@ -190,7 +195,7 @@ def show_for(
         pos, _above = popup_position(
             _anchor_global_rect(anchor), QRect(0, 0, pop.width(), pop.height()), screen
         )
-        # 垂直超高时夹取（内容可滚动场景不适用，当前内容都是短摘要）
+        # 垂直/水平出屏夹取都在 popup_position 内完成
         pop.move(pos)
         pop.show()
         _ACTIVE = pop
@@ -218,6 +223,23 @@ def _label(text: str, object_name: str) -> QLabel:
     return lbl
 
 
+def _fmt_range_dates(start: datetime, end: datetime) -> tuple[str, str]:
+    """区间两端的日期文案：任一端需要年份时两端统一补。
+
+    只给一端补年会读歪（「12月30日 14:00 – 2027年01月02日 15:30」
+    看着像两个同年的日子），所以跨年区间两端都带年份。
+    """
+    year_needed = (
+        start.year != datetime.now().year
+        or end.year != datetime.now().year
+        or start.year != end.year
+    )
+    return (
+        format_date_cn(start, force_year=year_needed),
+        format_date_cn(end, force_year=year_needed),
+    )
+
+
 def event_detail_widget(event: dict, theme_name: str) -> QWidget:
     """单条日程的悬停详情：标题 / 时间 / 地点 / 状态 / 组织者 / 描述。"""
     box = QFrame()
@@ -232,12 +254,21 @@ def event_detail_widget(event: dict, theme_name: str) -> QWidget:
     start = models_event.parse_event_time(event.get("start_time", {}))
     end = models_event.parse_event_time(event.get("end_time", {}))
     all_day = "date" in (event.get("start_time") or {})
+    # 日期完整性（v2.11.1）：多天全天日程必须带上结束日期；跨年日期
+    # 补全年份，只写「01月05日」分不清是哪一年
     if all_day:
-        time_text = start.strftime("%m月%d日") + " · 全天"
+        if start.date() == end.date():
+            time_text = format_date_cn(start) + " · 全天"
+        else:
+            s_d, e_d = _fmt_range_dates(start, end)
+            time_text = f"{s_d} – {e_d} · 全天"
     elif start.date() == end.date():
-        time_text = f"{start.strftime('%m月%d日 %H:%M')} – {end.strftime('%H:%M')}"
+        time_text = f"{format_date_cn(start)} {start.strftime('%H:%M')} – {end.strftime('%H:%M')}"
     else:
-        time_text = f"{start.strftime('%m月%d日 %H:%M')} – {end.strftime('%m月%d日 %H:%M')}"
+        s_d, e_d = _fmt_range_dates(start, end)
+        time_text = (
+            f"{s_d} {start.strftime('%H:%M')} – {e_d} {end.strftime('%H:%M')}"
+        )
     layout.addWidget(_label(time_text, "popoverValue"))
 
     now = datetime.now()
@@ -290,7 +321,7 @@ def day_summary_widget(date: datetime, events: list[dict], theme_name: str) -> Q
     layout.setSpacing(4)
 
     weekday = "一二三四五六日"[date.weekday()]
-    layout.addWidget(_label(f"{date.month}月{date.day}日 周{weekday}", "popoverTitle"))
+    layout.addWidget(_label(f"{format_date_cn(date)} 周{weekday}", "popoverTitle"))
 
     if not events:
         layout.addWidget(_label("当天没有日程", "popoverMuted"))

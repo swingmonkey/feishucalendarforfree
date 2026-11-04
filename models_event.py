@@ -52,6 +52,18 @@ def parse_event_time(time_data) -> datetime:
     return datetime.now()
 
 
+def format_date_cn(dt: datetime, *, force_year: bool = False) -> str:
+    """中文日期展示（全 app 单一真源）。
+
+    默认「11月04日」；**非当前年**补全年份「2027年01月05日」——只写月日
+    的跨年日程无法与今年同月同日区分（v2.11.1 修复「日期显示不全」）。
+    ``force_year=True`` 用于周范围标题这类必须带锚点年份的场景。
+    """
+    if force_year or dt.year != datetime.now().year:
+        return dt.strftime("%Y年%m月%d日")
+    return dt.strftime("%m月%d日")
+
+
 def is_all_day_event(event: dict) -> bool:
     """Return True if the event is all-day (date-only, no datetime/timestamp)."""
     start = event.get("start_time", {})

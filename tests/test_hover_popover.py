@@ -59,6 +59,29 @@ def test_horizontal_clamp_keeps_popover_on_screen():
     assert pos.x() >= screen.left() + hp.GUTTER
 
 
+def test_vertical_clamp_keeps_popover_on_screen():
+    # 锚点在屏幕下部、弹层上下都放不下：不许越出屏幕（v2.11.0 之前
+    # 只做水平夹取，弹层会被屏幕上下边缘裁掉一截——「日期显示不全」的
+    # 另一种形态）
+    screen = _screen(h=800)
+    anchor = QRect(600, 700, 80, 24)
+    size = QRect(0, 0, 280, 760)
+    pos, above = hp.popup_position(anchor, size, screen)
+    assert above
+    assert pos.y() >= screen.top() + hp.GUTTER
+    assert pos.y() + size.height() <= screen.bottom() + 1 - hp.GUTTER
+
+
+def test_vertical_clamp_caps_below_opening():
+    # 下方放不下且上方更局促：保持向下开，但底缘必须夹回屏幕内
+    screen = _screen(h=800)
+    anchor = QRect(600, 100, 80, 24)
+    size = QRect(0, 0, 280, 700)
+    pos, above = hp.popup_position(anchor, size, screen)
+    assert not above
+    assert pos.y() + size.height() <= screen.bottom() + 1 - hp.GUTTER
+
+
 # ── 内容构建 ────────────────────────────────────────────────────────────────
 
 
@@ -108,7 +131,7 @@ def test_day_summary_widget_groups_and_limits():
     events = [_event(event_id=f"e{i}", summary=f"日程{i}") for i in range(8)]
     w = hp.day_summary_widget(day, events, "dark")
     texts = [lbl.text() for lbl in w.findChildren(QLabel)]
-    assert "11月4日 周三" in texts[0]
+    assert "11月04日 周三" in texts[0]
     assert any("还有 2 项日程" in t for t in texts)
     # 只列前 6 条
     titles = [t for t in texts if t.startswith("日程")]
@@ -119,6 +142,62 @@ def test_day_summary_widget_empty_state():
     w = hp.day_summary_widget(datetime(2026, 11, 4), [], "dark")
     texts = [lbl.text() for lbl in w.findChildren(QLabel)]
     assert "当天没有日程" in texts
+
+
+# ── 日期完整性（v2.11.1：详情里日期显示不全的回归）─────────────────────────
+
+
+def _joined(w) -> str:
+    return "\n".join(lbl.text() for lbl in w.findChildren(QLabel))
+
+
+def test_event_detail_all_day_range_shows_end_date():
+    # 多天全天日程只显示开始日期 = 「日期显示不全」，结束日期必须带上
+    y = datetime.now().year
+    ev = _event(start_time={"date": f"{y}-11-04"}, end_time={"date": f"{y}-11-06"})
+    assert "11月04日 – 11月06日 · 全天" in _joined(hp.event_detail_widget(ev, "dark"))
+
+
+def test_event_detail_single_day_all_day_unchanged():
+    y = datetime.now().year
+    ev = _event(start_time={"date": f"{y}-11-04"}, end_time={"date": f"{y}-11-04"})
+    assert "11月04日 · 全天" in _joined(hp.event_detail_widget(ev, "dark"))
+
+
+def test_event_detail_cross_day_timed_shows_both_dates():
+    y = datetime.now().year
+    ev = _event(
+        start_time={"datetime": f"{y}-11-04T14:00:00+08:00"},
+        end_time={"datetime": f"{y}-11-05T15:30:00+08:00"},
+    )
+    assert "11月04日 14:00 – 11月05日 15:30" in _joined(hp.event_detail_widget(ev, "dark"))
+
+
+def test_event_detail_cross_year_date_includes_year():
+    # 跨年日程只写「01月05日」无法与今年区分，必须补年份
+    y = datetime.now().year + 1
+    ev = _event(
+        start_time={"datetime": f"{y}-01-05T14:00:00+08:00"},
+        end_time={"datetime": f"{y}-01-05T15:30:00+08:00"},
+    )
+    assert f"{y}年01月05日 14:00 – 15:30" in _joined(hp.event_detail_widget(ev, "dark"))
+
+
+def test_event_detail_cross_year_range_marks_both_ends():
+    # 12月30日 → 1月2日：起点今年、终点跨年，两端都要能区分
+    y = datetime.now().year
+    ev = _event(
+        start_time={"datetime": f"{y}-12-30T14:00:00+08:00"},
+        end_time={"datetime": f"{y + 1}-01-02T15:30:00+08:00"},
+    )
+    joined = _joined(hp.event_detail_widget(ev, "dark"))
+    assert f"{y}年12月30日 14:00 – {y + 1}年01月02日 15:30" in joined
+
+
+def test_day_summary_title_includes_year_for_other_year():
+    y = datetime.now().year + 1
+    w = hp.day_summary_widget(datetime(y, 1, 5), [], "dark")
+    assert f"{y}年01月05日 周二" in w.findChildren(QLabel)[0].text()
 
 
 # ── 单例与延迟关闭 ─────────────────────────────────────────────────────────

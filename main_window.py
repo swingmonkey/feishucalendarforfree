@@ -96,7 +96,7 @@ from styles import DEFAULT_GRID_FONT, DEFAULT_LIST_FONT, get_theme
 from today_bar import TodayBar
 from ui_common import ConfirmDialog, Toast
 from utils import view_range
-from week_view import WeekView
+from week_view import WeekView, format_week_range
 
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
 HEADER_TITLE_MIN_WIDTH = 480
@@ -1019,7 +1019,7 @@ class MainWindow(QMainWindow):
         else:
             monday = self.current_date - timedelta(days=self.current_date.weekday())
             sunday = monday + timedelta(days=6)
-            self.date_label.setText(f"{monday.strftime('%m/%d')} - {sunday.strftime('%m/%d')}")
+            self.date_label.setText(format_week_range(monday, sunday))
 
     # ── Keyboard shortcuts & navigation cursor ──
 

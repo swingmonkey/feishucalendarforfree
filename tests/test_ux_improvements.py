@@ -411,6 +411,18 @@ def test_set_event_color_persists_locally(app, w, cfg):
 # 周视图：全天分区 + 跨天延续
 # ─────────────────────────────────────────────────────────────────────────────
 
+def test_week_range_label_marks_cross_year():
+    # 跨年周（12月28日周一 → 1月3日周日）：两端必须带年份，
+    # 否则标题读成「12/28 - 01/03」分不清是哪一年
+    from week_view import format_week_range
+
+    same_year = format_week_range(datetime(2026, 11, 2), datetime(2026, 11, 8))
+    assert same_year == "11/02 - 11/08"
+
+    cross_year = format_week_range(datetime(2026, 12, 28), datetime(2027, 1, 3))
+    assert cross_year == "2026/12/28 - 2027/01/03"
+
+
 def test_week_view_separates_all_day_events(app, cfg):
     from event_card import EventCard
     from week_view import WeekView

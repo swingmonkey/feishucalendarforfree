@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 import event_store
-from models_event import is_all_day_event, parse_event_time
+from models_event import format_date_cn, is_all_day_event, parse_event_time
 from utils import event_sort_key, wide_range
 
 
@@ -163,9 +163,9 @@ class SearchDialog(QDialog):
             summary = ev.get("summary", "(无标题)")
             all_day = is_all_day_event(ev)
             if all_day:
-                time_str = start.strftime("%m-%d 全天")
+                time_str = format_date_cn(start) + " 全天"
             else:
-                time_str = start.strftime("%m-%d %H:%M")
+                time_str = f"{format_date_cn(start)} {start.strftime('%H:%M')}"
             display = f"{time_str}  {summary}"
 
             item = QListWidgetItem(display)

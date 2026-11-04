@@ -265,6 +265,17 @@ class DayColumn(QFrame):
         ev.accept()
 
 
+def format_week_range(monday: datetime, sunday: datetime) -> str:
+    """周范围标题（主窗口 monthBar 与周视图共用）。
+
+    同年周保持紧凑「11/02 - 11/08」；跨年周两端补全年份，否则
+    「12/28 - 01/03」分不清是哪一年的 01月03日（v2.11.1 同类修复）。
+    """
+    if monday.year == sunday.year:
+        return f"{monday.strftime('%m/%d')} - {sunday.strftime('%m/%d')}"
+    return f"{monday.strftime('%Y/%m/%d')} - {sunday.strftime('%Y/%m/%d')}"
+
+
 class WeekView(QWidget):
     """weektodo-style 7-column week planner."""
 
@@ -317,7 +328,7 @@ class WeekView(QWidget):
     def _render(self):
         monday, sunday = self._week_bounds()
         if hasattr(self.range_label, "setText"):
-            self.range_label.setText(f"{monday.strftime('%Y年%m月%d日')} - {sunday.strftime('%m月%d日')}")
+            self.range_label.setText(format_week_range(monday, sunday))
 
         expanded = expand_events_for_range(self.events, monday, sunday)
         days = [monday + timedelta(days=i) for i in range(7)]

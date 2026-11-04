@@ -13,6 +13,7 @@ from models_event import (
     _parse_rrule,
     expand_events_for_range,
     expand_recurrence,
+    format_date_cn,
     get_event_color,
     has_recurrence,
     is_all_day_event,
@@ -59,6 +60,23 @@ class TestParseEventTime:
         # Invalid timestamp but valid datetime should use datetime
         dt = parse_event_time({"timestamp": "abc", "datetime": "2026-01-01T09:00:00"})
         assert dt == datetime(2026, 1, 1, 9, 0, 0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# format_date_cn
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestFormatDateCn:
+    def test_current_year_omits_year(self):
+        y = datetime.now().year
+        assert format_date_cn(datetime(y, 11, 4)) == "11月04日"
+
+    def test_other_year_includes_year(self):
+        y = datetime.now().year + 1
+        assert format_date_cn(datetime(y, 1, 5)) == f"{y}年01月05日"
+
+    def test_force_year_always_includes_year(self):
+        assert format_date_cn(datetime(2026, 11, 4), force_year=True) == "2026年11月04日"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
