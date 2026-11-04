@@ -12,6 +12,7 @@
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -57,22 +58,55 @@ _FATAL_KEYWORDS = (
 _LARK_RUN_JS = None
 
 
+def _find_node() -> str | None:
+    """定位 node 可执行文件，返回绝对路径。
+
+    Finder 启动的 .app 只有最小 PATH，裸 ``node`` 找不到；nvm/WorkBuddy/fnm
+    管的版本目录更不在里面。which 失败后扫 cli_installer 的候选目录兜底。
+    """
+    found = shutil.which("node")
+    if found:
+        return found
+    import cli_installer
+
+    for directory in cli_installer.candidate_bin_dirs():
+        probe = directory / "node"
+        if probe.is_file() and os.access(probe, os.X_OK):
+            return str(probe)
+    return None
+
+
 def _resolve_lark_cmd():
     """返回可直接交给 subprocess 的 lark-cli 命令前缀。
 
     Windows 上 lark-cli 是 npm 的 .CMD 包装（cmd 会拆解 URL 里的 & 等字符），
     因此优先定位其真实 node 入口 scripts/run.js 直接调用，绕开 cmd 解析；
     找不到时回退 cmd /c 方式。输出均为 UTF-8，必须显式指定 encoding。
+
+    node 一律用 _find_node() 的绝对路径：lark-cli shim 是
+    ``#!/usr/bin/env node``，.app 环境里 env 找不到 node 就报
+    「env: node: No such file or directory」（v2.10.0 真机踩过）。
     """
     global _LARK_RUN_JS
+    node = _find_node() or "node"
     if _LARK_RUN_JS:
-        return ["node", _LARK_RUN_JS]
+        # run.js 路径可以缓存，node 要现查——两次调用之间用户可能装好了 node
+        return [node, _LARK_RUN_JS]
     exe = shutil.which("lark-cli")
     if exe:
-        run_js = Path(exe).resolve().parent / "node_modules" / "@larksuite" / "cli" / "scripts" / "run.js"
-        if run_js.is_file():
-            _LARK_RUN_JS = str(run_js)
-            return ["node", _LARK_RUN_JS]
+        # POSIX 的 npm 全局 bin 里 lark-cli 常是直接指向 run.js 的 symlink
+        #（或 bin 旁只有 shim；包本体在 prefix/lib/node_modules）。resolve
+        # 后若就是 run.js 直接用；否则按 Windows（prefix/node_modules）与
+        # POSIX（prefix/lib/node_modules）两种布局探测。
+        exe_path = Path(exe).resolve()
+        if exe_path.name == "run.js" and exe_path.is_file():
+            _LARK_RUN_JS = str(exe_path)
+            return [node, _LARK_RUN_JS]
+        for base in (exe_path.parent, exe_path.parent.parent / "lib"):
+            run_js = base / "node_modules" / "@larksuite" / "cli" / "scripts" / "run.js"
+            if run_js.is_file():
+                _LARK_RUN_JS = str(run_js)
+                return [node, _LARK_RUN_JS]
     if exe:
         if exe.lower().endswith((".cmd", ".bat")):
             return ["cmd", "/c", exe]

@@ -101,16 +101,39 @@ def refresh_path(*dirs: str | Path | None) -> list[str]:
     return added
 
 
+def _version_manager_bin_dirs(home: Path) -> list[Path]:
+    """扫描各版本管理器的 node bin 目录，最新的排最前。
+
+    版式差异：nvm/workbuddy 是 ``versions/<ver>/bin``，fnm 多一层
+    ``installation``。每类只取最新的 3 个版本，避免目录越攒越多。
+    """
+    layouts = (
+        (home / ".nvm" / "versions" / "node", ("bin",)),
+        (home / ".workbuddy" / "binaries" / "node" / "versions", ("bin",)),
+        (
+            home / ".local" / "share" / "fnm" / "node-versions",
+            ("installation", "bin"),
+        ),
+    )
+    found: list[Path] = []
+    for root, tail in layouts:
+        if not root.is_dir():
+            continue
+        for version_dir in sorted(root.iterdir(), reverse=True)[:3]:
+            if not version_dir.is_dir():
+                continue
+            bin_dir = version_dir.joinpath(*tail)
+            if bin_dir.is_dir():
+                found.append(bin_dir)
+    return found
+
+
 def candidate_bin_dirs() -> list[Path]:
     """Common places a CLI might live, newest-tool-first."""
-    home = Path.home()
     dirs = [Path(p).expanduser() for p in _FALLBACK_BIN_DIRS]
-    nvm_root = home / ".nvm" / "versions" / "node"
-    if nvm_root.is_dir():
-        # 版本目录名带排序前缀，倒序取最新的几个
-        for version_dir in sorted(nvm_root.iterdir(), reverse=True)[:3]:
-            if version_dir.is_dir():
-                dirs.insert(0, version_dir / "bin")
+    # 版本管理器的 node 目录排最前（WorkBuddy/nvm/fnm 用户的主 PATH 就在这）
+    for d in reversed(_version_manager_bin_dirs(Path.home())):
+        dirs.insert(0, d)
     return dirs
 
 

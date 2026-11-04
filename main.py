@@ -101,26 +101,16 @@ def _extend_path_for_app_bundle():
 
     When launched from Finder/Spotlight, a .app inherits only a minimal
     PATH (/usr/bin:/bin:...) and cannot find lark-cli / node installed via
-    npm global, homebrew, or nvm. We manually prepend those locations.
+    npm global, homebrew, or a version manager. The candidate list lives in
+    cli_installer (single source of truth) and covers nvm / WorkBuddy / fnm
+    version dirs too — v2.10.0 真机踩坑：node 只在 WorkBuddy 目录里，
+    手写列表没覆盖，lark-cli shim 报 env: node。
     """
-    home = Path.home()
-    extra = [
-        str(home / ".npm-global" / "bin"),
-        str(home / ".local" / "bin"),
-        "/usr/local/bin",
-        "/opt/homebrew/bin",
-    ]
-    # nvm-installed node binaries
-    nvm_dir = home / ".nvm" / "versions" / "node"
-    if nvm_dir.exists():
-        for d in nvm_dir.iterdir():
-            if d.is_dir():
-                extra.append(str(d / "bin"))
     current = os.environ.get("PATH", "")
     parts = [p for p in current.split(os.pathsep) if p]
-    for d in extra:
-        if d not in parts and Path(d).is_dir():
-            parts.append(d)
+    for d in cli_installer.candidate_bin_dirs():
+        if d not in parts and d.is_dir():
+            parts.append(str(d))
     os.environ["PATH"] = os.pathsep.join(parts)
 
     # 还有一类更常见的情况：用户明明在终端里装过 lark-cli，.app 却说找不到，
