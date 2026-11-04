@@ -117,6 +117,37 @@ def test_font_rules_keep_theme_colors():
     assert theme.tokens("dark")["text"] in _rule_for(dark, "QLabel#gridEventTitle")
 
 
+# ── 日期数字缩放（v2.11.2：日程里的数字也要能调）───────────────────────────
+
+
+def test_day_numbers_scale_with_grid_font():
+    qss = styles.get_theme("light", grid_font=16, list_font=13)
+    assert "font-size: 17px" in _rule_for(qss, "QLabel#dayNum")
+    assert "font-size: 17px" in _rule_for(qss, "QLabel#dayNumToday")
+    assert "font-size: 17px" in _rule_for(qss, "QLabel#dayNumOther")
+
+
+def test_day_numbers_default_unchanged():
+    qss = styles.get_theme("dark")
+    assert "font-size: 11px" in qss[qss.rfind("QLabel#dayNum"):]
+
+
+def test_day_num_font_size_survives_skin_layer():
+    # 字号层排在外观层之后：外观层写死的 11px 不能赢过用户设置
+    qss = styles.get_theme("light", grid_font=16)
+    assert "font-size: 17px" in qss[qss.rfind("QLabel#dayNum"):]
+
+
+def test_week_col_date_scales_with_list_font():
+    qss = styles.get_theme("dark", grid_font=10, list_font=16)
+    assert "font-size: 14px" in qss[qss.rfind("QLabel#weekColDate"):]
+
+
+def test_week_col_date_default_unchanged():
+    qss = styles.get_theme("dark")
+    assert "font-size: 11px" in qss[qss.rfind("QLabel#weekColDate"):]
+
+
 # ── Day cell capacity ──
 
 def test_visible_event_count_shrinks_with_font_size():

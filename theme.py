@@ -83,6 +83,10 @@ _DARK = {
     "text": "#eef5fb",
     "text_strong": "#f3fbf7",
     "muted": "#a3adbb",
+    # 比 muted 高一档的次级文字：顶栏分段按钮、图标按钮、设置标签栏用。
+    # muted（#a3adbb）在 #303438 台面上对比度只有 ~5:1，13px 中文扫一眼发闷；
+    # 这档是用户实测「看不清」后提亮的（v2.11.2）
+    "muted_strong": "#c6cfd9",
     "soft": "rgba(238,245,251,0.52)",
     "eyebrow": "rgba(238,245,251,0.62)",
     # 强调（--accent #b7ead4 薄荷绿；数据/图表用 --blue #73bdf5）
@@ -151,6 +155,8 @@ _LIGHT = {
     "text": "#1f262e",
     "text_strong": "#12181f",
     "muted": "#66707c",
+    # 浅色对应档：muted（#66707c）在白玻璃上偏轻，顶栏/标签栏用这档压稳
+    "muted_strong": "#4a545f",
     "soft": "rgba(31,38,46,0.52)",
     "eyebrow": "rgba(31,38,46,0.62)",
     "accent": "#2e7d5f",

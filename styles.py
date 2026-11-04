@@ -1663,6 +1663,8 @@ def _event_font_rules(
 
     月视图日格内的日程是单行布局（时间 + 标题），行高必须随字号一起放开，
     否则字号调大会被写死的 min/max-height 裁掉。
+    v2.11.2 起本层排在 _skin_rules 之后（get_theme 里控制顺序）：
+    外观层给日号/周列头写死了 11px，用户设置的字号必须能赢过它。
     """
     grid_font = _clamp_font(grid_font, DEFAULT_GRID_FONT)
     list_font = _clamp_font(list_font, DEFAULT_LIST_FONT)
@@ -1670,6 +1672,10 @@ def _event_font_rules(
     list_sub = max(9, list_font - 2)   # 周·列表视图：时间 / 次要信息
     row_min = grid_font + 6            # 默认 10px → 16/18px，与历史一致
     row_max = grid_font + 8
+    # 日期数字跟月视图字号走（默认 10px → 11px，与外观层写死值一致）
+    day_num = max(10, grid_font + 1)
+    # 周视图列头日期跟周视图字号走（默认 13px → 11px，与写死值一致）
+    week_col_date = max(11, list_font - 2)
     c = _EVENT_FONT_COLORS["light" if name == "light" else "dark"]
     return f"""
 /* ── 日程字号（用户可调）── */
@@ -1686,6 +1692,11 @@ QLabel#eventTimeCurrent {{ font-size: {list_sub}px; color: {c["list_time_current
 QLabel#eventTitle {{ font-size: {list_font}px; color: {c["list_title"]}; font-weight: 500; }}
 QLabel#eventTitlePast {{ font-size: {list_font}px; color: {c["list_title_past"]}; font-weight: 500; }}
 QLabel#eventMeta {{ font-size: {list_sub}px; color: {c["list_meta"]}; }}
+/* 日期数字：月视图日号 / 周视图列头（数字也是「日程里的字」，一起缩放） */
+QLabel#dayNum {{ font-size: {day_num}px; }}
+QLabel#dayNumOther {{ font-size: {day_num}px; }}
+QLabel#dayNumToday {{ font-size: {day_num}px; }}
+QLabel#weekColDate {{ font-size: {week_col_date}px; }}
 """
 
 
@@ -1819,14 +1830,14 @@ QFrame#monthBar {{
     border-bottom: 1px solid {t["line_soft"]};
 }}
 QLabel#headerDate {{
-    color: {t["muted"]};
+    color: {t["muted_strong"]};
     font-family: {MONO_STACK};
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
 }}
 
-/* ── 分段控件：玻璃槽 + 白色滑块 ── */
+/* ── 分段控件：玻璃槽 + 实底 accent 滑块 ── */
 QFrame#segmented {{
     background-color: {t["surface"]};
     border: 1px solid {t["line_soft"]};
@@ -1836,7 +1847,7 @@ QPushButton#toggleBtn {{
     background-color: transparent;
     border: none;
     border-radius: 8px;
-    color: {t["muted"]};
+    color: {t["muted_strong"]};
     font-size: 11px;
     font-weight: 600;
 }}
@@ -1845,11 +1856,13 @@ QPushButton#toggleBtn:hover {{
     background-color: {t["surface"]};
 }}
 QPushButton#toggleBtnActive {{
-    /* 分段选中段：参考应用里「选中 = accent 淡染 + accent 文字」 */
-    background-color: {t["btn_primary_bg"]};
-    border: 1px solid {t["btn_primary_border"]};
+    /* 选中段：实底 accent + accent_ink 文字（与「+」按钮同款对比度）。
+       参考应用的「accent 淡染 + accent 文字」在浅色台面上是浅绿配白，
+       11px 中文字几乎看不见（v2.11.2 用户实测反馈） */
+    background-color: {t["accent"]};
+    border: 1px solid {t["accent"]};
     border-radius: 8px;
-    color: {t["btn_primary_fg"]};
+    color: {t["accent_ink"]};
     font-weight: 700;
     font-size: 11px;
 }}
@@ -1859,7 +1872,7 @@ QPushButton#iconBtn, QToolButton#iconBtn, QToolButton#moreBtn {{
     background-color: transparent;
     border: none;
     border-radius: 8px;
-    color: {t["muted"]};
+    color: {t["muted_strong"]};
     font-size: 14px;
 }}
 QPushButton#iconBtn:hover, QToolButton#iconBtn:hover, QToolButton#moreBtn:hover {{
@@ -2375,7 +2388,7 @@ QTabBar::tab {{
     border: none;
     border-bottom: 1.5px solid transparent;
     padding: 7px 14px;
-    color: {t["muted"]};
+    color: {t["muted_strong"]};
     font-weight: 600;
 }}
 QTabBar::tab:hover:!selected {{
@@ -2383,7 +2396,7 @@ QTabBar::tab:hover:!selected {{
 }}
 QTabBar::tab:selected {{
     color: {t["text_strong"]};
-    border-bottom: 1.5px solid {t["text"]};
+    border-bottom: 1.5px solid {t["accent"]};
 }}
 /* 对话框里的标签页要收窄：基础层给的是 18px 内边距 + 68px 最小宽度，
    五个中文短标签（通用/提醒/账号/外观/关于）在 520px 宽的设置窗里
@@ -2396,7 +2409,7 @@ QDialog QTabBar::tab {{
     min-width: 0px;
     padding: 7px 13px;
     margin-right: 2px;
-    color: {t["muted"]};
+    color: {t["muted_strong"]};
     font-size: 13px;
     font-weight: 600;
 }}
@@ -2407,7 +2420,7 @@ QDialog QTabBar::tab:hover:!selected {{
 QDialog QTabBar::tab:selected {{
     background-color: transparent;
     color: {t["text_strong"]};
-    border-bottom: 1.5px solid {t["text"]};
+    border-bottom: 1.5px solid {t["accent"]};
 }}
 
 /* ── 提示气泡 ── */
@@ -2931,10 +2944,10 @@ def get_theme(
         base
         + _menu_dialog_rules(name)
         + _extra_rules(name)
-        + _event_font_rules(name, grid_font, list_font)
         + _popover_rules(name)
-        # 外观层放最后：同特异性下后定义者生效，这是整套换肤的落点。
-        # 它只覆盖颜色/边框/圆角/字族，字号仍由上面的 _event_font_rules
-        # 按用户配置决定。
+        # 外观层在字号层之前：外观层给日号/周列头写死了字号（11px），
+        # 用户设置必须排在它后面才能生效。外观层只管颜色/边框/圆角/字族，
+        # 与字号层不冲突的字段（gridEventTime 等）不受顺序影响。
         + _skin_rules(name)
+        + _event_font_rules(name, grid_font, list_font)
     )

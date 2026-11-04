@@ -636,7 +636,7 @@ class SettingsDialog(QDialog):
 
         group, box = self._group("窗口")
         self.pin_check = self._check("窗口置顶显示")
-        self.pin_check.setChecked(self.config.get("pin_to_top", True))
+        self.pin_check.setChecked(self.config.get("pin_to_top", False))
         self.pin_check.stateChanged.connect(self._on_pin_changed)
         box.addWidget(self.pin_check)
 
@@ -688,7 +688,7 @@ class SettingsDialog(QDialog):
         self.list_font_slider, self.list_font_label = self._build_font_row(
             box, "周 / 列表视图", "list_font_size", 13, self._on_list_font_changed
         )
-        box.addWidget(self._hint("月视图给的是日格内日程条的字号，周视图与列表视图单独一套。"))
+        box.addWidget(self._hint("月视图给的是日格内日程条与日期数字的字号，周视图与列表视图（含列头日期）单独一套。"))
         layout.addWidget(group)
 
         layout.addStretch()

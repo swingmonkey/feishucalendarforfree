@@ -224,7 +224,7 @@ class MainWindow(QMainWindow):
         if self._view_mode not in ("month", "week"):
             self._view_mode = "month"
         self._drag_offset: QPoint | None = None
-        self._pinned = self.config.get("pin_to_top", True)
+        self._pinned = self.config.get("pin_to_top", False)
         self._cli_available = shutil.which("lark-cli") is not None
         self._install_worker: InstallWorker | None = None
         self._install_log: list[str] = []

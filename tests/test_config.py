@@ -28,7 +28,8 @@ def test_invalid_values_are_replaced_with_defaults(tmp_path, monkeypatch):
     assert cfg.get("theme") == "dark"
     assert cfg.get("view_mode") == "month"
     assert cfg.get("opacity") == 1.0
-    assert cfg.get("pin_to_top") is True
+    # "yes" 不是合法 bool，回退默认值——v2.11.2 起默认不置顶
+    assert cfg.get("pin_to_top") is False
     assert cfg.get("event_colors") == {}
     assert cfg.get("calendar_id") == "primary"
     assert cfg.get("auth_completed") is False
@@ -71,3 +72,10 @@ def test_install_id_invalid_value_is_cleared(tmp_path, monkeypatch):
     )
     cfg = config_module.Config()
     assert cfg.get("install_id") == ""
+
+
+def test_pin_to_top_defaults_off(tmp_path, monkeypatch):
+    """v2.11.2：日历窗口默认不再置顶，想要的用户手动打开。"""
+    monkeypatch.setattr(config_module, "get_app_dir", lambda: tmp_path)
+    cfg = config_module.Config()
+    assert cfg.get("pin_to_top") is False

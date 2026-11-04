@@ -161,3 +161,70 @@ def test_semantic_surfaces_actually_change_with_theme(selector):
     # 而且两串里都不许出现另一套主题的 danger/success RGB
     assert "239,68,68" not in rule("light")
     assert "52,211,153" not in rule("light")
+
+
+# ── 顶栏 / 标签栏对比度守卫（v2.11.2）───────────────────────────────────────
+# 用户报告：深色下顶栏文字与背景太相似；浅色下薄荷绿淡染选中段几乎看不见。
+# 修复用 muted_strong（比 muted 高一档的次级文字）+ 实底 accent 选中段。
+
+
+def _srgb_channel(c: float) -> float:
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _luminance(hex_color: str) -> float:
+    r, g, b = (int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return 0.2126 * _srgb_channel(r) + 0.7152 * _srgb_channel(g) + 0.0722 * _srgb_channel(b)
+
+
+def _contrast(a: str, b: str) -> float:
+    la, lb = _luminance(a), _luminance(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_muted_strong_is_readable_on_both_themes():
+    for name in ("dark", "light"):
+        t = theme.tokens(name)
+        assert "muted_strong" in t, f"{name} 缺 muted_strong 令牌"
+        assert _contrast(t["muted_strong"], t["bg"]) >= 4.5
+
+
+def test_muted_strong_is_stronger_than_muted():
+    for name in ("dark", "light"):
+        t = theme.tokens(name)
+        bg = t["bg"]
+        assert _contrast(t["muted_strong"], bg) > _contrast(t["muted"], bg)
+
+
+def test_selected_segment_uses_solid_accent():
+    # 选中段从「accent 淡染 + accent 文字」改为实底 accent + accent_ink：
+    # 浅色下淡染薄荷绿在白底上几乎不可见
+    for name in ("dark", "light"):
+        t = theme.tokens(name)
+        rule = styles._skin_rules(name)
+        idx = rule.find("QPushButton#toggleBtnActive")
+        assert idx >= 0
+        block = rule[idx:idx + 400]
+        assert f"color: {t['accent_ink']}" in block
+        assert f"background-color: {t['accent']}" in block
+
+
+def test_top_bar_secondary_text_uses_muted_strong():
+    for name in ("dark", "light"):
+        t = theme.tokens(name)
+        rule = styles._skin_rules(name)
+        # 分段控件未选中段 / 图标按钮 / 日期标题
+        for anchor in ("QPushButton#toggleBtn {", "QPushButton#iconBtn, QToolButton#iconBtn"):
+            idx = rule.find(anchor)
+            assert idx >= 0
+            assert t["muted_strong"] in rule[idx:idx + 400]
+
+
+def test_dialog_tab_bar_uses_muted_strong():
+    for name in ("dark", "light"):
+        t = theme.tokens(name)
+        rule = styles._skin_rules(name)
+        idx = rule.find("QDialog QTabBar::tab {")
+        assert idx >= 0
+        assert t["muted_strong"] in rule[idx:idx + 300]

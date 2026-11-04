@@ -38,7 +38,9 @@ class Config:
         # 与飞书桌面端一致，默认浅色主题
         "theme": "dark",
         "opacity": 1.0,
-        "pin_to_top": True,
+        # v2.11.2 起默认不置顶：日历窗口跟普通窗口一样参与切换，
+        # 需要常驻的用户在「设置 → 外观」或托盘菜单里手动打开
+        "pin_to_top": False,
         "calendar_id": "primary",
         "auto_start": False,
         "view_mode": "month",
