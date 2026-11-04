@@ -89,6 +89,14 @@ else
     echo "警告：无法写入 bundle 版本（VER='$VER', plist 存在=$( [ -f "$PLIST" ] && echo yes || echo no)）" >&2
 fi
 
+# 改过 Info.plist 必须重新签名
+# PyInstaller 的 adhoc 签名把 Info.plist 也算进 SEALED 资源里，上面改版本号会让
+# 签名立刻失效（codesign --verify 报 invalid Info.plist）。Apple Silicon 上 arm64
+# 二进制强制校验签名，失效的包双击直接「已损坏，无法打开」——这一步漏了就是
+# 打出一个永远打不开的包。放在 zip 之前，保证发出去的 zip 里也是有效签名。
+codesign --force --deep --sign - "dist/${APP_NAME}.app"
+codesign --verify --deep --strict "dist/${APP_NAME}.app" && echo "签名校验通过（adhoc）"
+
 echo ""
 echo "构建完成：dist/${APP_NAME}.app"
 
