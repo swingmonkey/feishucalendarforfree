@@ -80,6 +80,8 @@ def test_find_node_scans_version_dirs_when_path_is_bare(monkeypatch, tmp_path):
 def test_find_node_returns_none_when_nowhere(monkeypatch, tmp_path):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(login_dialog.shutil, "which", lambda n: None)
+    # CI runner 真装着 node（/usr/local/bin），不隔离候选目录就会扫到真的
+    monkeypatch.setattr("cli_installer.candidate_bin_dirs", lambda: [])
     assert login_dialog._find_node() is None
 
 
