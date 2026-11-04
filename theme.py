@@ -90,7 +90,16 @@ _DARK = {
     "warn": "#f59e0b",
     "warn_text": "#fbbf24",
     "danger": "#ef4444",
+    # danger 在深底上要更亮才读得清（关闭按钮 hover、危险按钮文字），
+    # 浅底上反过来要更暗——这两个值不能共用一个 hex
+    "danger_hover": "#fca5a5",
     "success": "#34d399",
+    # 语义色的淡底版本：确认框图标圆徽、Toast 图标这类地方要「有色但不抢」，
+    # 直接用纯色会糊成一块。写死 rgba 就又回到改造前那种散落色值的老路。
+    "accent_soft": "rgba(91,157,255,0.16)",
+    "danger_soft": "rgba(239,68,68,0.16)",
+    "success_soft": "rgba(52,211,153,0.16)",
+    "warn_soft": "rgba(245,158,11,0.16)",
     # 面与线
     "surface": "rgba(255,255,255,0.05)",
     "surface_2": "rgba(255,255,255,0.08)",
@@ -113,6 +122,10 @@ _DARK = {
     # 滚动条
     "scroll_handle": "rgba(255,255,255,0.14)",
     "scroll_handle_hover": "rgba(255,255,255,0.24)",
+    # 二维码卡片两套主题都固定白底（深浅模块要有足够对比度才扫得出来），
+    # 所以卡片里的占位文字必须用墨色而不是 muted——浅色主题的 muted 是灰，
+    # 深色主题的 muted 是浅蓝白，后者落在白卡上直接看不见。
+    "qr_ink": "#646A73",
 }
 
 _LIGHT = {
@@ -134,7 +147,13 @@ _LIGHT = {
     "warn": "#c2750a",
     "warn_text": "#a4600a",
     "danger": "#dc2626",
+    "danger_hover": "#b91c1c",
     "success": "#0f9d70",
+    # 淡底版本（与深色主题同构，alpha 略低——白底上同样的透明度会更显眼）
+    "accent_soft": "rgba(37,99,235,0.10)",
+    "danger_soft": "rgba(220,38,38,0.10)",
+    "success_soft": "rgba(15,157,112,0.10)",
+    "warn_soft": "rgba(194,117,10,0.12)",
     "surface": "rgba(12,16,22,0.035)",
     "surface_2": "rgba(12,16,22,0.06)",
     "line": "rgba(12,16,22,0.10)",
@@ -152,7 +171,20 @@ _LIGHT = {
     "event_ink_hover": "rgba(37,99,235,0.24)",
     "scroll_handle": "rgba(12,16,22,0.16)",
     "scroll_handle_hover": "rgba(12,16,22,0.28)",
+    "qr_ink": "#646A73",
 }
+
+
+def alpha(hex_color: str, opacity: float) -> str:
+    """把 ``#rrggbb`` 令牌派生成 ``rgba(...)``，给淡底 / 描边 / hover 用。
+
+    外观层以前直接写 ``rgba(239,68,68,0.45)``——那是深色主题 danger 的 RGB，
+    浅色主题拿到同一串，等于换肤换不掉。派生之后真源只有一个 hex 令牌，
+    透明度是局部信息，留在调用处写。
+    """
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{opacity})"
 
 
 def tokens(name: str) -> dict:

@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 import qrgen
+from ui_common import set_message_kind
 
 LOGIN_SCOPES = ["calendar:calendar.event:read", "calendar:calendar:read"]
 
@@ -236,8 +237,7 @@ class LoginDialog(QDialog):
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         title = QLabel("登录飞书账号")
-        title.setObjectName("detailTitle")
-        title.setStyleSheet("font-size: 16px;")
+        title.setObjectName("loginTitle")
         subtitle = QLabel("扫码或打开链接授权日历权限，授权后自动完成")
         subtitle.setObjectName("detailLabel")
         title_box.addWidget(title)
@@ -253,8 +253,8 @@ class LoginDialog(QDialog):
         card_layout = QVBoxLayout(self.qr_card)
         card_layout.setContentsMargins(10, 10, 10, 10)
         self.qr_label = QLabel("正在生成二维码...")
+        self.qr_label.setObjectName("qrPlaceholder")
         self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr_label.setStyleSheet("color: #646A73; font-size: 12px; background: transparent;")
         card_layout.addWidget(self.qr_label)
         qr_row = QHBoxLayout()
         qr_row.addStretch()
@@ -264,7 +264,6 @@ class LoginDialog(QDialog):
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("detailLabel")
-        self.status_label.setStyleSheet("font-size: 12px; color: #646A73;")
         self.status_label.setWordWrap(True)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
@@ -401,7 +400,7 @@ class LoginDialog(QDialog):
 
     def _fail(self, msg: str):
         self.status_label.setText(f"登录遇到问题：{msg}")
-        self.status_label.setStyleSheet("font-size: 12px; color: #F54A45;")
+        set_message_kind(self.status_label, "error")
         self.qr_label.setText("二维码不可用")
         self.retry_btn.setVisible(True)
 

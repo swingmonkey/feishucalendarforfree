@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from event_card import is_all_day_event, parse_event_time
+from ui_common import set_message_kind
 
 
 def get_desktop_path() -> str:
@@ -354,14 +355,14 @@ class ExportDialog(QDialog):
         events = self._get_filtered_events()
         if not events:
             self.form_message.setText("所选范围内没有日程可导出")
-            self.form_message.setStyleSheet("color: #FF8800; font-size: 12px;")
+            set_message_kind(self.form_message, "warn")
             self.form_message.setVisible(True)
             return
 
         file_path = self.path_input.text()
         if not file_path:
             self.form_message.setText("请选择保存位置")
-            self.form_message.setStyleSheet("color: #F54A45; font-size: 12px;")
+            set_message_kind(self.form_message, "error")
             self.form_message.setVisible(True)
             return
 
@@ -379,6 +380,6 @@ class ExportDialog(QDialog):
         else:
             msg = f"无法写入文件：{file_path}\n请检查文件是否被其他程序占用。"
             self.form_message.setText(msg)
-            self.form_message.setStyleSheet("color: #F54A45; font-size: 12px;")
+            set_message_kind(self.form_message, "error")
             self.form_message.setVisible(True)
             self.export_done.emit(False, msg)

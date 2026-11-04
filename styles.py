@@ -1827,8 +1827,8 @@ QPushButton#closeBtn, QToolButton#closeBtn {{
     color: {t["muted"]};
 }}
 QPushButton#closeBtn:hover, QToolButton#closeBtn:hover {{
-    background-color: rgba(239,68,68,0.18);
-    color: #fca5a5;
+    background-color: {theme.alpha(t["danger"], 0.18)};
+    color: {t["danger_hover"]};
 }}
 
 /* 主操作：纯白（原项目最克制的一笔——强调色只给渐变，主按钮不给） */
@@ -1898,17 +1898,17 @@ QFrame#dayCellOtherHover {{
 }}
 /* 今天：青蓝描边 + 极淡的同色底，是全界面唯一的「发光」元素 */
 QFrame#dayCellToday {{
-    background-color: rgba(34,211,238,0.075);
+    background-color: {theme.alpha(t["accent_from"], 0.075)};
     border: 1.5px solid {t["accent_from"]};
     border-radius: {theme.RADIUS["sm"]}px;
 }}
 QFrame#dayCellTodayHover {{
-    background-color: rgba(34,211,238,0.12);
+    background-color: {theme.alpha(t["accent_from"], 0.12)};
     border: 1.5px solid {t["accent_from"]};
     border-radius: {theme.RADIUS["sm"]}px;
 }}
 QFrame#dayCellDrop, QFrame#dayCellOtherDrop, QFrame#dayCellTodayDrop {{
-    background-color: rgba(91,157,255,0.14);
+    background-color: {theme.alpha(t["accent_to"], 0.14)};
     border: 1.5px dashed {t["accent"]};
     border-radius: {theme.RADIUS["sm"]}px;
 }}
@@ -1955,13 +1955,13 @@ QFrame#gridEvent:hover {{
     background-color: {t["event_ink_hover"]};
 }}
 QFrame#gridEventMultiDay {{
-    background-color: rgba(52,211,153,0.14);
+    background-color: {theme.alpha(t["success"], 0.14)};
     border: none;
     border-left: 2px solid {t["success"]};
     border-radius: 4px;
 }}
 QFrame#gridEventMultiDay:hover {{
-    background-color: rgba(52,211,153,0.24);
+    background-color: {theme.alpha(t["success"], 0.24)};
 }}
 QLabel#gridEventTime {{
     font-family: {MONO_STACK};
@@ -2000,8 +2000,8 @@ QFrame#eventCardPast {{
     border-radius: {theme.RADIUS["sm"]}px;
 }}
 QFrame#eventCardCurrent {{
-    background-color: rgba(52,211,153,0.10);
-    border: 1px solid rgba(52,211,153,0.28);
+    background-color: {theme.alpha(t["success"], 0.10)};
+    border: 1px solid {theme.alpha(t["success"], 0.28)};
     border-left: 2px solid {t["success"]};
     border-radius: {theme.RADIUS["sm"]}px;
 }}
@@ -2015,13 +2015,13 @@ QFrame#eventCardCont:hover {{
     background-color: {cell_bg};
 }}
 QFrame#eventCardAllDay {{
-    background-color: rgba(52,211,153,0.12);
+    background-color: {theme.alpha(t["success"], 0.12)};
     border: none;
     border-left: 2px solid {t["success"]};
     border-radius: 6px;
 }}
 QFrame#eventCardAllDay:hover {{
-    background-color: rgba(52,211,153,0.20);
+    background-color: {theme.alpha(t["success"], 0.20)};
 }}
 QFrame#weekAllDayBar {{
     background-color: {cell_other};
@@ -2063,8 +2063,8 @@ QPushButton#deleteBtn {{
     color: {t["soft"]};
 }}
 QPushButton#deleteBtn:hover {{
-    background-color: rgba(239,68,68,0.16);
-    color: #fca5a5;
+    background-color: {theme.alpha(t["danger"], 0.16)};
+    color: {t["danger_hover"]};
 }}
 
 /* ── 周视图列 ── */
@@ -2074,12 +2074,12 @@ QFrame#weekDayCol {{
     border-radius: {theme.RADIUS["md"]}px;
 }}
 QFrame#weekDayColToday {{
-    background-color: rgba(34,211,238,0.05);
+    background-color: {theme.alpha(t["accent_from"], 0.05)};
     border: 1px solid {t["accent_from"]};
     border-radius: {theme.RADIUS["md"]}px;
 }}
 QFrame#weekDayColDrop {{
-    background-color: rgba(91,157,255,0.10);
+    background-color: {theme.alpha(t["accent_to"], 0.10)};
     border: 1.5px dashed {t["accent"]};
     border-radius: {theme.RADIUS["md"]}px;
 }}
@@ -2201,16 +2201,16 @@ QPushButton#secondaryBtn:disabled, QDialogButtonBox QPushButton:disabled {{
 }}
 QPushButton#dangerBtn {{
     background-color: transparent;
-    border: 1px solid rgba(239,68,68,0.45);
+    border: 1px solid {theme.alpha(t["danger"], 0.45)};
     border-radius: {theme.RADIUS["sm"]}px;
-    color: #f87171;
+    color: {t["danger"]};
     padding: 6px 14px;
     font-weight: 600;
 }}
 QPushButton#dangerBtn:hover {{
-    background-color: rgba(239,68,68,0.14);
-    border-color: rgba(239,68,68,0.7);
-    color: #fca5a5;
+    background-color: {theme.alpha(t["danger"], 0.14)};
+    border-color: {theme.alpha(t["danger"], 0.7)};
+    color: {t["danger_hover"]};
 }}
 QPushButton#linkBtn {{
     background-color: transparent;
@@ -2499,6 +2499,16 @@ QLabel#formError {{
     color: {t["danger"]};
     font-size: 11px;
 }}
+/* 提示行的另外两种语义色。ui_common.set_message_kind 按 kind 切 objectName，
+   各处不再自己写死 #FF8800 / #2EA121。 */
+QLabel#formWarn {{
+    color: {t["warn_text"]};
+    font-size: 11px;
+}}
+QLabel#formSuccess {{
+    color: {t["success"]};
+    font-size: 11px;
+}}
 QLabel#resizeGrip {{
     color: {t["soft"]};
 }}
@@ -2558,6 +2568,23 @@ QLabel#confirmMessage {{
     color: {t["muted"]};
     font-size: 12px;
 }}
+/* 确认框图标圆徽：基础层（_menu_dialog_rules）这里还是飞书蓝 #3370FF 和
+   品牌红 #F54A45，特异性与这里相同，只能靠外观层排在最后压色。 */
+QLabel#confirmIcon, QLabel#confirmIconDanger {{
+    border: 1px solid {t["line_soft"]};
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 700;
+}}
+QLabel#confirmIcon {{
+    background-color: {t["accent_soft"]};
+    color: {t["accent"]};
+}}
+QLabel#confirmIconDanger {{
+    background-color: {t["danger_soft"]};
+    border-color: {t["danger_soft"]};
+    color: {t["danger"]};
+}}
 QFrame#dialogSeparator {{
     background-color: {t["line_soft"]};
     border: none;
@@ -2570,6 +2597,30 @@ QFrame#qrCard {{
     background-color: #ffffff;
     border: 1px solid {t["line"]};
     border-radius: {theme.RADIUS["md"]}px;
+}}
+/* 卡片里的占位文字用固定墨色（qr_ink），理由和卡片白底一样：它不在主题面上。 */
+QLabel#qrPlaceholder {{
+    color: {t["qr_ink"]};
+    background-color: transparent;
+    font-size: 12px;
+}}
+QLabel#loginTitle {{
+    color: {t["text_strong"]};
+    font-size: 16px;
+    font-weight: 600;
+}}
+/* 取色器色块：色值本身是数据（内联给），描边是主题（这里给）。
+   以前选中态写死 #FFFFFF，浅色主题下白描边落在白卡上等于没有选中。 */
+QPushButton#colorSwatch {{
+    border: 1px solid {t["line_strong"]};
+    border-radius: 11px;
+}}
+QPushButton#colorSwatch:hover {{
+    border: 1px solid {t["text_strong"]};
+}}
+QPushButton#colorSwatchSelected {{
+    border: 3px solid {t["btn_primary_bg"]};
+    border-radius: 11px;
 }}
 QLabel#loginBadge {{
     color: {t["muted"]};
@@ -2587,8 +2638,26 @@ QFrame#toast {{
     border: 1px solid {t["glass_border_soft"]};
     border-radius: {theme.RADIUS["md"]}px;
 }}
-QLabel#toastIcon {{
+/* 图标按 kind 切 objectName（toastIconInfo / Success / Warning / Error）。
+   以前 ui_common 用内联 setStyleSheet 写死飞书四色（#3370FF/#34C724/#FF8800/
+   #F54A45），内联优先级压过一切样式表，切主题时它纹丝不动。 */
+QLabel#toastIcon, QLabel#toastIconInfo, QLabel#toastIconSuccess,
+QLabel#toastIconWarning, QLabel#toastIconError {{
+    font-size: 14px;
+    font-weight: 700;
+    background-color: transparent;
+}}
+QLabel#toastIcon, QLabel#toastIconInfo {{
     color: {t["accent"]};
+}}
+QLabel#toastIconSuccess {{
+    color: {t["success"]};
+}}
+QLabel#toastIconWarning {{
+    color: {t["warn_text"]};
+}}
+QLabel#toastIconError {{
+    color: {t["danger"]};
 }}
 QLabel#toastMsg {{
     color: {t["text_strong"]};

@@ -43,7 +43,7 @@ from models_event import (
     rebuild_description,
     set_event_color,
 )
-from ui_common import ConfirmDialog
+from ui_common import ConfirmDialog, field_caption, set_message_kind
 
 
 class EventDetailDialog(QDialog):
@@ -289,21 +289,21 @@ class EventDetailDialog(QDialog):
         summary = self.event_data.get("summary", "")
         self.edit_summary.setText(str(summary) if summary else "")
         self.edit_summary.setPlaceholderText("请输入日程标题")
-        form.addRow("标题  ", self.edit_summary)
+        form.addRow(field_caption("标题"), self.edit_summary)
 
         start = parse_event_time(self.event_data.get("start_time", {}))
         self.edit_start = QDateTimeEdit()
         self.edit_start.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.edit_start.setCalendarPopup(True)
         self.edit_start.setDateTime(start)
-        form.addRow("开始  ", self.edit_start)
+        form.addRow(field_caption("开始"), self.edit_start)
 
         end = parse_event_time(self.event_data.get("end_time", {}))
         self.edit_end = QDateTimeEdit()
         self.edit_end.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.edit_end.setCalendarPopup(True)
         self.edit_end.setDateTime(end)
-        form.addRow("结束  ", self.edit_end)
+        form.addRow(field_caption("结束"), self.edit_end)
 
         recurring = has_recurrence(self.event_data)
         # Recurrence selector (defaults to current rule if present)
@@ -313,21 +313,20 @@ class EventDetailDialog(QDialog):
         current_rule = self._recurrence_rule()
         idx = next((i for i, (_, r) in enumerate(RECURRENCE_OPTIONS) if r == current_rule), 0)
         self.edit_recurrence.setCurrentIndex(idx)
-        form.addRow("重复  ", self.edit_recurrence)
+        form.addRow(field_caption("重复"), self.edit_recurrence)
 
         self.edit_desc = QTextEdit()
         desc = self.event_data.get("description", "")
         self.edit_desc.setPlainText(str(desc) if desc else "")
         self.edit_desc.setPlaceholderText("日程描述（支持 Markdown / - [ ] 子任务）")
         self.edit_desc.setMaximumHeight(120)
-        form.addRow("描述  ", self.edit_desc)
+        form.addRow(field_caption("描述"), self.edit_desc)
 
         layout.addLayout(form)
 
         if recurring:
             hint = QLabel("提示：该日程为重复日程，修改时间可能影响整个重复序列。")
-            hint.setObjectName("formError")
-            hint.setStyleSheet("color: #FF8800; font-size: 12px;")
+            hint.setObjectName("formWarn")
             hint.setWordWrap(True)
             layout.addWidget(hint)
 
@@ -382,8 +381,7 @@ class EventDetailDialog(QDialog):
         self._rebuild_view()
 
     def _show_view_message(self, text: str, kind: str = "error"):
-        color = "#F54A45" if kind == "error" else "#2EA121"
-        self.view_message.setStyleSheet(f"color: {color}; font-size: 12px;")
+        set_message_kind(self.view_message, kind)
         self.view_message.setText(text)
         self.view_message.setVisible(True)
 
@@ -514,9 +512,9 @@ class EventDetailDialog(QDialog):
     # ─── Helpers ───
 
     def _label(self, text: str) -> QLabel:
-        lbl = QLabel(text)
-        lbl.setObjectName("detailLabel")
-        return lbl
+        # 只读视图的字段名和编辑表单、设置窗共用一套列宽，
+        # 否则同一个窗口里两套左列宽度，看着像两个产品
+        return field_caption(text)
 
     def _value(self, text: str) -> QLabel:
         lbl = QLabel(text)

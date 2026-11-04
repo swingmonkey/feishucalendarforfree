@@ -32,6 +32,9 @@ def seed(store_path: Path, year: int, month: int) -> None:
         (2, 14, 0, 60, "塔台管制检查准备"),
         (3, 10, 0, 90, "党务会议"),
         (3, 16, 30, 60, "案例复盘"),
+        # 今天必须有事：今日条和「今日」高亮都要有内容可看
+        (4, 9, 30, 60, "运行监督管理"),
+        (4, 15, 0, 45, "空管参考案例整理"),
         (5, 8, 30, 45, "交接班"),
         (5, 11, 0, 30, "英语广播脚本评审"),
         (8, 15, 0, 120, "西南局行政检查"),
@@ -137,11 +140,83 @@ def main() -> int:
         path = out_dir / f"loading-{theme_name}-b.png"
         win.grab().save(str(path))
         print("saved", path, path.stat().st_size)
+        QTimer.singleShot(0, shoot_surfaces)
+
+    def shoot_surfaces() -> None:
+        """次级表面：今日条 + 四个对话框。
+
+        这些地方没有自绘，QSS 一改就会变，但「变了什么」只能看图——
+        尤其是配色是不是真的从主题令牌来的（切主题两张图必须不一样）。
+        """
+        from datetime import datetime as _dt
+
+        from add_event_dialog import AddEventDialog
+        from event_detail_dialog import EventDetailDialog
+        from export_dialog import ExportDialog
+        from ui_common import ConfirmDialog
+
+        def save(widget, name: str) -> None:
+            path = out_dir / f"{name}-{theme_name}.png"
+            widget.grab().save(str(path))
+            print("saved", path, path.stat().st_size)
+
+        def save_over_backdrop(widget, name: str) -> None:
+            """窄条是半透明玻璃，直接存是张透明图，看上去只是一块灰。
+
+            先合成到台面底色上，才知道玻璃层、描边和圆角在真实桌面上是什么样。
+            """
+            from PySide6.QtGui import QColor, QPainter, QPixmap
+
+            import theme
+
+            shot = widget.grab()
+            canvas = QPixmap(shot.size())
+            canvas.fill(QColor(theme.tokens(theme_name)["bg"]))
+            painter = QPainter(canvas)
+            painter.drawPixmap(0, 0, shot)
+            painter.end()
+            path = out_dir / f"{name}-{theme_name}.png"
+            canvas.save(str(path))
+            print("saved", path, path.stat().st_size)
+
+        # 今日条是独立顶层窗口，grab() 它自己，不吃主窗口的样式表
+        win.config.set("today_bar_enabled", True)
+        win._apply_today_bar()
+        app.processEvents()
+        bar = win._today_bar
+        bar.set_events(win._today_events(), _dt.now())
+        app.processEvents()
+        save_over_backdrop(bar, "todaybar")
+        win.config.set("today_bar_enabled", False)
+        bar.hide()
+
+        events = win._today_events() or []
+        probe = events[0] if events else {
+            "event_id": "probe",
+            "summary": "塔台管制检查准备",
+            "start_time": {"timestamp": str(int(_dt(2026, 11, 4, 10, 0).timestamp()))},
+            "end_time": {"timestamp": str(int(_dt(2026, 11, 4, 11, 0).timestamp()))},
+        }
+
+        for name, dlg in (
+            ("dlg-add", AddEventDialog(win.lark_cli, default_date=_dt.now(), config=win.config)),
+            ("dlg-detail", EventDetailDialog(probe, config=win.config)),
+            ("dlg-export", ExportDialog(events or [probe], _dt.now())),
+            (
+                "dlg-confirm",
+                ConfirmDialog("删除日程", "确定要删除「塔台管制检查准备」吗？", danger=True),
+            ),
+        ):
+            dlg.show()
+            app.processEvents()
+            save(dlg, name)
+            dlg.deleteLater()
+
         win.dispose()
         app.quit()
 
     QTimer.singleShot(2200, shoot)
-    QTimer.singleShot(16000, app.quit)
+    QTimer.singleShot(20000, app.quit)
     app.exec()
     return 0
 

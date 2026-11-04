@@ -453,6 +453,30 @@ def test_event_card_has_tooltip(app, cfg):
     assert "周会" in card.toolTip()
 
 
+def test_recurring_badge_does_not_eat_the_time_row(app, cfg):
+    """♻ 不能挤在时间行里：周视图一列只有 ~90px，时间行刚好塞满。
+
+    以前重复日程把徽标拼在时间文本前面（「♻ 10:00–11:00」），需要 86px 而卡片
+    只剩 87px 里的 73px 可用宽度，最后一位数字被卡片边框切掉。时间标签的
+    sizePolicy 是 Minimum，它不会缩字，只会溢出——所以这里用宽度实算来钉。
+    """
+    from PySide6.QtGui import QFontMetrics
+
+    from event_card import EventCard
+
+    card = EventCard(_event(recurrence={"rrule": "FREQ=WEEKLY"}), config=cfg)
+    card.resize(90, 60)
+    app.processEvents()
+
+    avail = card.width() - card.contentsMargins().left() - card.contentsMargins().right()
+    fm = QFontMetrics(card.time_label.font())
+    assert fm.horizontalAdvance(card.time_label.text()) <= avail
+    assert "♻" not in card.time_label.text()
+    # 徽标没丢，只是挪到会省略号收尾的标题行
+    assert card.title_label.text().startswith("♻")
+    assert "♻" in card.toolTip()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 详情页
 # ─────────────────────────────────────────────────────────────────────────────

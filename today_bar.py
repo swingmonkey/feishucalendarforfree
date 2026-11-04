@@ -21,23 +21,40 @@ from PySide6.QtWidgets import (
 )
 
 import reminder as reminder_module
+import theme
 
-_LIGHT_STYLE = {
-    "card": "QFrame#todayBarCard { background: rgba(255, 255, 255, 0.96); "
-            "border: 1px solid #E4E6EB; border-radius: 10px; }",
-    "title": "color: #1F2329; font-size: 12px; font-weight: 600;",
-    "detail": "color: #646A73; font-size: 11px;",
-    "close": "QPushButton { border: none; color: #8F959E; font-size: 12px; }"
-             "QPushButton:hover { color: #F54A45; }",
-}
-_DARK_STYLE = {
-    "card": "QFrame#todayBarCard { background: rgba(35, 38, 45, 0.96); "
-            "border: 1px solid #3A3F4B; border-radius: 10px; }",
-    "title": "color: #E5E6EB; font-size: 12px; font-weight: 600;",
-    "detail": "color: #A6ADBB; font-size: 11px;",
-    "close": "QPushButton { border: none; color: #8F959E; font-size: 12px; }"
-             "QPushButton:hover { color: #F54A45; }",
-}
+
+def _style_for(theme_name: str) -> dict:
+    """按主题名拼出窄条的四段 QSS。
+
+    窄条是无 parent 的顶层窗口，吃不到 application 级样式表（styles.get_theme），
+    只能自己设。但色值必须从 theme.tokens 取：改造前这里写死了一套飞书旧色板
+    （#1F2329/#E4E6EB/#3A3F4B），主窗口换成深色台面后，它是屏幕上唯一还留着
+    旧配色的东西，而且切主题时不会跟着变。
+    """
+    t = theme.tokens(theme_name)
+    fs = theme.FONT_SIZE
+    return {
+        "card": (
+            "QFrame#todayBarCard {{ "
+            "background-color: {glass}; border: 1px solid {border}; "
+            "border-radius: {radius}px; }}".format(
+                glass=t["glass_strong"],
+                border=t["glass_border"],
+                radius=theme.RADIUS["md"],
+            )
+        ),
+        "title": (
+            f"color: {t['text_strong']}; font-family: {t['sans']}; "
+            f"font-size: {fs['body']}px; font-weight: 600;"
+        ),
+        "detail": f"color: {t['muted']}; font-family: {t['sans']}; font-size: {fs['sub']}px;",
+        "close": (
+            f"QPushButton {{ border: none; background: transparent; "
+            f"color: {t['muted']}; font-size: {fs['body']}px; }}"
+            f"QPushButton:hover {{ color: {t['danger']}; }}"
+        ),
+    }
 
 
 class TodayBar(QWidget):
@@ -49,6 +66,7 @@ class TodayBar(QWidget):
     def __init__(self, parent=None, dark: bool = False):
         super().__init__(parent)
         self._drag_offset: QPoint | None = None
+        self._theme = "dark" if dark else "light"
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.Tool
@@ -101,7 +119,11 @@ class TodayBar(QWidget):
     # ── Appearance ──
 
     def set_dark(self, dark: bool):
-        style = _DARK_STYLE if dark else _LIGHT_STYLE
+        self.apply_theme("dark" if dark else "light")
+
+    def apply_theme(self, theme_name: str):
+        self._theme = "light" if theme_name == "light" else "dark"
+        style = _style_for(self._theme)
         self.card.setStyleSheet(style["card"])
         self.primary_label.setStyleSheet(style["title"])
         self.detail_label.setStyleSheet(style["detail"])
@@ -133,9 +155,6 @@ class TodayBar(QWidget):
             parts.append(f"之后还有 {len(remaining)} 项")
         self.detail_label.setText(" · ".join(parts))
         self.detail_label.setVisible(bool(parts))
-
-    def apply_theme(self, theme: str):
-        self.set_dark(theme == "dark")
 
     # ── Placement ──
 

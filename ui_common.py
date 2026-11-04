@@ -1,8 +1,11 @@
-"""共享 UI 组件：Toast 轻提示与飞书风格确认对话框。
+"""共享 UI 组件：Toast 轻提示与确认对话框。
 
 设计目标：用不打断操作的轻量反馈替代散落各处的 QMessageBox 弹窗。
-- ``Toast``：主窗口底部居中的深色胶囊提示，自动消失，可带一个操作按钮。
-- ``ConfirmDialog``：飞书风格的模态确认框（危险操作为红色主按钮）。
+- ``Toast``：主窗口底部居中的玻璃胶囊提示，自动消失，可带一个操作按钮。
+- ``ConfirmDialog``：模态确认框（危险操作走 dangerBtn，颜色由主题令牌给）。
+
+这里只放字形、文案和布局；一切颜色都交给 styles 的外观层。以前这两个组件
+把飞书四色写死在内联样式里，内联优先级最高，换主题换不动它。
 """
 
 from PySide6.QtCore import QEvent, Qt, QTimer
@@ -16,13 +19,59 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-# kind -> (图标, 图标颜色)
-_TOAST_STYLE = {
-    "info": ("●", "#3370FF"),
-    "success": ("✓", "#34C724"),
-    "warning": ("!", "#FF8800"),
-    "error": ("✕", "#F54A45"),
+# kind -> 图标字形。颜色不在这里：样式表按 objectName（toastIconSuccess 等）
+# 给，切主题才会跟着变。
+_TOAST_GLYPH = {
+    "info": "●",
+    "success": "✓",
+    "warning": "!",
+    "error": "✕",
 }
+
+
+def _icon_object_name(kind: str) -> str:
+    normalized = kind if kind in _TOAST_GLYPH else "info"
+    return "toastIcon" + normalized.title()
+
+
+# 提示文字的三种语义色，同样交给样式表按 objectName 给
+_MESSAGE_NAMES = {"error": "formError", "warn": "formWarn", "success": "formSuccess"}
+
+
+def repolish(widget) -> None:
+    """objectName 改了要让 Qt 重新匹配选择器，否则还是按旧名字渲染。"""
+    style = widget.style()
+    style.unpolish(widget)
+    style.polish(widget)
+
+
+def set_message_kind(label: QLabel, kind: str = "error") -> None:
+    """给一行提示文字换语义色（error / warn / success）。
+
+    以前各处直接 ``label.setStyleSheet("color: #F54A45")``：内联样式优先级最高，
+    换主题换不动，而且四个对话框各写各的红。
+    """
+    name = _MESSAGE_NAMES.get(kind, _MESSAGE_NAMES["error"])
+    if label.objectName() != name:
+        label.setObjectName(name)
+        repolish(label)
+
+
+# 字段名列宽，和设置窗骨架的 CAP_W 同值：两个窗口并排看时左列要对得上
+FIELD_CAP_W = 76
+
+
+def field_caption(text: str) -> QLabel:
+    """表单左侧字段名：定宽 + 次要色，与设置窗同一套骨架。
+
+    以前这里写的是 ``form.addRow("标题  ", ...)``——裸字符串拿不到样式表
+    （QFormLayout 生成的 QLabel 没有 objectName），右对齐只能靠尾随空格凑，
+    字号也比设置窗的字段名亮一档。
+    """
+    label = QLabel(text)
+    label.setObjectName("fieldCap")
+    label.setFixedWidth(FIELD_CAP_W)
+    return label
 
 
 class Toast(QFrame):
@@ -111,9 +160,11 @@ class Toast(QFrame):
         on_action=None,
         duration: int = 3200,
     ):
-        glyph, color = _TOAST_STYLE.get(kind, _TOAST_STYLE["info"])
-        self.icon_label.setText(glyph)
-        self.icon_label.setStyleSheet(f"color: {color}; font-weight: 700;")
+        self.icon_label.setText(_TOAST_GLYPH.get(kind, _TOAST_GLYPH["info"]))
+        icon_name = _icon_object_name(kind)
+        if self.icon_label.objectName() != icon_name:
+            self.icon_label.setObjectName(icon_name)
+            repolish(self.icon_label)
         self.msg_label.setText(message)
 
         if action_text and on_action is not None:
@@ -133,10 +184,10 @@ class Toast(QFrame):
 
 
 class ConfirmDialog(QDialog):
-    """飞书风格确认对话框。
+    """确认对话框。
 
     静态方法 :meth:`ask` 返回 True/False；危险操作（如删除）传 danger=True，
-    确认按钮变为品牌红。
+    确认按钮改用 dangerBtn（语义色由主题令牌给）。
     """
 
     def __init__(

@@ -31,14 +31,17 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 
 ## 目录与约定
 - `main.py` 入口+托盘（托盘菜单精简）；`main_window.py` 主窗口：QStackedWidget 状态机（索引 0 月视图 / 1 周视图 / 2 加载 / 3 登录引导 / 4 错误）、头部溢出菜单（more_btn+QMenu）、Toast、拖拽改期/持久化
-- `ui_common.py` 通用 UI：`Toast`（主窗口底部胶囊轻提示，info/success/warning/error + 可选动作按钮）与 `ConfirmDialog`（飞书风格确认框，danger=True 红色按钮，静态 `ask()`）；新增弹窗优先用这两者，不要重新引入 QMessageBox
+- `ui_common.py` 通用 UI：`Toast`（主窗口底部胶囊轻提示，info/success/warning/error + 可选动作按钮）与 `ConfirmDialog`（确认框，danger=True 走 dangerBtn，静态 `ask()`）；新增弹窗优先用这两者，不要重新引入 QMessageBox
+  - **这两个组件里不许出现任何十六进制色值**（`tests/test_skin_surfaces.py` 用 AST 扫源码，只豁免 docstring）。Toast 图标按 kind 切 objectName（`toastIconSuccess` 等），颜色全在外观层给——内联样式优先级最高，写死了切主题也换不动
+  - 一行提示要换语义色用 `set_message_kind(label, "error"|"warn"|"success")`，它切 objectName（`formError`/`formWarn`/`formSuccess`）；表单左侧字段名用 `field_caption(text)`（定宽 `FIELD_CAP_W=76` + `fieldCap`，和设置窗骨架同一列宽，别再用 `"标题  "` 尾随空格凑对齐）
+  - **改了 objectName 必须 `repolish(widget)`**，否则 Qt 还按旧选择器渲染，表现是「样式表明明写了但没生效」
 - `login_dialog.py` device flow：`_DeviceCodeWorker` 线程自动轮询、成功自动关窗；线程不设 parent 并登记到模块级 `_LIVE_WORKERS`，finished 后自行注销（对话框可能先关闭，禁止销毁运行中的 QThread）；`AuthStatusWorker` 供设置页异步检测；`mark_authed(config)` 写 `auth_completed/auth_user`
 - **`qrgen.py` 是登录二维码的唯一来源（v2.9.0）**：Byte 模式 + 纠错等级 M、版本 1–10、Reed-Solomon 分块交织、8 掩码按 4 条罚分规则择优，**纯标准库**。以前让 `lark-cli auth qrcode ... --size 256` 出图，而 cli 根本没有 `--size`，命令每次非零退出，二维码从上线起就没显示过——**不要再把绘制交给外部命令**。改这个文件必须跑 `tests/test_qrgen.py`：固定向量防漂移，OpenCV 解码（`importorskip`）才是唯一能证明「扫得出来」的门禁。渲染在 `login_dialog._qr_pixmap()`，整数倍缩放 + 4 模块静区，禁用平滑插值。
 - 启动认证判定：成功拉取日程即 mark_authed；错误文本命中授权类关键词（scope/auth/unauthorized/token/credential/login/授权/登录/登陆/认证/身份）走 auth 面板（未登录过 welcome、登录过 expired），未装 lark-cli 走 no_cli 安装引导，其余错误走 error 面板；已成功加载后的后台刷新失败只发 Toast，不抢占视图
 - `month_view.py` 月历网格组件；`week_view.py` 周计划组件（weektodo 风格 7 列，顶部有独立「全天」条，跨天延续日显示 `↳`）
 - `context_menu.py` 右键菜单构造（事件 / 日格 / 窗口空白三处共用，措辞与危险项位置保持一致）；各视图只负责把 `event_context_menu` / `day_background_menu` 信号转发给主窗口
 - `widgets.py` 共享小组件（日期徽标 / 可点击标签 / 紧凑日程标签=拖拽源 / 日格=放置目标 / `ConnectingOrb` 首页等待光弧）；**自绘动画控件一律 `showEvent` 起、`hideEvent` 停**（`ConnectingOrb` 是范例）——这是常驻桌面的挂件，面板切走后还跑 60fps 重绘就是白烧电。光弧的绘制还有两条容易写反的规则：视觉方向由「弧头角度」决定（`_head_angle()` 取 `-spin` 才是顺时针），跨度符号恒为正；`QConicalGradient` 的原点必须定在**弧头**，定错半圈就会画出一段几乎全透明的弧。`models_event.py` 事件模型（时间解析、重复展开 RFC5545、Markdown→HTML、颜色/子任务工具、`RECURRENCE_CHOICES` 重复规则真源）
-- `event_card.py` 日程卡片（颜色条 / ♻ 徽标 / 拖拽源 / ↳ 延续）；`day_detail_dialog.py` + `search_dialog.py` 由旧 calendar_widget.py 拆分而出
+- `event_card.py` 日程卡片（颜色条 / ♻ 徽标 / 拖拽源 / ↳ 延续）；**♻ 只能放标题行**：周视图一列 ~90px、扣掉内边距剩 87px，等宽 11px 的「08:30–09:15」要 72px，标签 sizePolicy=Minimum 不缩字只溢出，加个「♻ 」前缀（86px）就把最后一位数字切掉。月视图（`gridEventTitle` 是会省略号收尾的 `ElidedLabel`，能吃掉宽度）不受影响，所以两处位置不同是有意的。`day_detail_dialog.py` + `search_dialog.py` 由旧 calendar_widget.py 拆分而出
 - `lark_cli_async.py` 异步封装（QProcess）；**Windows 必须 node 直调 run.js**（cmd/PowerShell 会拆解 `--data` JSON 的双引号和 URL 的 `&`，报 invalid JSON）
 - **`cli_installer.py` 负责装 lark-cli**：纯逻辑（探测 npm/node、构造安装命令、刷新 PATH、翻译 npm 报错），`cli_install_async.py` 是 QProcess 外壳（逐行输出、300 秒超时、可取消）。两条铁律——① 不自动 sudo，全局目录不可写时只给建议；② 装完必须 `refresh_path(npm_bin_dir(npm))`，否则会出现「npm 说装好了、应用还说找不到」，因为 .app 从 Finder 继承的 PATH 里没有 npm 的全局 bin。`main.py:_extend_path_for_app_bundle` 也靠它补 PATH，让终端里装过的用户重启就能被识别
 - **`event_store.py` 是本地事实层（v2.4）**：日程落 SQLite（`events.db`，与 config.json 同目录）。视图只从 store 读，`lark_cli_async` 只往 store 写。改渲染路径时不要绕过 store 直接读 `self.events`——`self.events` 是 store 当前窗口的投影，不是事实源
@@ -59,7 +62,7 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
   - 已开始的事件不再提醒：`START_GRACE_SECONDS = 30`，超时就说明错过发车了
 - **通知递送方向是单向的**：`MainWindow.notify_requested` → `TrayApp._on_notify_requested`。主窗口不知道托盘长什么样；没有托盘（headless/CI）时降级成 Toast，不允许静默丢弃
 - **托盘摘要是「不打开窗口也要能看」的层**：`MainWindow._refresh_ambient()` 同时刷新 tooltip 与今日条，由 `tray_summary_changed` 信号推给 `main.py`。托盘菜单顶部那行是 disabled QAction——它只是信息，不能被点
-- `today_bar.py` 是**独立顶层窗口**（无 parent、无边框、置顶、可拖），吃不到 application 级 QSS，换肤必须走 `apply_theme()`；点掉窄条 = 关闭该功能（写 `today_bar_enabled=False`），否则每次重启又冒出来等于没关
+- `today_bar.py` 是**独立顶层窗口**（无 parent、无边框、置顶、可拖），吃不到 application 级 QSS，换肤必须走 `apply_theme()`；配色由模块内 `_style_for(theme_name)` 从 `theme.tokens` 现拼，**不要再在这里写第二套色板**（改造前它自带 #1F2329/#E4E6EB 一套飞书旧色，主窗口换肤后它是屏幕上唯一没跟上颜色的东西）。点掉窄条 = 关闭该功能（写 `today_bar_enabled=False`），否则每次重启又冒出来等于没关
 - 提醒相关配置全部由 `config.json` 驱动，设置页「提醒」Tab 改完下一次心跳即生效，**不需要重启**
 - **`stats.py` 只算不画，`stats_dialog.py` 只画不算**：统计的输入永远是「事件列表 + 显式区间」，禁止在 stats 里读 clock 或 store；面板打开不触发同步，全部数字来自本地库
   - 全天日程计入「事项数」但不计入时长——否则一个公司假日就能把「会议小时」拉满
@@ -87,6 +90,8 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
 - `config.json` 存窗口/主题（默认 dark、opacity 1.0）/刷新间隔/视图模式/颜色/`grid_font_size`/`list_font_size`/`usage_stats_enabled`/`auth_completed`/`auth_user`（`.gitignore` 排除，不含任何凭据）
 - **视觉的真源是 `theme.py`，不是 `styles.py` 里那些十六进制**：令牌分三层——字体栈（`SANS_STACK` / `MONO_STACK`）、尺度（`RADIUS` / `SPACE` / `FONT_SIZE` / `DURATION` / `EASING_ENTER`）、双主题调色板（`_DARK` / `_LIGHT`，`tokens(name)` 取用，未知主题名退回深色不抛异常）。`paint_colors(name)` 给 QPainter 自绘用
   - 外观层是 `styles._skin_rules(name)`，**追加在 `get_theme()` 最末尾**，靠 QSS「同特异性后定义者生效」压住基础层；它只改颜色/边框/圆角/字族，**刻意不动布局尺寸**（min-height、padding、grid 间距），日历密度是原有功能的一部分
+  - **淡底/描边/hover 一律用 `theme.alpha(t["danger"], 0.18)` 从 hex 令牌派生**，不许把深色的 `rgba(239,68,68,...)` 抄进外观层——抄了浅色主题会拿到同一串深色值（`#f87171`/`#fca5a5` 那批就是这么漏的）。守卫在 `tests/test_skin_surfaces.py::test_semantic_surfaces_actually_change_with_theme`：它断言两套主题拼出的声明**不同**，不锁死具体配色
+  - 基础层（`_menu_dialog_rules` 等）带 `QDialog` 前缀的规则会压住外观层不带前缀的同名规则，对话框里的东西必须在外观层带前缀重写；`#3370FF` 飞书蓝只允许留在基础层
   - 改外观时**先看基础层有没有带前缀的规则**：`QDialog QPushButton#primaryBtn`、`QDialog QTabBar::tab`、`QDialog QGroupBox` 这类带 `QDialog` 前缀的选择器特异性更高，只写 `QPushButton#primaryBtn` 是压不住的（对话框里的主按钮曾经一直是老的飞书蓝就是这个原因）
   - 基础层的飞书蓝 #3370FF 仍留在 `styles.py` 里当兜底，新写控件不要再抄它；要颜色就 `theme.tokens(...)`
 - **定制 QSS 的 `::drop-down` / `::up-button` 就等于关掉 Qt 自绘的箭头**，必须自己给 `image: url(assets/chevron-*.svg)`（深浅各一套）；`QAbstractSpinBox` 的内部编辑区是自绘的，外层 `:disabled { color }` 到不了文字，会出现「禁用后反而更亮」——要么单独写 `QSpinBox QLineEdit`，要么整块挂 `QGraphicsOpacityEffect`（设置窗取后者，见 `SettingsDialog._dim_when_disabled`）；`QSS min-width` 会覆盖 `setFixedWidth`（`QStyleSheetStyle` 用 `setMinimumWidth` 实现），控件宽度对不齐先查这条
@@ -97,7 +102,7 @@ Python 3.10+ / PySide6 (Qt6) / openpyxl；lark-cli（npm 全局，跨项目共�
   - `QGroupBox` 的 QSS `margin` 不计入 `sizeHint`，四值 `padding` 会同向压缩内容区，所以对话框里的组框用 `margin-top: 8px; padding: 2px 0 0 0`，标题就压在边框线上（Qt 官方示例的做法）
   - **设置窗五页共用一套表单骨架**（`_page` / `_group` / `_field_label` / `_row` / `_hint` / `_check` / `_slider_row`）：字段名 `FIELD_W`=76px、单行控件 `CAP_W`=150px、右侧数值 `VALUE_W`=44px。新增分页照抄这套，不要各写一遍 margins 和宽度——五页宽度对不齐就是这么来的
   - 行容器一律 `setObjectName("formRow")`：基础层 `QWidget { background-color }` 会把行容器也刷成窗口底色，浅色主题下每个组框里就多出一道浅灰横条（`QWidget#formRow { background-color: transparent }` 压住）
-- **UI 改动必须真的看一眼**：QSS 和自绘都没有单元测试能断言。`tools/ui_shot.py` 灌 18 条中文示例日程，在 `QT_QPA_PLATFORM=offscreen` 下用 `QWidget.grab()` 截月/周/加载态（这台机器没有屏幕录制权限，`screencapture` 拿不到窗口；加载态连拍两帧，用来确认自绘光弧真的在转而不是静止）。冒烟命令：`QT_QPA_PLATFORM=offscreen .venv/bin/python tools/ui_shot.py .ui_shot dark`（第二参数换成 `light` 出浅色）
+- **UI 改动必须真的看一眼**：QSS 和自绘都没有单元测试能断言。`tools/ui_shot.py` 灌 20 条中文示例日程（含「今天」两条，否则今日条截出来是空的），在 `QT_QPA_PLATFORM=offscreen` 下用 `QWidget.grab()` 截月/周/加载态 **+ 今日条 + 新建/详情/导出/确认四个对话框**（这台机器没有屏幕录制权限，`screencapture` 拿不到窗口；加载态连拍两帧，用来确认自绘光弧真的在转而不是静止）。今日条是半透明玻璃，直接存是张透明图看着像一块灰——工具用 `save_over_backdrop()` 先合成到台面底色再存。冒烟命令：`QT_QPA_PLATFORM=offscreen .venv/bin/python tools/ui_shot.py .ui_shot dark`（第二参数换成 `light` 出浅色）
 - **日程字号可调（v2.1.6）**：`config.grid_font_size`（月视图，默认 10）/ `config.list_font_size`（周·列表视图，默认 13），范围 9-24px，设置页「外观」Tab 两个滑块；实现方式是 `styles._event_font_rules()` 生成覆盖规则**追加在主题 QSS 末尾**（同名选择器后定义者生效），不改两套大模板；时间与次要信息由主字号派生（月视图 -1、列表 -2）。改字号必须同步放开 `QFrame#gridEvent` 的 min/max-height（行高 = 字号 +6/+8），否则大字号会被裁；字号变化后 `MainWindow._on_settings_changed` 会 `_render_active_view()` 重建视图
 
 ## 当前状态

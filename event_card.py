@@ -82,6 +82,7 @@ class EventCard(QFrame):
         start = parse_event_time(self.event_data.get("start_time", {}))
         end = parse_event_time(self.event_data.get("end_time", {}))
         recurring = bool(self.event_data.get("_is_recurring_instance") or has_recurrence(self.event_data))
+        recurrence_badge = "♻ " if recurring else ""
         summary = self.event_data.get("summary", "(无标题)")
         if not isinstance(summary, str):
             summary = str(summary)
@@ -95,8 +96,10 @@ class EventCard(QFrame):
             # 窄列里宽度寸土寸金：用 en dash 而不是 " - "，省下的
             # 6px 正好够 7 列布局下时间不被截掉最后一位
             time_text = f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
-        if recurring:
-            time_text = "♻ " + time_text
+        # ♻ 刻意不放进时间行。720px 窗口下卡片 90px、左右内边距共 14px，
+        # 时间行只剩 76px；「08:30–09:15」要 72px 刚好塞满，再加「♻ 」要 86px，
+        # 最后一位就被卡边切掉（时间标签只拿自己的 sizeHint，不会缩字）。
+        # 重复是日程的属性而不是时间的属性，挪到标题前缀，标题本来就会省略号收尾。
 
         self.time_label = QLabel(time_text)
         self.time_label.setObjectName("eventTime")
@@ -120,7 +123,7 @@ class EventCard(QFrame):
 
         layout.addLayout(top_row)
 
-        self.title_label = ElidedLabel(summary)
+        self.title_label = ElidedLabel(recurrence_badge + summary)
         self.title_label.setObjectName("eventTitle")
         self.title_label.setWordWrap(True)
         self.title_label.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -142,7 +145,7 @@ class EventCard(QFrame):
             layout.addWidget(self.meta_label)
 
         # 悬停提示：周视图此前完全没有 tooltip，窄列里只能靠点开弹窗才看得到信息
-        tip_parts = [f"{time_text}  {summary}"]
+        tip_parts = [f"{time_text}  {recurrence_badge}{summary}"]
         location = self.event_data.get("location")
         if isinstance(location, dict) and location.get("name"):
             tip_parts.append(f"📍 {location['name']}")

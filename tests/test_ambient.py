@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication
 import event_store
 import main as main_module
 import reminder
+import theme
 from config import Config
 from lark_cli_async import LarkCliAsync
 from main_window import MainWindow
@@ -123,13 +124,30 @@ def test_closing_the_today_bar_switches_the_feature_off(win):
 
 
 def test_today_bar_follows_theme(win):
-    win.config.set("theme", "dark")
+    """窄条的配色必须来自令牌，而不是自己带一套。
+
+    它是无 parent 的顶层窗口，吃不到 application 级样式表，只能自己拼 QSS——
+    正因如此，这里断言的是「拼出来的值等于 tokens(...)」，写死色值的测试会在
+    换主题令牌时假失败，而写死色值的实现会在换主题时真漏掉。
+    """
     win.config.set("today_bar_enabled", True)
+    for name in ("dark", "light"):
+        win.config.set("theme", name)
+        win._apply_today_bar()
+        card = win._today_bar.card.styleSheet()
+        close = win._today_bar.close_btn.styleSheet()
+        t = theme.tokens(name)
+        assert t["glass_strong"] in card
+        assert t["glass_border"] in card
+        assert str(theme.RADIUS["md"]) in card
+        assert t["danger"] in close
+    # 两套主题不能拼出同一张卡
+    win.config.set("theme", "dark")
     win._apply_today_bar()
-    assert "rgba(35, 38, 45" in win._today_bar.card.styleSheet()
+    dark_card = win._today_bar.card.styleSheet()
     win.config.set("theme", "light")
     win._apply_today_bar()
-    assert "rgba(255, 255, 255" in win._today_bar.card.styleSheet()
+    assert dark_card != win._today_bar.card.styleSheet()
 
 
 # ── Notification delivery ───────────────────────────────────────────────────

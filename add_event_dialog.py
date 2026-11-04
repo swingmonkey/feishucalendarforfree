@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from config import Config
 from models_event import PALETTE, RECURRENCE_CHOICES, set_event_color
+from ui_common import field_caption, repolish
 
 # 重复规则的真源在 models_event.RECURRENCE_CHOICES（详情页共用同一份），
 # 这里保留旧名以兼容既有导入。
@@ -66,19 +67,14 @@ class ColorSwatch(QPushButton):
         self.clicked.connect(lambda: self.selected.emit(self._hex))
 
     def _render(self):
-        if self._hex:
-            bg = self._hex
-            border = "#FFFFFF" if self._selected else "rgba(115,115,115,0.35)"
-            ring = "box-shadow: none;"
-        else:
-            bg = "transparent"
-            border = "#FFFFFF" if self._selected else "rgba(115,115,115,0.45)"
-            ring = ""
-        width = 3 if self._selected else 1
-        self.setStyleSheet(
-            f"border-radius: 11px; background-color: {bg};"
-            f"border: {width}px solid {border}; {ring}"
-        )
+        # 色值是数据（只能内联给），描边是主题（交给样式表按 objectName 给）。
+        # 以前描边写死 #FFFFFF：浅色主题下选中态的白圈落在白卡上等于没选中。
+        # 原来那行 box-shadow 一并删掉——Qt 的 QSS 不认这个属性，一直是空写。
+        name = "colorSwatchSelected" if self._selected else "colorSwatch"
+        if self.objectName() != name:
+            self.setObjectName(name)
+            repolish(self)
+        self.setStyleSheet(f"background-color: {self._hex or 'transparent'};")
 
     def set_selected(self, selected: bool):
         self._selected = selected
@@ -119,7 +115,7 @@ class AddEventDialog(QDialog):
 
         self.summary_input = QLineEdit()
         self.summary_input.setPlaceholderText("请输入日程标题")
-        form.addRow("标题  ", self.summary_input)
+        form.addRow(field_caption("标题"), self.summary_input)
 
         if self._default_date:
             base_start = self._default_date.replace(hour=9, minute=0, second=0, microsecond=0)
@@ -132,18 +128,18 @@ class AddEventDialog(QDialog):
         self.start_input.setCalendarPopup(True)
         self.start_input.setDateTime(base_start)
         self.start_input.dateTimeChanged.connect(self._on_start_changed)
-        form.addRow("开始  ", self.start_input)
+        form.addRow(field_caption("开始"), self.start_input)
 
         self.end_input = QDateTimeEdit()
         self.end_input.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.end_input.setCalendarPopup(True)
         self.end_input.setDateTime(base_end)
-        form.addRow("结束  ", self.end_input)
+        form.addRow(field_caption("结束"), self.end_input)
 
         self.recurrence_combo = QComboBox()
         for label, _ in RECURRENCE_OPTIONS:
             self.recurrence_combo.addItem(label)
-        form.addRow("重复  ", self.recurrence_combo)
+        form.addRow(field_caption("重复"), self.recurrence_combo)
 
         self.location_input = QLineEdit()
         self.location_input.setPlaceholderText("地点（可选，写入日程描述）")
@@ -151,12 +147,12 @@ class AddEventDialog(QDialog):
             f"lark-cli 创建日程没有独立的地点参数，填写的地点会以「{LOCATION_PREFIX}」"
             "开头追加到日程描述里，在飞书中同样可见。"
         )
-        form.addRow("地点  ", self.location_input)
+        form.addRow(field_caption("地点"), self.location_input)
 
         self.desc_input = QTextEdit()
         self.desc_input.setPlaceholderText("日程描述（支持 Markdown，可用 - [ ] 添加子任务）")
         self.desc_input.setMaximumHeight(80)
-        form.addRow("描述  ", self.desc_input)
+        form.addRow(field_caption("描述"), self.desc_input)
 
         layout.addLayout(form)
 
